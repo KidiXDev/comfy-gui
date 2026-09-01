@@ -44,7 +44,7 @@ fn app_data_path(app_handle: &AppHandle, name: &str) -> Result<std::path::PathBu
         .path()
         .app_config_dir()
         .map_err(|e| e.to_string())?
-        .join(format!("{name}.bin")))
+        .join(format!("{name}.dat")))
 }
 
 #[tauri::command]

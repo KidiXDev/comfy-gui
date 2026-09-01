@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
   ArrowRightLeft,
   Bookmark,
   Check,
   ChevronDown,
+  Code2,
   Copy,
+  Copyright,
+  Dices,
   FolderOpen,
   HelpCircle,
   Layers,
+  Palette,
   Plus,
   RefreshCw,
   Search,
   SlidersHorizontal,
   Sparkles,
+  Tag,
   Tags,
   Trash2,
+  User,
   X
 } from '@lucide/vue';
 import {
@@ -59,6 +65,7 @@ import { useLauncherStore } from '../../stores/launcherStore';
 import { useComfyStore } from '../../stores/comfyStore';
 import { usePromptSuggestionStore } from '../../stores/promptSuggestionStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { loadAppData, saveAppData } from '../../services/appStorage';
 
 const workflowStore = useWorkflowStore();
 const launcherStore = useLauncherStore();
@@ -67,6 +74,45 @@ const promptSuggestionStore = usePromptSuggestionStore();
 
 type PromptField = 'positive' | 'negative';
 type TextareaRef = { $el: HTMLTextAreaElement };
+type PromptTextareaSizes = Record<PromptField, number>;
+
+const TEXTAREA_SIZES_KEY = 'prompt_textarea_sizes';
+const defaultTextareaSizes: PromptTextareaSizes = {
+  positive: 96,
+  negative: 80
+};
+const textareaSizes = ref<Partial<PromptTextareaSizes>>({});
+
+async function loadTextareaSizes() {
+  try {
+    const saved =
+      await loadAppData<Partial<PromptTextareaSizes>>(TEXTAREA_SIZES_KEY);
+    if (!saved) return;
+    for (const field of ['positive', 'negative'] as const) {
+      const height = saved[field];
+      if (typeof height === 'number' && height > 0) {
+        textareaSizes.value[field] = height;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load prompt textarea sizes:', error);
+  }
+}
+
+onMounted(loadTextareaSizes);
+
+function saveTextareaSize(field: PromptField, event: PointerEvent) {
+  const height = Math.round(
+    (event.currentTarget as HTMLTextAreaElement).getBoundingClientRect().height
+  );
+  if (height === (textareaSizes.value[field] ?? defaultTextareaSizes[field])) {
+    return;
+  }
+  textareaSizes.value[field] = height;
+  void saveAppData(TEXTAREA_SIZES_KEY, textareaSizes.value).catch((error) =>
+    console.error('Failed to save prompt textarea sizes:', error)
+  );
+}
 
 const isPresetDialogOpen = ref(false);
 const positiveTextarea = ref<TextareaRef>();
@@ -112,6 +158,39 @@ const categoryBadgeStyles: Record<number, string> = {
   4: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
   5: 'bg-slate-500/10 text-slate-400 border-slate-500/30'
 };
+
+function getCategoryIcon(item: AutocompleteItem) {
+  if (item.kind === 'wildcard') return Dices;
+  switch (Number(item.category)) {
+    case 0:
+      return Tag;
+    case 1:
+      return Palette;
+    case 3:
+      return Copyright;
+    case 4:
+      return User;
+    case 5:
+      return Code2;
+    default:
+      return Tag;
+  }
+}
+
+function getCategoryName(item: AutocompleteItem) {
+  if (item.kind === 'wildcard') return 'Wildcard';
+  return categoryNames[Number(item.category)] ?? 'Tag';
+}
+
+function getCategoryBadgeStyle(item: AutocompleteItem) {
+  if (item.kind === 'wildcard') {
+    return 'bg-pink-500/10 text-pink-400 border-pink-500/30';
+  }
+  return (
+    categoryBadgeStyles[Number(item.category)] ||
+    'bg-muted text-muted-foreground border-border'
+  );
+}
 
 // Negative prompt bundle presets
 const negativePresets = [
@@ -456,9 +535,7 @@ function formatPostCount(count: number) {
 
 function autocompleteMeta(item: AutocompleteItem) {
   const count = formatPostCount(item.total_post);
-  return item.kind === 'wildcard'
-    ? `${count} entries · Wildcard`
-    : `${count} · ${categoryNames[Number(item.category)] ?? 'Other'}`;
+  return item.kind === 'wildcard' ? `${count} entries` : `${count} posts`;
 }
 
 function insertTagAtCursor(tag: string, target: PromptField = 'positive') {
@@ -738,6 +815,9 @@ const negativeTokenInfo = computed(() =>
             ref="positiveTextarea"
             v-model="workflowStore.positivePrompt"
             :rows="4"
+            :style="{
+              height: `${textareaSizes.positive ?? defaultTextareaSizes.positive}px`
+            }"
             placeholder="Describe the image you want to generate... (Tip: Select tag and press Ctrl+Up/Down to adjust weight)"
             class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
             @input="handleInput('positive', $event)"
@@ -746,6 +826,7 @@ const negativeTokenInfo = computed(() =>
             @select="updateCursor('positive', $event)"
             @keydown="handleKeydown('positive', $event)"
             @blur="handleBlur('positive', $event)"
+            @pointerup="saveTextareaSize('positive', $event)"
           />
 
           <!-- Autocomplete Floating Dropdown -->
@@ -771,17 +852,11 @@ const negativeTokenInfo = computed(() =>
             >
               <div class="flex items-center gap-2 overflow-hidden">
                 <span
-                  class="py-0.2 rounded border px-1.5 text-xs font-semibold uppercase"
-                  :class="
-                    categoryBadgeStyles[Number(item.category)] ||
-                    'bg-muted text-muted-foreground border-border'
-                  "
+                  class="flex h-5 w-5 shrink-0 items-center justify-center rounded border"
+                  :class="getCategoryBadgeStyle(item)"
+                  :title="getCategoryName(item)"
                 >
-                  {{
-                    item.kind === 'wildcard'
-                      ? 'WILD'
-                      : categoryNames[Number(item.category)] || 'TAG'
-                  }}
+                  <component :is="getCategoryIcon(item)" class="h-3 w-3" />
                 </span>
                 <span class="truncate">{{ item.label }}</span>
               </div>
@@ -819,7 +894,6 @@ const negativeTokenInfo = computed(() =>
                   ? 'border-border/40 bg-muted/30 text-muted-foreground/50 border-dashed line-through opacity-50'
                   : 'border-border/80 bg-secondary/80 text-foreground hover:border-primary/50'
               ]"
-              title="Double click to disable / enable · Drag to reorder"
               @dblclick="toggleChipDisabled(true, idx)"
             >
               <span
@@ -1220,6 +1294,9 @@ const negativeTokenInfo = computed(() =>
             ref="negativeTextarea"
             v-model="workflowStore.negativePrompt"
             :rows="3"
+            :style="{
+              height: `${textareaSizes.negative ?? defaultTextareaSizes.negative}px`
+            }"
             placeholder="Things to avoid in generation... (e.g. worst quality, blurry, bad anatomy)"
             class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
             @input="handleInput('negative', $event)"
@@ -1228,6 +1305,7 @@ const negativeTokenInfo = computed(() =>
             @select="updateCursor('negative', $event)"
             @keydown="handleKeydown('negative', $event)"
             @blur="handleBlur('negative', $event)"
+            @pointerup="saveTextareaSize('negative', $event)"
           />
 
           <!-- Autocomplete Floating Dropdown for Negative -->
@@ -1253,17 +1331,11 @@ const negativeTokenInfo = computed(() =>
             >
               <div class="flex items-center gap-2 overflow-hidden">
                 <span
-                  class="py-0.2 rounded border px-1.5 text-xs font-semibold uppercase"
-                  :class="
-                    categoryBadgeStyles[Number(item.category)] ||
-                    'bg-muted text-muted-foreground border-border'
-                  "
+                  class="flex h-5 w-5 shrink-0 items-center justify-center rounded border"
+                  :class="getCategoryBadgeStyle(item)"
+                  :title="getCategoryName(item)"
                 >
-                  {{
-                    item.kind === 'wildcard'
-                      ? 'WILD'
-                      : categoryNames[Number(item.category)] || 'TAG'
-                  }}
+                  <component :is="getCategoryIcon(item)" class="h-3 w-3" />
                 </span>
                 <span class="truncate">{{ item.label }}</span>
               </div>
@@ -1301,7 +1373,6 @@ const negativeTokenInfo = computed(() =>
                   ? 'border-border/40 bg-muted/30 text-muted-foreground/50 border-dashed line-through opacity-50'
                   : 'border-border/80 bg-secondary/80 text-foreground hover:border-primary/50'
               ]"
-              title="Double click to disable / enable · Drag to reorder"
               @dblclick="toggleChipDisabled(false, idx)"
             >
               <span

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   AlertCircle,
@@ -134,16 +135,24 @@ const BOORU_PROMPT_CATEGORIES = [
   'meta'
 ];
 
+let applyingGallerySettings = false;
+let saveSuccessTimer: ReturnType<typeof setTimeout> | undefined;
+
 function applyGallerySettings(settings: BooruSettings) {
-  booruSettings.value = settings;
-  booruDefaultSource.value = settings.defaultSource;
-  booruBlacklist.value = settings.blacklist.join(', ');
-  booruOutputFilterTags.value = settings.outputFilterTags.join(', ');
-  booruPromptCategories.value = [...settings.promptDefaults.categories];
-  booruReplaceUnderscores.value = settings.promptDefaults.replaceUnderscores;
-  booruEscapeParentheses.value = settings.promptDefaults.escapeParentheses;
-  booruTimeout.value = settings.timeout;
-  booruCacheBudget.value = settings.cacheBudgetMiB;
+  applyingGallerySettings = true;
+  try {
+    booruSettings.value = settings;
+    booruDefaultSource.value = settings.defaultSource;
+    booruBlacklist.value = settings.blacklist.join(', ');
+    booruOutputFilterTags.value = settings.outputFilterTags.join(', ');
+    booruPromptCategories.value = [...settings.promptDefaults.categories];
+    booruReplaceUnderscores.value = settings.promptDefaults.replaceUnderscores;
+    booruEscapeParentheses.value = settings.promptDefaults.escapeParentheses;
+    booruTimeout.value = settings.timeout;
+    booruCacheBudget.value = settings.cacheBudgetMiB;
+  } finally {
+    applyingGallerySettings = false;
+  }
 }
 
 async function loadGallerySettings() {
@@ -212,12 +221,21 @@ async function handleBrowsePythonDir() {
   }
 }
 
-async function handleSave() {
+function showSaved() {
+  saveSuccess.value = true;
+  clearTimeout(saveSuccessTimer);
+  saveSuccessTimer = setTimeout(() => {
+    saveSuccess.value = false;
+  }, 2500);
+}
+
+async function saveApplicationSettings() {
   autocompleteLimit.value = Math.min(
     50,
     Math.max(5, Number(autocompleteLimit.value) || 20)
   );
   const cleanedServerUrl = cleanPath(serverUrl.value);
+  const serverChanged = cleanedServerUrl !== launcherStore.config.serverUrl;
   await launcherStore.saveConfig({
     workingDir: cleanPath(workingDir.value),
     pythonPath: cleanPath(pythonPath.value),
@@ -230,16 +248,28 @@ async function handleSave() {
     autocompleteReplaceUnderscores: autocompleteReplaceUnderscores.value,
     autocompleteIncludeArtistPrefix: autocompleteIncludeArtistPrefix.value
   });
+  if (!serverChanged && autocompleteEnabled.value && autocompleteReady.value) {
+    await ComfyApi.updateTagAutocompleteSettings(
+      cleanedServerUrl,
+      autocompleteAlgorithm.value,
+      autocompleteLimit.value
+    );
+  }
+  showSaved();
+  if (serverChanged) comfyStore.init();
+}
+
+async function saveGalleryPreferences() {
   if (booruAvailable.value) {
     const credentials: Partial<BooruCredentials> = {};
     if (
-      booruCredentials.value.danbooru.username ||
+      booruCredentials.value.danbooru.username &&
       booruCredentials.value.danbooru.apiKey
     ) {
       credentials.danbooru = booruCredentials.value.danbooru;
     }
     if (
-      booruCredentials.value.gelbooru.userId ||
+      booruCredentials.value.gelbooru.userId &&
       booruCredentials.value.gelbooru.apiKey
     ) {
       credentials.gelbooru = booruCredentials.value.gelbooru;
@@ -265,25 +295,64 @@ async function handleSave() {
       cacheBudgetMiB: booruCacheBudget.value,
       ...(Object.keys(credentials).length > 0 ? { credentials } : {})
     };
-    applyGallerySettings(await saveBooruSettings(cleanedServerUrl, update));
-    booruCredentials.value = {
-      danbooru: { username: '', apiKey: '' },
-      gelbooru: { userId: '', apiKey: '' }
-    };
-  }
-  if (autocompleteEnabled.value && autocompleteReady.value) {
-    await ComfyApi.updateTagAutocompleteSettings(
-      serverUrl.value,
-      autocompleteAlgorithm.value,
-      autocompleteLimit.value
+    applyGallerySettings(
+      await saveBooruSettings(cleanPath(serverUrl.value), update)
     );
+    if (Object.keys(credentials).length > 0) {
+      applyingGallerySettings = true;
+      booruCredentials.value = {
+        danbooru: { username: '', apiKey: '' },
+        gelbooru: { userId: '', apiKey: '' }
+      };
+      applyingGallerySettings = false;
+    }
+    showSaved();
   }
-  saveSuccess.value = true;
-  setTimeout(() => {
-    saveSuccess.value = false;
-  }, 2500);
-  comfyStore.init();
 }
+
+const autosaveApplicationSettings = useDebounceFn(
+  () => void saveApplicationSettings().catch(console.error),
+  600
+);
+const autosaveGalleryPreferences = useDebounceFn(
+  () => void saveGalleryPreferences().catch(console.error),
+  600
+);
+
+watch(
+  [
+    workingDir,
+    pythonPath,
+    args,
+    serverUrl,
+    autoStart,
+    autocompleteEnabled,
+    autocompleteAlgorithm,
+    autocompleteLimit,
+    autocompleteReplaceUnderscores,
+    autocompleteIncludeArtistPrefix
+  ],
+  () => autosaveApplicationSettings(),
+  { deep: true }
+);
+
+watch(
+  [
+    booruDefaultSource,
+    booruBlacklist,
+    booruOutputFilterTags,
+    booruPromptCategories,
+    booruReplaceUnderscores,
+    booruEscapeParentheses,
+    booruTimeout,
+    booruCacheBudget,
+    booruCredentials
+  ],
+  () => {
+    if (!applyingGallerySettings) autosaveGalleryPreferences();
+  },
+  { deep: true, flush: 'sync' }
+);
 
 async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
   booruTesting.value = source;
@@ -457,15 +526,6 @@ async function checkForUpdates() {
         >
           <RefreshCw class="h-3.5 w-3.5" />
           <span>Reset Defaults</span>
-        </Button>
-
-        <Button
-          size="sm"
-          class="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-xs transition-all hover:shadow-md"
-          @click="handleSave"
-        >
-          <Check class="h-3.5 w-3.5" />
-          <span>Save Changes</span>
         </Button>
       </div>
     </header>

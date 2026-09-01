@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { Check, FileCode, FolderOpen } from '@lucide/vue';
+import { useDebounceFn } from '@vueuse/core';
+import { FileCode, FolderOpen } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,15 +26,18 @@ const tempWorkingDir = ref(launcherStore.config.workingDir);
 const tempPythonPath = ref(launcherStore.config.pythonPath);
 const tempArgs = ref(launcherStore.config.args);
 const tempServerUrl = ref(launcherStore.config.serverUrl);
+let syncingSettings = false;
 
 watch(
   () => launcherStore.isSettingsOpen,
   (open) => {
     if (open) {
+      syncingSettings = true;
       tempWorkingDir.value = launcherStore.config.workingDir;
       tempPythonPath.value = launcherStore.config.pythonPath;
       tempArgs.value = launcherStore.config.args;
       tempServerUrl.value = launcherStore.config.serverUrl;
+      syncingSettings = false;
     }
   }
 );
@@ -59,16 +63,26 @@ async function handleBrowsePythonFile() {
   }
 }
 
-function handleSave() {
-  launcherStore.saveConfig({
+const autosave = useDebounceFn(async () => {
+  const serverChanged = tempServerUrl.value !== launcherStore.config.serverUrl;
+  await launcherStore.saveConfig({
     workingDir: tempWorkingDir.value,
     pythonPath: tempPythonPath.value,
     args: tempArgs.value.trim(),
     serverUrl: tempServerUrl.value
   });
-  launcherStore.isSettingsOpen = false;
-  comfyStore.init();
-}
+  if (serverChanged) comfyStore.init();
+}, 600);
+
+watch(
+  [tempWorkingDir, tempPythonPath, tempArgs, tempServerUrl],
+  () => {
+    if (launcherStore.isSettingsOpen && !syncingSettings) {
+      void autosave().catch(console.error);
+    }
+  },
+  { flush: 'sync' }
+);
 
 function handleResetDefaults() {
   tempWorkingDir.value = DEFAULT_LAUNCHER_CONFIG.workingDir;
@@ -192,24 +206,9 @@ function handleResetDefaults() {
         >
           Reset Defaults
         </Button>
-        <div class="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            class="text-muted-foreground hover:text-foreground text-xs"
-            @click="launcherStore.isSettingsOpen = false"
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            class="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold"
-            @click="handleSave"
-          >
-            <Check class="h-3.5 w-3.5" />
-            <span>Save Changes</span>
-          </Button>
-        </div>
+        <span class="text-muted-foreground text-xs"
+          >Changes save automatically</span
+        >
       </DialogFooter>
     </DialogContent>
   </Dialog>
