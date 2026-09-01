@@ -614,24 +614,30 @@ onUnmounted(() => {
         <Badge
           variant="outline"
           :class="
-            comfyStore.isFaceDetailerAvailable
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-              : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+            !comfyStore.isConnected
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+              : comfyStore.isFaceDetailerAvailable
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
           "
           class="text-xs font-medium"
         >
           <span
             class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
             :class="
-              comfyStore.isFaceDetailerAvailable
-                ? 'animate-pulse bg-emerald-400'
-                : 'bg-amber-400'
+              !comfyStore.isConnected
+                ? 'bg-amber-400'
+                : comfyStore.isFaceDetailerAvailable
+                  ? 'animate-pulse bg-emerald-400'
+                  : 'bg-amber-400'
             "
           />
           {{
-            comfyStore.isFaceDetailerAvailable
-              ? 'Impact Ready'
-              : 'Impact Unavailable'
+            !comfyStore.isConnected
+              ? 'ComfyUI Offline'
+              : comfyStore.isFaceDetailerAvailable
+                ? 'Impact Ready'
+                : 'Impact Unavailable'
           }}
         </Badge>
 
@@ -1318,6 +1324,29 @@ onUnmounted(() => {
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>
+
+    <!-- Offline Connection Warning Toast -->
+    <div
+      v-if="!comfyStore.isConnected"
+      class="mx-3 mb-2 flex shrink-0 items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-300 shadow-xs"
+    >
+      <div class="flex items-center gap-2">
+        <AlertCircle class="h-4 w-4 shrink-0 text-amber-400" />
+        <span>
+          ComfyUI server is offline. Start the server from the launcher or
+          titlebar to run face detailer jobs.
+        </span>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        class="h-6.5 border-amber-500/40 text-xs text-amber-300 hover:bg-amber-500/20"
+        @click="comfyStore.fetchDiscovery()"
+      >
+        <RefreshCw class="mr-1 h-3 w-3" />
+        Reconnect
+      </Button>
+    </div>
 
     <!-- Fullscreen Lightbox Inspector Modal -->
     <ImageLightboxModal

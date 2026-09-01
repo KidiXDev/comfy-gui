@@ -143,21 +143,31 @@ watch(
         <Badge
           variant="outline"
           :class="
-            comfyStore.isFaceDetailerAvailable
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-              : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+            !comfyStore.isConnected
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+              : comfyStore.isFaceDetailerAvailable
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
           "
           class="font-mono text-xs"
         >
           <span
             class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
             :class="
-              comfyStore.isFaceDetailerAvailable
-                ? 'bg-emerald-400'
-                : 'bg-amber-400'
+              !comfyStore.isConnected
+                ? 'bg-amber-400'
+                : comfyStore.isFaceDetailerAvailable
+                  ? 'bg-emerald-400'
+                  : 'bg-amber-400'
             "
           />
-          {{ comfyStore.isFaceDetailerAvailable ? 'Ready' : 'Unavailable' }}
+          {{
+            !comfyStore.isConnected
+              ? 'Offline'
+              : comfyStore.isFaceDetailerAvailable
+                ? 'Ready'
+                : 'Unavailable'
+          }}
         </Badge>
         <Switch
           v-if="showEnabled"
