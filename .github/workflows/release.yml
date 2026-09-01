@@ -1,0 +1,68 @@
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Read version from tag
+        id: version
+        shell: pwsh
+        run: |
+          if ('${{ github.ref_name }}' -notmatch '^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$') {
+            throw 'Release tags must use SemVer, for example v1.0.0'
+          }
+
+          $version = $Matches[1]
+          "version=$version" >> $env:GITHUB_OUTPUT
+          @{ version = $version } | ConvertTo-Json | Set-Content src-tauri/tauri.release.conf.json
+
+      - name: Build setup and create release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_APP_VERSION: ${{ github.ref_name }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ComfyGUI ${{ github.ref_name }}
+          generateReleaseNotes: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          args: --bundles nsis --config src-tauri/tauri.release.conf.json
+          releaseAssetNamePattern: ComfyGUI_[version]_windows_x64[setup].[ext]
+
+      - name: Upload portable ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $portableDir = 'src-tauri/target/release/portable'
+          $archive = "ComfyGUI_${{ steps.version.outputs.version }}_windows_x64_portable.zip"
+          New-Item -ItemType Directory -Force $portableDir | Out-Null
+          Copy-Item 'src-tauri/target/release/comfy-gui.exe' "$portableDir/ComfyGUI.exe"
+          Compress-Archive -Path "$portableDir/ComfyGUI.exe" -DestinationPath $archive
+          gh release upload '${{ github.ref_name }}' $archive --clobber
