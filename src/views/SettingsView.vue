@@ -1,0 +1,1261 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  Cpu,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Globe,
+  Image as ImageIcon,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  Settings,
+  Sparkles,
+  Tag,
+  Terminal,
+  Trash2,
+  Wifi,
+  XCircle
+} from '@lucide/vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import {
+  clearBooruCache,
+  fetchBooruSettings,
+  saveBooruSettings,
+  testBooruCredentials,
+  type BooruCredentials,
+  type BooruSettings,
+  type BooruSettingsUpdate
+} from '../services/booruGallery';
+import { ComfyApi } from '../services/comfyApi';
+import { useComfyStore } from '../stores/comfyStore';
+import {
+  cleanPath,
+  DEFAULT_LAUNCHER_CONFIG,
+  useLauncherStore
+} from '../stores/launcherStore';
+
+const launcherStore = useLauncherStore();
+const comfyStore = useComfyStore();
+
+const workingDir = ref(launcherStore.config.workingDir);
+const pythonPath = ref(launcherStore.config.pythonPath);
+const args = ref(launcherStore.config.args);
+const serverUrl = ref(launcherStore.config.serverUrl);
+const autoStart = ref(launcherStore.config.autoStart);
+const autocompleteEnabled = ref(launcherStore.config.autocompleteEnabled);
+const autocompleteAlgorithm = ref(launcherStore.config.autocompleteAlgorithm);
+const autocompleteLimit = ref(launcherStore.config.autocompleteLimit);
+const autocompleteReplaceUnderscores = ref(
+  launcherStore.config.autocompleteReplaceUnderscores
+);
+const autocompleteIncludeArtistPrefix = ref(
+  launcherStore.config.autocompleteIncludeArtistPrefix
+);
+const booruSettings = ref<BooruSettings | null>(null);
+const booruAvailable = ref<boolean | null>(null);
+const booruCredentials = ref<BooruCredentials>({
+  danbooru: { username: '', apiKey: '' },
+  gelbooru: { userId: '', apiKey: '' }
+});
+const showDanbooruKey = ref(false);
+const showGelbooruKey = ref(false);
+
+const booruDefaultSource = ref('danbooru');
+const booruBlacklist = ref('');
+const booruOutputFilterTags = ref('');
+const booruPromptCategories = ref<string[]>([
+  'copyright',
+  'character',
+  'general'
+]);
+const booruReplaceUnderscores = ref(false);
+const booruEscapeParentheses = ref(false);
+const booruTimeout = ref(30);
+const booruCacheBudget = ref(1024);
+const booruCacheMessage = ref('');
+const booruTesting = ref<'danbooru' | 'gelbooru' | null>(null);
+const booruResult = ref<{
+  source: 'danbooru' | 'gelbooru';
+  ok: boolean;
+  message: string;
+} | null>(null);
+
+const isTesting = ref(false);
+const testResult = ref<{ ok: boolean; message: string } | null>(null);
+const saveSuccess = ref(false);
+const autocompleteReady = computed(
+  () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
+);
+const danbooruConfigured = computed(
+  () =>
+    booruSettings.value?.credentialStatus.danbooru?.hasUsername &&
+    booruSettings.value?.credentialStatus.danbooru?.hasApiKey
+);
+const gelbooruConfigured = computed(
+  () =>
+    booruSettings.value?.credentialStatus.gelbooru?.hasUserId &&
+    booruSettings.value?.credentialStatus.gelbooru?.hasApiKey
+);
+
+const BOORU_PROMPT_CATEGORIES = [
+  'artist',
+  'copyright',
+  'character',
+  'general',
+  'meta'
+];
+
+function applyGallerySettings(settings: BooruSettings) {
+  booruSettings.value = settings;
+  booruDefaultSource.value = settings.defaultSource;
+  booruBlacklist.value = settings.blacklist.join(', ');
+  booruOutputFilterTags.value = settings.outputFilterTags.join(', ');
+  booruPromptCategories.value = [...settings.promptDefaults.categories];
+  booruReplaceUnderscores.value = settings.promptDefaults.replaceUnderscores;
+  booruEscapeParentheses.value = settings.promptDefaults.escapeParentheses;
+  booruTimeout.value = settings.timeout;
+  booruCacheBudget.value = settings.cacheBudgetMiB;
+}
+
+async function loadGallerySettings() {
+  if (!comfyStore.isConnected) {
+    booruAvailable.value = null;
+    booruSettings.value = null;
+    return;
+  }
+  try {
+    applyGallerySettings(await fetchBooruSettings(serverUrl.value));
+    booruAvailable.value = true;
+  } catch {
+    booruAvailable.value = false;
+    booruSettings.value = null;
+  }
+}
+
+watch(
+  autocompleteReady,
+  async (ready) => {
+    if (!ready) return;
+    const settings = await ComfyApi.fetchTagAutocompleteSettings(
+      serverUrl.value
+    );
+    if (!settings) return;
+    autocompleteAlgorithm.value = settings.search_algorithm;
+    autocompleteLimit.value = settings.search_limit;
+  },
+  { immediate: true }
+);
+
+watch(
+  () => comfyStore.isConnected,
+  () => void loadGallerySettings(),
+  { immediate: true }
+);
+
+function parseTagList(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[,，、\r\n]+/u)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function togglePromptCategory(category: string) {
+  booruPromptCategories.value = booruPromptCategories.value.includes(category)
+    ? booruPromptCategories.value.filter((item) => item !== category)
+    : [...booruPromptCategories.value, category];
+}
+
+async function handleBrowseComfyDir() {
+  const dir = await launcherStore.selectComfyDir();
+  if (dir) {
+    workingDir.value = dir;
+  }
+}
+
+async function handleBrowsePythonDir() {
+  const dir = await launcherStore.selectPythonDir();
+  if (dir) {
+    pythonPath.value = dir;
+  }
+}
+
+async function handleSave() {
+  autocompleteLimit.value = Math.min(
+    50,
+    Math.max(5, Number(autocompleteLimit.value) || 20)
+  );
+  const cleanedServerUrl = cleanPath(serverUrl.value);
+  await launcherStore.saveConfig({
+    workingDir: cleanPath(workingDir.value),
+    pythonPath: cleanPath(pythonPath.value),
+    args: args.value.trim(),
+    serverUrl: cleanedServerUrl,
+    autoStart: autoStart.value,
+    autocompleteEnabled: autocompleteEnabled.value,
+    autocompleteAlgorithm: autocompleteAlgorithm.value,
+    autocompleteLimit: autocompleteLimit.value,
+    autocompleteReplaceUnderscores: autocompleteReplaceUnderscores.value,
+    autocompleteIncludeArtistPrefix: autocompleteIncludeArtistPrefix.value
+  });
+  if (booruAvailable.value) {
+    const credentials: Partial<BooruCredentials> = {};
+    if (
+      booruCredentials.value.danbooru.username ||
+      booruCredentials.value.danbooru.apiKey
+    ) {
+      credentials.danbooru = booruCredentials.value.danbooru;
+    }
+    if (
+      booruCredentials.value.gelbooru.userId ||
+      booruCredentials.value.gelbooru.apiKey
+    ) {
+      credentials.gelbooru = booruCredentials.value.gelbooru;
+    }
+    booruTimeout.value = Math.min(
+      300,
+      Math.max(3, Number(booruTimeout.value) || 30)
+    );
+    booruCacheBudget.value = Math.min(
+      32768,
+      Math.max(128, Number(booruCacheBudget.value) || 1024)
+    );
+    const update: BooruSettingsUpdate = {
+      defaultSource: booruDefaultSource.value,
+      blacklist: parseTagList(booruBlacklist.value),
+      outputFilterTags: parseTagList(booruOutputFilterTags.value),
+      promptDefaults: {
+        categories: booruPromptCategories.value,
+        replaceUnderscores: booruReplaceUnderscores.value,
+        escapeParentheses: booruEscapeParentheses.value
+      },
+      timeout: booruTimeout.value,
+      cacheBudgetMiB: booruCacheBudget.value,
+      ...(Object.keys(credentials).length > 0 ? { credentials } : {})
+    };
+    applyGallerySettings(await saveBooruSettings(cleanedServerUrl, update));
+    booruCredentials.value = {
+      danbooru: { username: '', apiKey: '' },
+      gelbooru: { userId: '', apiKey: '' }
+    };
+  }
+  if (autocompleteEnabled.value && autocompleteReady.value) {
+    await ComfyApi.updateTagAutocompleteSettings(
+      serverUrl.value,
+      autocompleteAlgorithm.value,
+      autocompleteLimit.value
+    );
+  }
+  saveSuccess.value = true;
+  setTimeout(() => {
+    saveSuccess.value = false;
+  }, 2500);
+  comfyStore.init();
+}
+
+async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
+  booruTesting.value = source;
+  booruResult.value = null;
+  try {
+    await testBooruCredentials(cleanPath(serverUrl.value), source, {
+      ...booruCredentials.value[source]
+    });
+    booruResult.value = {
+      source,
+      ok: true,
+      message: `${source === 'danbooru' ? 'Danbooru' : 'Gelbooru'} connection succeeded.`
+    };
+  } catch (error) {
+    booruResult.value = {
+      source,
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    booruTesting.value = null;
+  }
+}
+
+async function clearGalleryCache() {
+  booruCacheMessage.value = '';
+  try {
+    await clearBooruCache(cleanPath(serverUrl.value));
+    booruCacheMessage.value = 'Gallery cache cleared successfully.';
+  } catch (error) {
+    booruCacheMessage.value =
+      error instanceof Error ? error.message : String(error);
+  }
+}
+
+function handleResetDefaults() {
+  workingDir.value = DEFAULT_LAUNCHER_CONFIG.workingDir;
+  pythonPath.value = DEFAULT_LAUNCHER_CONFIG.pythonPath;
+  args.value = DEFAULT_LAUNCHER_CONFIG.args;
+  serverUrl.value = DEFAULT_LAUNCHER_CONFIG.serverUrl;
+  autoStart.value = DEFAULT_LAUNCHER_CONFIG.autoStart;
+  autocompleteEnabled.value = DEFAULT_LAUNCHER_CONFIG.autocompleteEnabled;
+  autocompleteAlgorithm.value = DEFAULT_LAUNCHER_CONFIG.autocompleteAlgorithm;
+  autocompleteLimit.value = DEFAULT_LAUNCHER_CONFIG.autocompleteLimit;
+  autocompleteReplaceUnderscores.value =
+    DEFAULT_LAUNCHER_CONFIG.autocompleteReplaceUnderscores;
+  autocompleteIncludeArtistPrefix.value =
+    DEFAULT_LAUNCHER_CONFIG.autocompleteIncludeArtistPrefix;
+}
+
+async function testConnection() {
+  isTesting.value = true;
+  testResult.value = null;
+  const start = Date.now();
+  const ok = await ComfyApi.checkHealth(serverUrl.value);
+  comfyStore.isConnected = ok;
+  comfyStore.isYetEssentialAvailable = ok
+    ? await ComfyApi.checkTagAutocomplete(serverUrl.value)
+    : false;
+  const latency = Date.now() - start;
+  isTesting.value = false;
+
+  if (ok) {
+    testResult.value = {
+      ok: true,
+      message: `Successfully connected to ComfyUI server (${latency}ms)`
+    };
+    comfyStore.fetchDiscovery();
+  } else {
+    testResult.value = {
+      ok: false,
+      message:
+        'Failed to reach ComfyUI server. Make sure the server is running.'
+    };
+  }
+}
+</script>
+
+<template>
+  <div class="bg-background flex h-full flex-col overflow-hidden select-none">
+    <!-- Header -->
+    <header
+      class="border-border/80 bg-card/70 flex h-14 shrink-0 items-center justify-between border-b px-6 backdrop-blur-md"
+    >
+      <div class="flex items-center gap-3">
+        <div
+          class="border-primary/30 bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs"
+        >
+          <Settings class="h-4 w-4" />
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xs font-bold tracking-wider uppercase">
+              Application Settings
+            </h1>
+            <Badge
+              variant="outline"
+              class="border-border text-muted-foreground font-mono text-xs"
+            >
+              v2.0
+            </Badge>
+          </div>
+          <p class="text-muted-foreground text-xs">
+            Manage runtime executables, network parameters, and extensions
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5">
+        <transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 translate-x-1"
+          enter-to-class="opacity-100 translate-x-0"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100"
+          leave-to-class="opacity-0"
+        >
+          <div
+            v-if="saveSuccess"
+            class="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400"
+          >
+            <Check class="h-3.5 w-3.5" />
+            <span>Settings Saved</span>
+          </div>
+        </transition>
+
+        <Button
+          variant="outline"
+          size="sm"
+          class="border-border bg-secondary/80 text-foreground hover:bg-accent text-xs font-medium"
+          @click="handleResetDefaults"
+        >
+          <RefreshCw class="h-3.5 w-3.5" />
+          <span>Reset Defaults</span>
+        </Button>
+
+        <Button
+          size="sm"
+          class="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold shadow-xs transition-all hover:shadow-md"
+          @click="handleSave"
+        >
+          <Check class="h-3.5 w-3.5" />
+          <span>Save Changes</span>
+        </Button>
+      </div>
+    </header>
+
+    <!-- Settings Content -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <div class="mx-auto flex flex-col gap-6 pb-8">
+        <!-- 1. ComfyUI Local Process Configuration -->
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div
+            class="border-border/80 flex items-center justify-between border-b pb-3"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-cyan-400"
+              >
+                <Terminal class="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span class="text-xs font-bold tracking-wider uppercase">
+                  ComfyUI Portable Launcher
+                </span>
+                <p class="text-muted-foreground text-xs">
+                  Native Python process lifecycle and path definitions
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <Label
+                class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
+              >
+                <Switch v-model="autoStart" />
+                <span>Auto-launch on startup</span>
+              </Label>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-4">
+            <Field class="gap-1.5">
+              <div class="flex items-center justify-between">
+                <FieldLabel class="text-foreground text-xs font-medium">
+                  ComfyUI Directory
+                </FieldLabel>
+                <span class="text-muted-foreground text-xs">
+                  Root directory containing
+                  <code class="font-mono">main.py</code>
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1">
+                  <FolderOpen
+                    class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+                  />
+                  <Input
+                    v-model="workingDir"
+                    placeholder="Select the folder containing main.py"
+                    class="text-foreground pl-9 font-mono text-xs"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="border-border bg-secondary text-foreground hover:bg-accent shrink-0 text-xs font-medium"
+                  @click="handleBrowseComfyDir"
+                >
+                  <FolderOpen class="h-3.5 w-3.5" />
+                  <span>Browse…</span>
+                </Button>
+              </div>
+            </Field>
+
+            <Field class="gap-1.5">
+              <div class="flex items-center justify-between">
+                <FieldLabel class="text-foreground text-xs font-medium">
+                  Embedded Python Directory
+                </FieldLabel>
+                <span class="text-muted-foreground text-xs">
+                  Folder or binary for embedded Python environment
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1">
+                  <Cpu
+                    class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+                  />
+                  <Input
+                    v-model="pythonPath"
+                    placeholder="e.g. python_embeded or python_embeded\python.exe"
+                    class="text-foreground pl-9 font-mono text-xs"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="border-border bg-secondary text-foreground hover:bg-accent shrink-0 text-xs font-medium"
+                  @click="handleBrowsePythonDir"
+                >
+                  <FolderOpen class="h-3.5 w-3.5" />
+                  <span>Browse…</span>
+                </Button>
+              </div>
+            </Field>
+
+            <Field class="gap-1.5">
+              <div class="flex items-center justify-between">
+                <FieldLabel class="text-foreground text-xs font-medium">
+                  Launch Command Arguments
+                </FieldLabel>
+                <span class="text-muted-foreground text-xs">
+                  CLI flags passed to Python on process spawn
+                </span>
+              </div>
+              <Textarea
+                v-model="args"
+                rows="3"
+                placeholder="--windows-standalone-build --fast fp16_accumulation --cuda-malloc --use-sage-attention --preview-method latent2rgb --enable-manager --disable-auto-launch"
+                class="text-foreground border-border bg-secondary/50 focus:bg-background w-full font-mono text-xs leading-relaxed transition-colors"
+              />
+            </Field>
+          </div>
+        </section>
+
+        <!-- 2. Network & Server Endpoint -->
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div
+            class="border-border/80 flex items-center justify-between border-b pb-3"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-emerald-400"
+              >
+                <Globe class="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span class="text-xs font-bold tracking-wider uppercase">
+                  Network & Server Connection
+                </span>
+                <p class="text-muted-foreground text-xs">
+                  REST HTTP endpoint and live WebSocket stream URL
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span
+                class="flex h-2 w-2 rounded-full"
+                :class="
+                  comfyStore.isConnected
+                    ? 'bg-emerald-400 shadow-xs shadow-emerald-400/50'
+                    : 'bg-muted-foreground'
+                "
+              />
+              <span class="text-muted-foreground text-xs">
+                {{ comfyStore.isConnected ? 'Connected' : 'Offline' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3.5">
+            <Field class="gap-1.5">
+              <FieldLabel class="text-foreground text-xs font-medium">
+                ComfyUI Server Endpoint URL
+              </FieldLabel>
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1">
+                  <Wifi
+                    class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+                  />
+                  <Input
+                    v-model="serverUrl"
+                    placeholder="http://127.0.0.1:8188"
+                    class="text-foreground pl-9 font-mono text-xs"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="isTesting"
+                  class="border-border bg-secondary text-foreground hover:bg-accent text-xs font-medium"
+                  @click="testConnection"
+                >
+                  <Loader2 v-if="isTesting" class="h-3.5 w-3.5 animate-spin" />
+                  <Wifi v-else class="h-3.5 w-3.5" />
+                  <span>Test Connection</span>
+                </Button>
+              </div>
+            </Field>
+
+            <div
+              v-if="testResult"
+              class="flex items-center gap-2.5 rounded-lg p-3 text-xs font-medium transition-all"
+              :class="
+                testResult.ok
+                  ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                  : 'border-destructive/30 bg-destructive/10 text-destructive border'
+              "
+            >
+              <CheckCircle2
+                v-if="testResult.ok"
+                class="h-4 w-4 shrink-0 text-emerald-400"
+              />
+              <XCircle v-else class="text-destructive h-4 w-4 shrink-0" />
+              <span>{{ testResult.message }}</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Prompt Tag Autocomplete -->
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div
+            class="border-border/80 flex items-center justify-between border-b pb-3"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-amber-400"
+              >
+                <Sparkles class="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span class="text-xs font-bold tracking-wider uppercase">
+                  Prompt Tag Autocomplete
+                </span>
+                <p class="text-muted-foreground text-xs">
+                  Type normally for tags, $ for wildcards, or @ for artists
+                </p>
+              </div>
+            </div>
+
+            <Label
+              class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
+              :class="{ 'opacity-50': !autocompleteReady }"
+            >
+              <Switch
+                v-model="autocompleteEnabled"
+                :disabled="!autocompleteReady"
+              />
+              <span>Enabled</span>
+            </Label>
+          </div>
+
+          <!-- Alert only shown when NOT ready/detected -->
+          <div
+            v-if="!autocompleteReady"
+            class="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300"
+          >
+            <AlertCircle class="h-4 w-4 shrink-0 text-amber-400" />
+            <span v-if="!comfyStore.isConnected">
+              Start the ComfyUI server to detect autocomplete support.
+              Autocomplete settings remain disabled while offline.
+            </span>
+            <span v-else>
+              The
+              <code class="font-mono font-semibold">yet_essential</code> custom
+              node is not detected. Install it into ComfyUI's
+              <code class="font-mono">custom_nodes</code> and restart ComfyUI.
+            </span>
+          </div>
+
+          <div
+            class="grid grid-cols-1 gap-4 sm:grid-cols-2"
+            :class="{
+              'pointer-events-none opacity-50':
+                !autocompleteEnabled || !autocompleteReady
+            }"
+          >
+            <Field class="gap-1.5">
+              <FieldLabel class="text-foreground text-xs font-medium">
+                Search Mode
+              </FieldLabel>
+              <Select
+                v-model="autocompleteAlgorithm"
+                :disabled="!autocompleteEnabled || !autocompleteReady"
+              >
+                <SelectTrigger class="w-full text-xs">
+                  <SelectValue placeholder="Search mode">
+                    {{
+                      autocompleteAlgorithm === 'fuzzy'
+                        ? 'Fuzzy (Flexible matching)'
+                        : autocompleteAlgorithm === 'contains'
+                          ? 'Contains (Substring search)'
+                          : autocompleteAlgorithm === 'prefix'
+                            ? 'Prefix (Fastest & strictest)'
+                            : autocompleteAlgorithm
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="fuzzy">
+                      Fuzzy (Flexible matching)
+                    </SelectItem>
+                    <SelectItem value="contains">
+                      Contains (Substring search)
+                    </SelectItem>
+                    <SelectItem value="prefix">
+                      Prefix (Fastest & strictest)
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription class="text-xs">
+                Fuzzy tolerates skipped characters; prefix is strictly
+                start-of-word.
+              </FieldDescription>
+            </Field>
+
+            <Field class="gap-1.5">
+              <FieldLabel class="text-foreground text-xs font-medium">
+                Maximum Suggestions Limit
+              </FieldLabel>
+              <Input
+                v-model="autocompleteLimit"
+                type="number"
+                min="5"
+                max="50"
+                :disabled="!autocompleteEnabled || !autocompleteReady"
+                class="font-mono text-xs"
+              />
+              <FieldDescription class="text-xs">
+                Number of popup tag results per token search (5–50).
+              </FieldDescription>
+            </Field>
+          </div>
+
+          <div
+            class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
+            :class="{
+              'opacity-50': !autocompleteEnabled || !autocompleteReady
+            }"
+          >
+            <div>
+              <Label class="text-foreground text-xs font-medium">
+                Replace Underscores with Spaces
+              </Label>
+              <p class="text-muted-foreground mt-0.5 text-xs">
+                Converts tokens like <code class="font-mono">blue_hair</code> to
+                <code class="font-mono">blue hair</code> on insertion.
+              </p>
+            </div>
+            <Switch
+              v-model="autocompleteReplaceUnderscores"
+              :disabled="!autocompleteEnabled || !autocompleteReady"
+            />
+          </div>
+
+          <div
+            class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
+            :class="{
+              'opacity-50': !autocompleteEnabled || !autocompleteReady
+            }"
+          >
+            <div>
+              <Label class="text-foreground text-xs font-medium">
+                Keep @ on Artist Tags
+              </Label>
+              <p class="text-muted-foreground mt-0.5 text-xs">
+                Insert artist suggestions as
+                <code class="font-mono">@artist_name</code> instead of
+                <code class="font-mono">artist_name</code>.
+              </p>
+            </div>
+            <Switch
+              v-model="autocompleteIncludeArtistPrefix"
+              :disabled="!autocompleteEnabled || !autocompleteReady"
+            />
+          </div>
+        </section>
+
+        <!-- 4. Booru Gallery -->
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div
+            class="border-border/80 flex items-center justify-between border-b pb-3"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-purple-400"
+              >
+                <ImageIcon class="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span class="text-xs font-bold tracking-wider uppercase">
+                  Booru Gallery & Provider Credentials
+                </span>
+                <p class="text-muted-foreground text-xs">
+                  Danbooru, Gelbooru, Safebooru, and AI TAG integration settings
+                </p>
+              </div>
+            </div>
+
+            <Badge
+              v-if="booruAvailable"
+              variant="outline"
+              class="border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-400"
+            >
+              Active
+            </Badge>
+          </div>
+
+          <!-- Alert only shown when NOT ready/detected -->
+          <div
+            v-if="!booruAvailable"
+            class="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300"
+          >
+            <AlertCircle class="h-4 w-4 shrink-0 text-amber-400" />
+            <span v-if="!comfyStore.isConnected">
+              Start the ComfyUI server to configure the Booru Gallery.
+            </span>
+            <span v-else>
+              The
+              <code class="font-mono font-semibold">comfyui-aaalice-nodes</code>
+              custom node is not detected. Install it into ComfyUI's
+              <code class="font-mono">custom_nodes</code> to enable the gallery.
+            </span>
+          </div>
+
+          <!-- General Booru Config -->
+          <div
+            class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+            :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+          >
+            <div
+              class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
+            >
+              <div>
+                <Label class="text-foreground text-xs font-semibold">
+                  Default Source
+                </Label>
+                <p class="text-muted-foreground text-xs">
+                  Initial provider when opening a new gallery view
+                </p>
+              </div>
+              <Select v-model="booruDefaultSource" :disabled="!booruAvailable">
+                <SelectTrigger class="w-full text-xs">
+                  <SelectValue placeholder="Default source">
+                    {{
+                      booruDefaultSource === 'danbooru'
+                        ? 'Danbooru'
+                        : booruDefaultSource === 'gelbooru'
+                          ? 'Gelbooru'
+                          : booruDefaultSource === 'safebooru'
+                            ? 'Safebooru'
+                            : booruDefaultSource === 'aitag'
+                              ? 'AI TAG'
+                              : booruDefaultSource
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="danbooru">Danbooru</SelectItem>
+                    <SelectItem value="gelbooru">Gelbooru</SelectItem>
+                    <SelectItem value="safebooru">Safebooru</SelectItem>
+                    <SelectItem value="aitag">AI TAG</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div
+              class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
+            >
+              <div>
+                <Label class="text-foreground text-xs font-semibold">
+                  Network & Storage Cache
+                </Label>
+                <p class="text-muted-foreground text-xs">
+                  Shared media proxy cache parameters
+                </p>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <Field class="gap-1.5">
+                  <FieldLabel class="text-xs">Timeout (seconds)</FieldLabel>
+                  <Input
+                    v-model="booruTimeout"
+                    type="number"
+                    min="3"
+                    max="300"
+                    :disabled="!booruAvailable"
+                    class="font-mono text-xs"
+                  />
+                </Field>
+                <Field class="gap-1.5">
+                  <FieldLabel class="text-xs">Cache Budget (MiB)</FieldLabel>
+                  <Input
+                    v-model="booruCacheBudget"
+                    type="number"
+                    min="128"
+                    max="32768"
+                    :disabled="!booruAvailable"
+                    class="font-mono text-xs"
+                  />
+                </Field>
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :disabled="!booruAvailable"
+                  class="border-border bg-secondary hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-xs font-medium"
+                  @click="clearGalleryCache"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                  <span>Clear Cache</span>
+                </Button>
+                <span
+                  v-if="booruCacheMessage"
+                  class="font-mono text-xs text-emerald-400"
+                >
+                  {{ booruCacheMessage }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tag Filtering & Blacklist -->
+          <div
+            class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+            :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+          >
+            <Field class="gap-1.5">
+              <FieldLabel class="text-foreground text-xs font-semibold">
+                Content Blacklist
+              </FieldLabel>
+              <Textarea
+                v-model="booruBlacklist"
+                :disabled="!booruAvailable"
+                rows="3"
+                placeholder="e.g. loli, shota, gore"
+                class="border-border bg-secondary/50 font-mono text-xs"
+              />
+              <FieldDescription class="text-xs">
+                Posts containing any of these tags are completely hidden from
+                results.
+              </FieldDescription>
+            </Field>
+
+            <Field class="gap-1.5">
+              <FieldLabel class="text-foreground text-xs font-semibold">
+                Prompt Output Filter
+              </FieldLabel>
+              <Textarea
+                v-model="booruOutputFilterTags"
+                :disabled="!booruAvailable"
+                rows="3"
+                placeholder="e.g. watermark, signature, blurry"
+                class="border-border bg-secondary/50 font-mono text-xs"
+              />
+              <FieldDescription class="text-xs">
+                Tags remain searchable but are stripped when copying generated
+                prompts.
+              </FieldDescription>
+            </Field>
+          </div>
+
+          <!-- Prompt Defaults & Category Toggles -->
+          <div
+            class="border-border/80 bg-muted/20 flex flex-col gap-3.5 rounded-lg border p-4"
+            :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+          >
+            <div>
+              <Label class="text-foreground text-xs font-semibold">
+                Prompt Extraction Defaults
+              </Label>
+              <p class="text-muted-foreground text-xs">
+                Select which tag categories are included when copying a post
+                prompt
+              </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="category in BOORU_PROMPT_CATEGORIES"
+                :key="category"
+                type="button"
+                :disabled="!booruAvailable"
+                class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition-all"
+                :class="
+                  booruPromptCategories.includes(category)
+                    ? 'border-primary/50 bg-primary/15 text-primary shadow-xs'
+                    : 'border-border bg-secondary/50 text-muted-foreground hover:text-foreground'
+                "
+                @click="togglePromptCategory(category)"
+              >
+                <Tag class="h-3 w-3" />
+                <span>{{ category }}</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
+              <div
+                class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
+              >
+                <span class="text-foreground text-xs font-medium">
+                  Replace underscores with spaces
+                </span>
+                <Switch
+                  v-model="booruReplaceUnderscores"
+                  :disabled="!booruAvailable"
+                />
+              </div>
+              <div
+                class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
+              >
+                <span class="text-foreground text-xs font-medium">
+                  Escape prompt parentheses
+                </span>
+                <Switch
+                  v-model="booruEscapeParentheses"
+                  :disabled="!booruAvailable"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Provider API Accounts -->
+          <div
+            class="border-border/80 flex items-center justify-between border-t pt-3"
+          >
+            <span
+              class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+            >
+              Provider API Credentials
+            </span>
+            <span class="text-muted-foreground text-xs">
+              Credentials are encrypted and stored locally by the custom node
+            </span>
+          </div>
+
+          <div
+            class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+            :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+          >
+            <!-- Danbooru Account Card -->
+            <div
+              class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <KeyRound class="text-primary h-4 w-4" />
+                  <div>
+                    <Label class="text-foreground text-xs font-semibold">
+                      Danbooru
+                    </Label>
+                    <p class="text-muted-foreground text-xs">
+                      Username & API Key
+                    </p>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  :class="
+                    danbooruConfigured
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                      : 'border-border text-muted-foreground'
+                  "
+                  class="font-mono text-xs"
+                >
+                  <span
+                    class="mr-1.5 h-1.5 w-1.5 rounded-full"
+                    :class="
+                      danbooruConfigured
+                        ? 'bg-emerald-400'
+                        : 'bg-muted-foreground'
+                    "
+                  />
+                  {{ danbooruConfigured ? 'Configured' : 'Not configured' }}
+                </Badge>
+              </div>
+
+              <Input
+                v-model="booruCredentials.danbooru.username"
+                :disabled="!booruAvailable"
+                autocomplete="off"
+                placeholder="Username"
+                class="font-mono text-xs"
+              />
+
+              <div class="relative">
+                <Input
+                  v-model="booruCredentials.danbooru.apiKey"
+                  :disabled="!booruAvailable"
+                  :type="showDanbooruKey ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  :placeholder="
+                    danbooruConfigured
+                      ? 'API Key (leave blank to keep current)'
+                      : 'API Key'
+                  "
+                  class="pr-9 font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
+                  @click="showDanbooruKey = !showDanbooruKey"
+                >
+                  <EyeOff v-if="showDanbooruKey" class="h-3.5 w-3.5" />
+                  <Eye v-else class="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :disabled="!booruAvailable || booruTesting !== null"
+                  class="border-border bg-secondary text-xs font-medium"
+                  @click="testBooruAccount('danbooru')"
+                >
+                  <Loader2
+                    v-if="booruTesting === 'danbooru'"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <Wifi v-else class="h-3.5 w-3.5" />
+                  <span>Test Account</span>
+                </Button>
+
+                <p
+                  v-if="booruResult?.source === 'danbooru'"
+                  class="text-xs font-medium"
+                  :class="
+                    booruResult.ok ? 'text-emerald-400' : 'text-destructive'
+                  "
+                >
+                  {{ booruResult.message }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Gelbooru Account Card -->
+            <div
+              class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <KeyRound class="text-primary h-4 w-4" />
+                  <div>
+                    <Label class="text-foreground text-xs font-semibold">
+                      Gelbooru
+                    </Label>
+                    <p class="text-muted-foreground text-xs">
+                      User ID & API Key
+                    </p>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  :class="
+                    gelbooruConfigured
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                      : 'border-border text-muted-foreground'
+                  "
+                  class="font-mono text-xs"
+                >
+                  <span
+                    class="mr-1.5 h-1.5 w-1.5 rounded-full"
+                    :class="
+                      gelbooruConfigured
+                        ? 'bg-emerald-400'
+                        : 'bg-muted-foreground'
+                    "
+                  />
+                  {{ gelbooruConfigured ? 'Configured' : 'Not configured' }}
+                </Badge>
+              </div>
+
+              <Input
+                v-model="booruCredentials.gelbooru.userId"
+                :disabled="!booruAvailable"
+                autocomplete="off"
+                placeholder="User ID (numeric)"
+                class="font-mono text-xs"
+              />
+
+              <div class="relative">
+                <Input
+                  v-model="booruCredentials.gelbooru.apiKey"
+                  :disabled="!booruAvailable"
+                  :type="showGelbooruKey ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  :placeholder="
+                    gelbooruConfigured
+                      ? 'API Key (leave blank to keep current)'
+                      : 'API Key or copied account fragment'
+                  "
+                  class="pr-9 font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
+                  @click="showGelbooruKey = !showGelbooruKey"
+                >
+                  <EyeOff v-if="showGelbooruKey" class="h-3.5 w-3.5" />
+                  <Eye v-else class="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :disabled="!booruAvailable || booruTesting !== null"
+                  class="border-border bg-secondary text-xs font-medium"
+                  @click="testBooruAccount('gelbooru')"
+                >
+                  <Loader2
+                    v-if="booruTesting === 'gelbooru'"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <Wifi v-else class="h-3.5 w-3.5" />
+                  <span>Test Account</span>
+                </Button>
+
+                <p
+                  v-if="booruResult?.source === 'gelbooru'"
+                  class="text-xs font-medium"
+                  :class="
+                    booruResult.ok ? 'text-emerald-400' : 'text-destructive'
+                  "
+                >
+                  {{ booruResult.message }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</template>

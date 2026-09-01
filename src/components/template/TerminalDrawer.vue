@@ -1,0 +1,254 @@
+<script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue';
+import { ArrowDown, Copy, Pause, Terminal, Trash2 } from '@lucide/vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle
+} from '@/components/ui/sheet';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useLauncherStore } from '../../stores/launcherStore';
+import { getLogLevel, parseAnsiToSpans } from '../../utils/logFormatter';
+
+const launcherStore = useLauncherStore();
+const filterText = ref('');
+const streamFilter = ref<'all' | 'stdout' | 'stderr' | 'system'>('all');
+const autoScroll = ref(true);
+const terminalContainer = ref<HTMLElement | null>(null);
+const MAX_VISIBLE_LOGS = 500;
+
+const filteredLogs = computed(() => {
+  if (!launcherStore.isTerminalOpen) return [];
+  const hasFilter = streamFilter.value !== 'all' || filterText.value.trim();
+  const logs = hasFilter
+    ? launcherStore.logs
+    : launcherStore.logs.slice(-MAX_VISIBLE_LOGS);
+  return logs.filter((log) => {
+    if (streamFilter.value !== 'all' && log.stream !== streamFilter.value) {
+      return false;
+    }
+    if (filterText.value.trim()) {
+      return log.message.toLowerCase().includes(filterText.value.toLowerCase());
+    }
+    return true;
+  });
+});
+
+function scrollToBottom() {
+  if (!autoScroll.value || !terminalContainer.value) return;
+  nextTick(() => {
+    if (terminalContainer.value) {
+      terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
+    }
+  });
+}
+
+watch(
+  () => launcherStore.logs.length,
+  () => {
+    if (launcherStore.isTerminalOpen) {
+      scrollToBottom();
+    }
+  }
+);
+
+watch(
+  () => launcherStore.isTerminalOpen,
+  (open) => {
+    if (open) {
+      scrollToBottom();
+    }
+  }
+);
+
+function copyAllLogs() {
+  const text = launcherStore.logs
+    .map(
+      (l) =>
+        `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.stream.toUpperCase()}] ${l.message}`
+    )
+    .join('\n');
+  navigator.clipboard.writeText(text);
+}
+</script>
+
+<template>
+  <Sheet v-model:open="launcherStore.isTerminalOpen">
+    <SheetContent
+      side="bottom"
+      class="border-border bg-sidebar text-foreground h-[45vh] max-h-[80vh] border-t p-0"
+    >
+      <SheetHeader class="border-border border-b px-4 py-2.5">
+        <div class="flex items-center justify-between pr-6">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <Terminal class="text-primary h-4 w-4" />
+              <SheetTitle class="text-foreground text-xs font-bold">
+                Terminal Logs
+              </SheetTitle>
+            </div>
+
+            <Badge
+              :variant="
+                launcherStore.processStatus === 'running'
+                  ? 'default'
+                  : launcherStore.processStatus === 'starting'
+                    ? 'secondary'
+                    : 'outline'
+              "
+              class="text-xs"
+            >
+              {{ launcherStore.processStatus.toUpperCase() }}
+            </Badge>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <!-- Filter Search -->
+            <Input
+              v-model="filterText"
+              placeholder="Search logs..."
+              class="border-border bg-secondary text-foreground h-7 w-36 px-2 py-0.5 text-xs"
+            />
+
+            <!-- Stream Type Filter -->
+            <ToggleGroup
+              type="single"
+              :model-value="streamFilter"
+              class="gap-1"
+              @update:model-value="
+                (val: any) => {
+                  if (val)
+                    streamFilter = val as
+                      'all' | 'stdout' | 'stderr' | 'system';
+                }
+              "
+            >
+              <ToggleGroupItem
+                value="all"
+                size="sm"
+                class="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-6 px-2 text-xs"
+              >
+                All
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="stdout"
+                size="sm"
+                class="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-6 px-2 text-xs"
+              >
+                Out
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="stderr"
+                size="sm"
+                class="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-6 px-2 text-xs"
+              >
+                Err
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="system"
+                size="sm"
+                class="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-6 px-2 text-xs"
+              >
+                Sys
+              </ToggleGroupItem>
+            </ToggleGroup>
+
+            <!-- Auto-scroll toggle -->
+            <Button
+              size="iconSm"
+              variant="ghost"
+              :class="autoScroll ? 'text-primary' : 'text-muted-foreground'"
+              :title="autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'"
+              @click="autoScroll = !autoScroll"
+            >
+              <ArrowDown v-if="autoScroll" class="h-3.5 w-3.5" />
+              <Pause v-else class="h-3.5 w-3.5" />
+            </Button>
+
+            <!-- Copy All -->
+            <Button
+              size="iconSm"
+              variant="ghost"
+              title="Copy All Logs"
+              class="text-muted-foreground hover:text-foreground"
+              @click="copyAllLogs"
+            >
+              <Copy class="h-3.5 w-3.5" />
+            </Button>
+
+            <!-- Clear -->
+            <Button
+              size="iconSm"
+              variant="ghost"
+              title="Clear Logs"
+              class="text-muted-foreground hover:text-destructive"
+              @click="launcherStore.clearLogs"
+            >
+              <Trash2 class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </SheetHeader>
+
+      <div
+        ref="terminalContainer"
+        class="bg-background h-[calc(45vh-45px)] w-full overflow-y-auto p-3 font-mono text-xs leading-relaxed select-text"
+      >
+        <div
+          v-if="filteredLogs.length === 0"
+          class="text-muted-foreground py-6 text-center italic"
+        >
+          No log output available. Start ComfyUI to see console logs.
+        </div>
+
+        <div
+          v-for="log in filteredLogs"
+          :key="log.id"
+          class="border-border/20 hover:bg-muted/40 flex items-start gap-2 border-b py-0.5"
+        >
+          <span class="text-muted-foreground shrink-0 pt-0.5 text-xs">
+            {{ new Date(log.timestamp).toLocaleTimeString() }}
+          </span>
+          <span
+            class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase"
+            :class="{
+              'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400':
+                getLogLevel(log.stream, log.message) === 'stdout',
+              'border border-sky-500/30 bg-sky-500/10 text-sky-400':
+                getLogLevel(log.stream, log.message) === 'info',
+              'border border-amber-500/30 bg-amber-500/10 text-amber-400':
+                getLogLevel(log.stream, log.message) === 'warn',
+              'border border-rose-500/30 bg-rose-500/10 text-rose-400':
+                getLogLevel(log.stream, log.message) === 'error',
+              'border-primary/30 bg-primary/10 text-primary border':
+                getLogLevel(log.stream, log.message) === 'system'
+            }"
+          >
+            {{ getLogLevel(log.stream, log.message).toUpperCase() }}
+          </span>
+          <span class="text-foreground flex-1 break-all whitespace-pre-wrap">
+            <span
+              v-for="(span, spanIndex) in parseAnsiToSpans(log.message)"
+              :key="spanIndex"
+              :class="
+                span.className ||
+                (getLogLevel(log.stream, log.message) === 'error'
+                  ? 'text-destructive font-semibold'
+                  : getLogLevel(log.stream, log.message) === 'warn'
+                    ? 'text-amber-300'
+                    : getLogLevel(log.stream, log.message) === 'system'
+                      ? 'text-primary font-semibold'
+                      : '')
+              "
+              >{{ span.text }}</span
+            >
+          </span>
+        </div>
+      </div>
+    </SheetContent>
+  </Sheet>
+</template>
