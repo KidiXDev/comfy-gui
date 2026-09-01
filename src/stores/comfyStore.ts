@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { ComfyApi } from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
-import { buildKDXzPrompt } from '../services/workflowBuilder';
+import { buildWorkflowPrompt } from '../services/workflowBuilder';
 import type {
   BridgeModelsResponse,
   BridgeSystemResponse,
@@ -533,7 +533,7 @@ export const useComfyStore = defineStore('comfy', () => {
     executionError.value = null;
 
     try {
-      const promptPayload = buildKDXzPrompt(workflowState);
+      const promptPayload = buildWorkflowPrompt(workflowState);
       const res = await ComfyApi.queuePrompt(
         launcherStore.config.serverUrl,
         promptPayload,

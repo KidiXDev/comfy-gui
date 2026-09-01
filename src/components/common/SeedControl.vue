@@ -41,14 +41,12 @@ function setSeedValue(value: string | number) {
 function setVariationSeed(value: string | number) {
   const seed = Number(value);
   if (Number.isFinite(seed)) {
-    workflowStore.sampler.variationSeed = Math.max(0, Math.trunc(seed));
+    workflowStore.sampler.variationSeed = Math.max(-1, Math.trunc(seed));
   }
 }
 
 function randomizeVariationSeed() {
-  workflowStore.sampler.variationSeed = Math.floor(
-    Math.random() * 9007199254740991
-  );
+  workflowStore.sampler.variationSeed = -1;
 }
 </script>
 
@@ -120,7 +118,7 @@ function randomizeVariationSeed() {
         <Input
           :model-value="workflowStore.sampler.variationSeed"
           type="number"
-          min="0"
+          min="-1"
           class="font-mono text-xs"
           placeholder="Variation seed"
           aria-label="Variation seed"

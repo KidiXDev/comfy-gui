@@ -43,14 +43,7 @@ const loraOptions = computed(() => {
   if (comfyStore.availableLoras.length > 0) {
     return comfyStore.availableLoras;
   }
-  return [
-    'ep2-nts.safetensors',
-    'anima-base-1-masterpiece-v51.safetensors',
-    'ep18-ogipote.safetensors',
-    'Anima_colorfix_v1_by_Volnovik.safetensors',
-    'chenbin-anima-preview-000081.safetensors',
-    '2D_aesthetic_EX_base-v1.0_rank_64_fp16_00001_.safetensors'
-  ];
+  return workflowStore.loras.map((lora) => lora.name).filter(Boolean);
 });
 
 function openLoraGrid(index?: number) {
@@ -107,17 +100,6 @@ function getLoraPreviewUrl(name: string, res = 200): string {
       </div>
 
       <div class="flex items-center gap-1.5">
-        <Button
-          size="sm"
-          variant="outline"
-          :disabled="!comfyStore.isConnected"
-          class="border-border bg-secondary text-foreground hover:bg-accent px-2 py-1 text-xs"
-          @click="workflowStore.loadKdxzPreset()"
-        >
-          <Zap class="text-primary h-3 w-3" />
-          <span>KDXz Preset</span>
-        </Button>
-
         <Button
           size="sm"
           variant="outline"
@@ -201,21 +183,11 @@ function getLoraPreviewUrl(name: string, res = 200): string {
       <p class="text-muted-foreground/70 mt-0.5 text-xs">
         {{
           comfyStore.isConnected
-            ? 'Add individual LoRAs or load the KDXz preset stack.'
+            ? 'Add a LoRA or load one of your saved presets.'
             : 'Connect ComfyUI server to load and manage LoRAs.'
         }}
       </p>
       <div class="mt-3 flex gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          :disabled="!comfyStore.isConnected"
-          class="text-xs"
-          @click="workflowStore.loadKdxzPreset()"
-        >
-          <Zap class="text-primary mr-1.5 h-3.5 w-3.5" />
-          Load KDXz Preset
-        </Button>
         <Button
           size="sm"
           variant="outline"

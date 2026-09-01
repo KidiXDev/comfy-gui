@@ -214,6 +214,103 @@ fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf
     ))
 }
 
+fn github_repo_name(url: &str) -> Result<&str, String> {
+    let path = url
+        .trim()
+        .strip_prefix("https://github.com/")
+        .ok_or("Enter a GitHub HTTPS repository URL.")?
+        .trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let mut parts = path.split('/');
+    let owner = parts.next().unwrap_or_default();
+    let repo = parts.next().unwrap_or_default();
+    let valid = |value: &str| {
+        !value.is_empty()
+            && value != "."
+            && value != ".."
+            && value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    if !valid(owner) || !valid(repo) || parts.next().is_some() {
+        return Err("Enter a GitHub repository URL like https://github.com/owner/repo.".into());
+    }
+    Ok(repo)
+}
+
+#[cfg(windows)]
+fn hide_command_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(0x08000000);
+}
+
+#[cfg(not(windows))]
+fn hide_command_window(_command: &mut Command) {}
+
+pub fn install_custom_node(
+    repository_url: &str,
+    working_dir: &str,
+    python_path: &str,
+) -> Result<String, String> {
+    let repo_name = github_repo_name(repository_url)?;
+    let work_path = PathBuf::from(clean_path_str(working_dir));
+    let comfy_dir = if work_path.join("main.py").is_file() {
+        work_path
+    } else if work_path.join("ComfyUI").join("main.py").is_file() {
+        work_path.join("ComfyUI")
+    } else {
+        return Err("Select a valid ComfyUI directory in Settings first.".into());
+    };
+    let custom_nodes_dir = comfy_dir.join("custom_nodes");
+    fs::create_dir_all(&custom_nodes_dir).map_err(|e| e.to_string())?;
+    let target_dir = custom_nodes_dir.join(repo_name);
+    if target_dir.exists() {
+        return Err(format!(
+            "A custom node named '{repo_name}' is already installed."
+        ));
+    }
+
+    let mut clone = Command::new("git");
+    clone
+        .args(["clone", "--depth", "1", repository_url.trim()])
+        .stdout(Stdio::null());
+    clone.arg(&target_dir);
+    hide_command_window(&mut clone);
+    let output = clone
+        .output()
+        .map_err(|e| format!("Failed to start git: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Git clone failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let requirements = target_dir.join("requirements.txt");
+    if requirements.is_file() {
+        let python = resolve_python_executable(python_path, &comfy_dir)?;
+        let mut pip = Command::new(python);
+        pip.args(["-m", "pip", "install", "-r"])
+            .arg(&requirements)
+            .current_dir(&target_dir)
+            .stdout(Stdio::null());
+        hide_command_window(&mut pip);
+        let output = pip
+            .output()
+            .map_err(|e| format!("Failed to start pip: {e}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Custom node cloned, but pip failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+    }
+
+    Ok(format!(
+        "Installed {repo_name}. Restart ComfyUI to load it."
+    ))
+}
+
 fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
     reader: R,
     app_handle: AppHandle,
@@ -492,5 +589,15 @@ mod tests {
             .unwrap()
             .expect("child should exit before the timeout");
         assert!(status.success());
+    }
+
+    #[test]
+    fn validates_github_repository_urls() {
+        assert_eq!(
+            github_repo_name("https://github.com/owner/custom-node.git").unwrap(),
+            "custom-node"
+        );
+        assert!(github_repo_name("https://example.com/owner/repo").is_err());
+        assert!(github_repo_name("https://github.com/owner/repo/tree/main").is_err());
     }
 }

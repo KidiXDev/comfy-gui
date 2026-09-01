@@ -26,21 +26,21 @@ const unetOptions = computed(() => {
   if (comfyStore.availableUnets.length > 0) {
     return comfyStore.availableUnets;
   }
-  return [workflowStore.models.unetName, 'animeBulldozer_anima.safetensors'];
+  return workflowStore.models.unetName ? [workflowStore.models.unetName] : [];
 });
 
 const clipOptions = computed(() => {
   if (comfyStore.availableClips.length > 0) {
     return comfyStore.availableClips;
   }
-  return [workflowStore.models.clipName, 'qwen_3_06b_base.safetensors'];
+  return workflowStore.models.clipName ? [workflowStore.models.clipName] : [];
 });
 
 const vaeOptions = computed(() => {
   if (comfyStore.availableVaes.length > 0) {
     return comfyStore.availableVaes;
   }
-  return [workflowStore.models.vaeName, 'qwenimagevae_v7.safetensors'];
+  return workflowStore.models.vaeName ? [workflowStore.models.vaeName] : [];
 });
 
 const shiftModel = computed({

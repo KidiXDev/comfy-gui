@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
+import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   AlertCircle,
   Check,
   CheckCircle2,
   Cpu,
+  Download,
   Eye,
   EyeOff,
   ExternalLink,
@@ -16,6 +18,7 @@ import {
   Info,
   KeyRound,
   Loader2,
+  Puzzle,
   RefreshCw,
   Settings,
   Sparkles,
@@ -27,6 +30,14 @@ import {
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -113,6 +124,10 @@ const updateResult = ref<{
   type: 'current' | 'update' | 'error';
   url?: string;
 } | null>(null);
+const isInstallDialogOpen = ref(false);
+const repositoryUrl = ref('');
+const isInstallingCustomNode = ref(false);
+const installResult = ref<{ ok: boolean; message: string } | null>(null);
 const autocompleteReady = computed(
   () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
 );
@@ -388,6 +403,28 @@ async function clearGalleryCache() {
   }
 }
 
+async function installCustomNode() {
+  if (!repositoryUrl.value.trim() || isInstallingCustomNode.value) return;
+  isInstallingCustomNode.value = true;
+  installResult.value = null;
+  try {
+    const message = await invoke<string>('install_custom_node', {
+      repositoryUrl: repositoryUrl.value.trim(),
+      workingDir: cleanPath(workingDir.value),
+      pythonPath: cleanPath(pythonPath.value)
+    });
+    installResult.value = { ok: true, message };
+    repositoryUrl.value = '';
+  } catch (error) {
+    installResult.value = {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    isInstallingCustomNode.value = false;
+  }
+}
+
 function handleResetDefaults() {
   workingDir.value = DEFAULT_LAUNCHER_CONFIG.workingDir;
   pythonPath.value = DEFAULT_LAUNCHER_CONFIG.pythonPath;
@@ -650,6 +687,36 @@ async function checkForUpdates() {
               />
             </Field>
           </div>
+        </section>
+
+        <section
+          class="border-border/80 bg-card/80 flex items-center justify-between gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div class="flex items-center gap-2.5">
+            <div
+              class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-violet-400"
+            >
+              <Puzzle class="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <span class="text-xs font-bold tracking-wider uppercase">
+                Custom Nodes
+              </span>
+              <p class="text-muted-foreground text-xs">
+                Clone a GitHub repository and install its Python requirements
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            class="border-border bg-secondary shrink-0 text-xs font-medium"
+            @click="isInstallDialogOpen = true"
+          >
+            <Download class="h-3.5 w-3.5" />
+            Install custom node
+          </Button>
         </section>
 
         <!-- 2. Network & Server Endpoint -->
@@ -1433,5 +1500,70 @@ async function checkForUpdates() {
         </section>
       </div>
     </div>
+
+    <Dialog v-model:open="isInstallDialogOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Install custom node</DialogTitle>
+          <DialogDescription>
+            Paste a trusted GitHub repository URL. ComfyGUI will clone it into
+            <code>custom_nodes</code> and install its
+            <code>requirements.txt</code> with the configured Python runtime.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Field class="gap-1.5">
+          <FieldLabel>GitHub repository URL</FieldLabel>
+          <Input
+            v-model="repositoryUrl"
+            type="url"
+            autocomplete="off"
+            placeholder="https://github.com/owner/custom-node"
+            class="font-mono text-xs"
+            :disabled="isInstallingCustomNode"
+            @keydown.enter="installCustomNode"
+          />
+          <FieldDescription>
+            Only install repositories you trust. Python packages can execute
+            code on this device.
+          </FieldDescription>
+        </Field>
+
+        <div
+          v-if="installResult"
+          class="rounded-md border px-3 py-2 text-xs"
+          :class="
+            installResult.ok
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+              : 'border-destructive/30 bg-destructive/10 text-destructive'
+          "
+        >
+          {{ installResult.message }}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="isInstallingCustomNode"
+            @click="isInstallDialogOpen = false"
+          >
+            Close
+          </Button>
+          <Button
+            type="button"
+            :disabled="!repositoryUrl.trim() || isInstallingCustomNode"
+            @click="installCustomNode"
+          >
+            <Loader2
+              v-if="isInstallingCustomNode"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Download v-else class="h-3.5 w-3.5" />
+            {{ isInstallingCustomNode ? 'Installing…' : 'Install' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

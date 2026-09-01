@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Folder, History, Images, Plus } from '@lucide/vue';
+import { Folder, History, Images } from '@lucide/vue';
 import ModelSection from '@/components/template/ModelSection.vue';
 import PromptSection from '@/components/template/PromptSection.vue';
 import ImageInputSection from '@/components/template/ImageInputSection.vue';
@@ -51,19 +51,8 @@ async function openOutputFolder() {
           class="border-primary/30 bg-primary/10 text-primary inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-semibold shadow-xs"
         >
           <Images class="h-3 w-3" />
-          <span>KDXz Studio</span>
+          <span>Generation Studio</span>
         </div>
-
-        <!-- Preset Reset Action -->
-        <button
-          type="button"
-          title="Reset to Qwen/SDXL Preset"
-          class="border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
-          @click="workflowStore.loadKdxzPreset()"
-        >
-          <Plus class="h-3 w-3" />
-          <span>Reset Preset</span>
-        </button>
 
         <!-- Session History Button -->
         <button
@@ -108,7 +97,7 @@ async function openOutputFolder() {
         <div class="bg-border h-3 w-px" />
 
         <span class="text-muted-foreground font-mono text-xs">
-          {{ workflowStore.models.unetName || 'Anima / Flux / Qwen' }}
+          {{ workflowStore.models.unetName || 'No model selected' }}
         </span>
       </div>
     </header>

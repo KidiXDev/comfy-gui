@@ -178,6 +178,19 @@ fn inject_bridge_custom_node(app_handle: AppHandle, working_dir: String) -> Resu
 }
 
 #[tauri::command]
+async fn install_custom_node(
+    repository_url: String,
+    working_dir: String,
+    python_path: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        process_manager::install_custom_node(&repository_url, &working_dir, &python_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn show_in_folder(path: String) -> Result<(), String> {
     let trimmed = path.trim().trim_matches(['"', '\'']);
     let path_buf = std::path::PathBuf::from(trimmed);
@@ -298,6 +311,7 @@ pub fn run() {
             stop_comfyui,
             get_comfyui_status,
             inject_bridge_custom_node,
+            install_custom_node,
             show_in_folder,
             image_gallery::list_output_images,
             image_gallery::prepare_output_gallery,

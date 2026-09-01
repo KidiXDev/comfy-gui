@@ -264,8 +264,8 @@ function formatModelName(name?: string): string {
           </div>
           <p class="mt-3 text-sm font-bold">No history in this session yet</p>
           <p class="text-muted-foreground/80 mt-1 max-w-xs text-xs">
-            Images generated in KDXz Studio will be tracked here with full
-            reproducible workflow parameters.
+            Generated images will be tracked here with full reproducible
+            workflow parameters.
           </p>
         </div>
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { WorkflowState } from '../types/workflow';
-import { buildKDXzPrompt } from './workflowBuilder';
+import { buildWorkflowPrompt } from './workflowBuilder';
 
 const state: WorkflowState = {
   positivePrompt: 'test',
@@ -87,7 +87,7 @@ const state: WorkflowState = {
   }
 };
 
-const img2img = buildKDXzPrompt(state) as Record<
+const img2img = buildWorkflowPrompt(state) as Record<
   string,
   { class_type: string }
 >;
@@ -96,7 +96,7 @@ assert.equal(img2img['19'].class_type, 'VAEEncode');
 assert.equal(img2img['9'].class_type, 'KSampler');
 
 state.sampler.variationEnabled = true;
-const variation = buildKDXzPrompt(state) as Record<
+const variation = buildWorkflowPrompt(state) as Record<
   string,
   { class_type: string; inputs: Record<string, unknown> }
 >;
@@ -104,10 +104,17 @@ assert.equal(variation['9'].class_type, 'YEKSampler');
 assert.equal(variation['9'].inputs.variation_seed, 2);
 assert.equal(variation['9'].inputs.variation_strength, 0.35);
 
+state.sampler.variationSeed = -1;
+const randomVariation = buildWorkflowPrompt(state) as Record<
+  string,
+  { inputs: Record<string, unknown> }
+>;
+assert.equal(randomVariation['9'].inputs.variation_seed, -1);
+
 state.faceDetailer.enabled = true;
 state.faceDetailer.turboEnabled = true;
 state.positivePrompt = '';
-const detailed = buildKDXzPrompt(state) as Record<
+const detailed = buildWorkflowPrompt(state) as Record<
   string,
   { class_type: string; inputs: Record<string, unknown> }
 >;
@@ -123,7 +130,7 @@ assert.equal(detailed['face_detailer_segm'], undefined);
 
 state.imageInput.mode = 'inpaint';
 state.imageInput.maskName = 'mask.png';
-const inpaint = buildKDXzPrompt(state) as Record<
+const inpaint = buildWorkflowPrompt(state) as Record<
   string,
   { class_type: string; inputs: Record<string, unknown> }
 >;
@@ -146,7 +153,7 @@ assert.equal(inpaint['9'].inputs.denoise, 1);
 assert.equal(inpaint['13'], undefined);
 
 state.imageInput.turboEnabled = false;
-const standardInpaint = buildKDXzPrompt(state) as Record<
+const standardInpaint = buildWorkflowPrompt(state) as Record<
   string,
   { inputs: Record<string, unknown> }
 >;

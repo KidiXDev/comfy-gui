@@ -22,7 +22,7 @@ function zeroConditioningWhenEmpty(
 function variationInputs(state: WorkflowState) {
   if (!state.sampler.variationEnabled) return {};
   return {
-    variation_seed: Math.max(0, Math.trunc(state.sampler.variationSeed || 0)),
+    variation_seed: Math.max(-1, Math.trunc(state.sampler.variationSeed)),
     variation_strength: Math.min(
       1,
       Math.max(0, state.sampler.variationStrength || 0)
@@ -30,7 +30,9 @@ function variationInputs(state: WorkflowState) {
   };
 }
 
-export function buildKDXzPrompt(state: WorkflowState): Record<string, unknown> {
+export function buildWorkflowPrompt(
+  state: WorkflowState
+): Record<string, unknown> {
   if (state.imageInput.mode === 'inpaint') return buildInpaintPrompt(state);
 
   // 1. UNET Loader (Node 29)

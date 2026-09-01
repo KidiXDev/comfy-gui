@@ -15,46 +15,17 @@ import type {
 } from '../types/workflow';
 
 const DEFAULT_POSITIVE_PROMPT =
-  'moetic, cute, masterpiece, best quality, newest, score_9, score_8, score_7, film grain, very aesthetic, cinematic Lighting, light particles.,\n\n1girl, purple eyes, very long hair, cat ears, side ponytail, open mouth, layered clothes, gold embroidery, ribbon, off-shoulder, detached sleeves, hair ornament, crystal necklace, dynamic pose, virtual youtuber, blush.,\n\noutdoors, high contrast, depth of field, soft shadows, volumetric lighting, colorful, clean composition, vivid scenery, intricate details, cinematic lighting.,\n\nThe image is rendered in a highly detailed, polished illustration style.';
+  'beautiful scenery nature glass bottle landscape, purple galaxy bottle';
 
 const DEFAULT_NEGATIVE_PROMPT =
-  'worst quality, bad anatomy, watermark, logo, signature, low quality, artist name, blurry, extra fingers, bad hands, bad anatomy, duplicate, deformed face, poorly drawn eyes, watermark, ugly, mature female, adult face, muscular, thick, deformed, mosaic, tall female, censored, 4koma, comic, greyscale, jpeg artifacts, monochrome';
+  'worst quality, bad anatomy, watermark, logo, signature, low quality';
 
 const DEFAULT_MODELS: ModelSettings = {
-  unetName: 'animeBulldozer_anima.safetensors',
-  clipName: 'qwen_3_06b_base.safetensors',
-  vaeName: 'qwenimagevae_v7.safetensors',
+  unetName: '',
+  clipName: '',
+  vaeName: '',
   shift: 2.5
 };
-
-const DEFAULT_LORAS: Array<{
-  name: string;
-  strength: number;
-  enabled: boolean;
-}> = [
-  { name: 'ep2-nts.safetensors', strength: 1.0, enabled: true },
-  {
-    name: 'anima-base-1-masterpiece-v51.safetensors',
-    strength: 0.3,
-    enabled: true
-  },
-  { name: 'ep18-ogipote.safetensors', strength: 0.4, enabled: true },
-  {
-    name: 'Anima_colorfix_v1_by_Volnovik.safetensors',
-    strength: 0.5,
-    enabled: true
-  },
-  {
-    name: 'chenbin-anima-preview-000081.safetensors',
-    strength: 0.2,
-    enabled: true
-  },
-  {
-    name: '2D_aesthetic_EX_base-v1.0_rank_64_fp16_00001_.safetensors',
-    strength: 0.25,
-    enabled: true
-  }
-];
 
 const DEFAULT_SAMPLER: SamplerSettings = {
   steps: 20,
@@ -65,7 +36,7 @@ const DEFAULT_SAMPLER: SamplerSettings = {
   seed: -1,
   randomizeSeed: true,
   variationEnabled: false,
-  variationSeed: 0,
+  variationSeed: -1,
   variationStrength: 0.35
 };
 
@@ -96,7 +67,7 @@ const DEFAULT_IMAGE_INPUT: ImageInputSettings = {
 };
 
 const DEFAULT_POSTFX: PostFxSettings = {
-  enabled: true,
+  enabled: false,
   styleStage: {
     enabled: true,
     vignetteStrength: 0.1,
@@ -115,8 +86,8 @@ const DEFAULT_POSTFX: PostFxSettings = {
     sharpness: 0.05
   },
   upscale: {
-    enabled: true,
-    upscaleModel: '2x-AnimeSharpV4-Fast-RCAN-PU.safetensors',
+    enabled: false,
+    upscaleModel: '',
     upscaleBy: 2.0
   }
 };
@@ -147,14 +118,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const positivePrompt = ref(DEFAULT_POSITIVE_PROMPT);
   const negativePrompt = ref(DEFAULT_NEGATIVE_PROMPT);
   const models = ref<ModelSettings>({ ...DEFAULT_MODELS });
-  const loras = ref<LoraItem[]>(
-    DEFAULT_LORAS.map((l, index) => ({
-      id: `lora-${index}-${Date.now()}`,
-      name: l.name,
-      strength: l.strength,
-      enabled: l.enabled
-    }))
-  );
+  const loras = ref<LoraItem[]>([]);
   const sampler = ref<SamplerSettings>({ ...DEFAULT_SAMPLER });
   const imageInput = ref<ImageInputSettings>({ ...DEFAULT_IMAGE_INPUT });
   const resolution = ref<ResolutionSettings>({ ...DEFAULT_RESOLUTION });
@@ -204,10 +168,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
         }
         if (saved.sampler && typeof saved.sampler === 'object') {
           sampler.value = { ...DEFAULT_SAMPLER, ...saved.sampler };
-          if (sampler.value.randomizeSeed || sampler.value.seed === -1) {
-            sampler.value.seed = -1;
-            sampler.value.randomizeSeed = true;
-          }
         }
         if (saved.resolution && typeof saved.resolution === 'object') {
           resolution.value = { ...DEFAULT_RESOLUTION, ...saved.resolution };
@@ -312,16 +272,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
   }
 
-  function loadKdxzPreset() {
-    loras.value = DEFAULT_LORAS.map((l, index) => ({
-      id: `lora-${index}-${Date.now()}`,
-      name: l.name,
-      strength: l.strength,
-      enabled: l.enabled
-    }));
-    void saveSession();
-  }
-
   function saveCustomPreset(name: string) {
     if (!name.trim()) return;
     const newPreset: LoraPreset = {
@@ -418,7 +368,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     addLora,
     removeLora,
     moveLora,
-    loadKdxzPreset,
     saveCustomPreset,
     loadCustomPreset,
     deleteCustomPreset,

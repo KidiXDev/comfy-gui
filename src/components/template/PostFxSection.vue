@@ -28,12 +28,8 @@ const upscaleOptions = computed(() => {
   if (comfyStore.availableUpscaleModels.length > 0) {
     return comfyStore.availableUpscaleModels;
   }
-  return [
-    '2x-AnimeSharpV4-Fast-RCAN-PU.safetensors',
-    '4x-AnimeSharp.pth',
-    '4x_NMKD-Superscale-SP_178000_G.pth',
-    '4x_foolhardy_Remacri.pth'
-  ];
+  const selected = workflowStore.postfx.upscale.upscaleModel;
+  return selected ? [selected] : [];
 });
 
 function createSliderBinding(
