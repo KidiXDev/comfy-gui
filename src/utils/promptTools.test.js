@@ -42,10 +42,20 @@ describe('promptTools', () => {
     const res = adjustPromptWeight(text, selStart, selEnd, 0.1);
     expect(res.text).toBe('1girl, (masterpiece:1.1), solo');
 
-    const res2 = adjustPromptWeight(res.text, res.selectionStart, res.selectionEnd, 0.1);
+    const res2 = adjustPromptWeight(
+      res.text,
+      res.selectionStart,
+      res.selectionEnd,
+      0.1
+    );
     expect(res2.text).toBe('1girl, (masterpiece:1.2), solo');
 
-    const res3 = adjustPromptWeight(res2.text, res2.selectionStart, res2.selectionEnd, -0.2);
+    const res3 = adjustPromptWeight(
+      res2.text,
+      res2.selectionStart,
+      res2.selectionEnd,
+      -0.2
+    );
     expect(res3.text).toBe('1girl, masterpiece, solo');
   });
 

@@ -24,7 +24,7 @@ This document provides context and guidelines for AI Agents working on the **com
 | **Build Tool**       | Vite (`vite`, `@vitejs/plugin-vue`)                                          | Lightning-fast bundler and dev server                                                  |
 | **Styling**          | Tailwind CSS v4 (`tailwindcss`, `@tailwindcss/vite`)                         | Modern CSS utility engine using `@import "tailwindcss";`                               |
 | **UI Components**    | shadcn-vue (`reka-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`) | Modern, accessible headless components located in `src/components/ui/`                 |
-| **Icons**            | Lucide Icons (`@lucide/vue`, `@lucide/vue`)                              | Minimalist, high-quality icon set                                                      |
+| **Icons**            | Lucide Icons (`@lucide/vue`, `@lucide/vue`)                                  | Minimalist, high-quality icon set                                                      |
 | **State Management** | Pinia (`pinia`)                                                              | Modular reactive store management (`src/stores/`)                                      |
 | **Routing**          | Vue Router (`vue-router`)                                                    | Client-side routing for workflow, gallery, server, settings, and about views           |
 | **Virtualization**   | TanStack Virtual (`@tanstack/vue-virtual`)                                   | Virtualized image gallery rows                                                         |

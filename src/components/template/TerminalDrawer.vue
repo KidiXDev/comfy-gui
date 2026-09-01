@@ -245,7 +245,7 @@ function copyAllLogs() {
 
       <div
         ref="terminalContainer"
-        class="bg-background min-h-0 flex-1 w-full overflow-y-auto p-3 font-mono text-xs leading-relaxed select-text"
+        class="bg-background min-h-0 w-full flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed select-text"
       >
         <div
           v-if="filteredLogs.length === 0"

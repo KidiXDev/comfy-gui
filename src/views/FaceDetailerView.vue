@@ -734,12 +734,6 @@ onUnmounted(() => {
             class="border-border bg-card flex shrink-0 flex-col gap-3.5 rounded-xl border p-4 shadow-2xs"
           >
             <FaceDetailerSection :show-enabled="false" />
-            <p
-              class="text-muted-foreground border-border mt-1 border-t pt-2.5 text-xs"
-            >
-              Uses the active Generation model checkpoints and prompts. Empty
-              conditioning is automatically zeroed.
-            </p>
 
             <!-- Batch Progress Bar if batch is active -->
             <div

@@ -104,21 +104,17 @@ interface RemoveBackgroundPreferences {
 const IMAGE_FILE_NAME = /\.(?:avif|bmp|gif|jpe?g|png|tiff?|webp)$/iu;
 const OUTPUT_TYPES = ['Alpha', 'Color'] as const;
 
-const modeDetails: Record<
-  RemoveMode,
-  { title: string; description: string; badge: string }
-> = {
-  RMBG: {
-    title: 'RMBG',
-    description: 'Flexible removal with adjustable processing resolution.',
-    badge: 'Versatile'
-  },
-  BiRefNetRMBG: {
-    title: 'BiRefNet RMBG',
-    description: 'Detailed edges for portraits, hair, and fine subjects.',
-    badge: 'High detail'
-  }
-};
+const modeDetails: Record<RemoveMode, { title: string; description: string }> =
+  {
+    RMBG: {
+      title: 'RMBG',
+      description: 'Flexible removal with adjustable processing resolution.'
+    },
+    BiRefNetRMBG: {
+      title: 'BiRefNet RMBG',
+      description: 'Detailed edges for portraits, hair, and fine subjects.'
+    }
+  };
 
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
@@ -888,21 +884,10 @@ onUnmounted(() => {
                 "
                 @click="mode = nodeType"
               >
-                <Badge variant="secondary" class="mb-2 text-xs">
-                  {{ details.badge }}
-                </Badge>
                 <p class="text-sm font-semibold">{{ details.title }}</p>
                 <p class="text-muted-foreground mt-1 text-xs leading-relaxed">
                   {{ details.description }}
                 </p>
-                <span
-                  class="absolute top-3 right-3 h-2 w-2 rounded-full"
-                  :class="
-                    nodeAvailable[nodeType]
-                      ? 'bg-emerald-400'
-                      : 'bg-muted-foreground/30'
-                  "
-                />
               </button>
             </div>
 

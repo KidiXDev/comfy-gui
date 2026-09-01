@@ -23,7 +23,10 @@ export interface FormatOptions {
  * - `masterpiece` -> { text: 'masterpiece', weight: 1.0 }
  * - `(1girl, solo:1.15)` -> { text: '1girl, solo', weight: 1.15 }
  */
-export function parseTagWeight(tagStr: string): { text: string; weight: number } {
+export function parseTagWeight(tagStr: string): {
+  text: string;
+  weight: number;
+} {
   const trimmed = tagStr.trim();
   if (!trimmed) return { text: '', weight: 1.0 };
 
