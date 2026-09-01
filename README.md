@@ -70,8 +70,8 @@
 
 ## Supported Models
 
-- [x] **Anima** (AuraFlow-based)
-- [ ] **FLUX** (Dev / Schnell)
+- [x] **Anima**
+- [ ] **FLUX**
 - [ ] **SDXL / Illustrious / Pony**
 - [ ] **Stable Diffusion 1.5**
 - [ ] **Krea2**
