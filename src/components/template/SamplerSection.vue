@@ -508,9 +508,6 @@ function randomizeVariationSeed() {
               >
                 Variation Seed
               </Label>
-              <p class="text-muted-foreground text-xs">
-                Blend a secondary seed with YE KSampler.
-              </p>
             </div>
             <Checkbox
               id="variation-seed-checkbox"

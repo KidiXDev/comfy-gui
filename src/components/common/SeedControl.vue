@@ -105,9 +105,6 @@ function randomizeVariationSeed() {
         <Label for="variation-seed-checkbox" class="text-xs font-medium">
           Variation Seed
         </Label>
-        <p class="text-muted-foreground text-xs">
-          Blend a second seed with YE KSampler.
-        </p>
       </div>
       <Checkbox
         id="variation-seed-checkbox"
