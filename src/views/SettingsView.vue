@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   AlertCircle,
   Check,
@@ -7,9 +8,11 @@ import {
   Cpu,
   Eye,
   EyeOff,
+  ExternalLink,
   FolderOpen,
   Globe,
   Image as ImageIcon,
+  Info,
   KeyRound,
   Loader2,
   RefreshCw,
@@ -52,6 +55,7 @@ import {
   DEFAULT_LAUNCHER_CONFIG,
   useLauncherStore
 } from '../stores/launcherStore';
+import { APP_VERSION, isNewerVersion } from '../version';
 
 const launcherStore = useLauncherStore();
 const comfyStore = useComfyStore();
@@ -102,6 +106,12 @@ const booruResult = ref<{
 const isTesting = ref(false);
 const testResult = ref<{ ok: boolean; message: string } | null>(null);
 const saveSuccess = ref(false);
+const updateChecking = ref(false);
+const updateResult = ref<{
+  message: string;
+  type: 'current' | 'update' | 'error';
+  url?: string;
+} | null>(null);
 const autocompleteReady = computed(
   () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
 );
@@ -350,6 +360,51 @@ async function testConnection() {
     };
   }
 }
+
+async function checkForUpdates() {
+  updateChecking.value = true;
+  updateResult.value = null;
+  try {
+    const response = await fetch(
+      'https://api.github.com/repos/KidiXDev/comfy-gui/releases/latest',
+      {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      }
+    );
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+
+    const release = (await response.json()) as {
+      tag_name: string;
+      html_url: string;
+    };
+    const developmentBuild = APP_VERSION === 'dev-build';
+    const updateAvailable =
+      developmentBuild || isNewerVersion(release.tag_name, APP_VERSION);
+
+    updateResult.value = updateAvailable
+      ? {
+          type: 'update',
+          message: developmentBuild
+            ? `Latest release: ${release.tag_name}`
+            : `${release.tag_name} is available.`,
+          url: release.html_url
+        }
+      : {
+          type: 'current',
+          message: `You're up to date (${APP_VERSION}).`
+        };
+  } catch (error) {
+    updateResult.value = {
+      type: 'error',
+      message: `Unable to check for updates: ${error instanceof Error ? error.message : String(error)}`
+    };
+  } finally {
+    updateChecking.value = false;
+  }
+}
 </script>
 
 <template>
@@ -369,12 +424,6 @@ async function testConnection() {
             <h1 class="text-xs font-bold tracking-wider uppercase">
               Application Settings
             </h1>
-            <Badge
-              variant="outline"
-              class="border-border text-muted-foreground font-mono text-xs"
-            >
-              v2.0
-            </Badge>
           </div>
           <p class="text-muted-foreground text-xs">
             Manage runtime executables, network parameters, and extensions
@@ -1253,6 +1302,73 @@ async function testConnection() {
                 </p>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div class="border-border/80 flex items-center gap-2.5 border-b pb-3">
+            <div
+              class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-violet-400"
+            >
+              <Info class="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <span class="text-xs font-bold tracking-wider uppercase">
+                About ComfyGUI
+              </span>
+              <p class="text-muted-foreground text-xs">
+                Application version and release updates
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-muted-foreground text-xs">Current version</p>
+              <p class="mt-1 font-mono text-sm font-semibold">
+                {{ APP_VERSION }}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              :disabled="updateChecking"
+              class="border-border bg-secondary text-xs font-medium"
+              @click="checkForUpdates"
+            >
+              <Loader2 v-if="updateChecking" class="h-3.5 w-3.5 animate-spin" />
+              <RefreshCw v-else class="h-3.5 w-3.5" />
+              Check for updates
+            </Button>
+          </div>
+
+          <div
+            v-if="updateResult"
+            class="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-xs"
+            :class="{
+              'border-emerald-500/30 bg-emerald-500/10 text-emerald-400':
+                updateResult.type === 'current',
+              'border-primary/30 bg-primary/10 text-primary':
+                updateResult.type === 'update',
+              'border-destructive/30 bg-destructive/10 text-destructive':
+                updateResult.type === 'error'
+            }"
+          >
+            <span>{{ updateResult.message }}</span>
+            <Button
+              v-if="updateResult.url"
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="h-7 shrink-0 text-xs"
+              @click="openUrl(updateResult.url)"
+            >
+              View release
+              <ExternalLink class="h-3.5 w-3.5" />
+            </Button>
           </div>
         </section>
       </div>
