@@ -7,7 +7,6 @@ import LoraChainSection from '@/components/template/LoraChainSection.vue';
 import SamplerSection from '@/components/template/SamplerSection.vue';
 import PostFxSection from '@/components/template/PostFxSection.vue';
 import GenerationPreview from '@/components/template/GenerationPreview.vue';
-import TerminalDrawer from '@/components/template/TerminalDrawer.vue';
 import HistoryDrawer from '@/components/template/HistoryDrawer.vue';
 import LauncherSettingsModal from '@/components/template/LauncherSettingsModal.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -111,7 +110,6 @@ onMounted(() => {
     </div>
 
     <!-- Drawers & Modals -->
-    <TerminalDrawer />
     <HistoryDrawer />
     <LauncherSettingsModal />
   </main>

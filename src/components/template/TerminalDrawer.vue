@@ -38,8 +38,8 @@ const filteredLogs = computed(() => {
   });
 });
 
-function scrollToBottom() {
-  if (!autoScroll.value || !terminalContainer.value) return;
+function scrollToBottom(force = false) {
+  if (!force && !autoScroll.value) return;
   nextTick(() => {
     if (terminalContainer.value) {
       terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
@@ -47,23 +47,72 @@ function scrollToBottom() {
   });
 }
 
-watch(
-  () => launcherStore.logs.length,
-  () => {
-    if (launcherStore.isTerminalOpen) {
-      scrollToBottom();
+function triggerScrollToBottom(force = false) {
+  if (!force && !autoScroll.value) return;
+  nextTick(() => {
+    if (terminalContainer.value) {
+      terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
     }
-  }
-);
+    requestAnimationFrame(() => {
+      if (terminalContainer.value) {
+        terminalContainer.value.scrollTop =
+          terminalContainer.value.scrollHeight;
+      }
+    });
+  });
+  // Handle sheet slide-in animations & portal mount timing
+  setTimeout(() => {
+    if (terminalContainer.value) {
+      terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
+    }
+  }, 50);
+  setTimeout(() => {
+    if (terminalContainer.value) {
+      terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
+    }
+  }, 150);
+  setTimeout(() => {
+    if (terminalContainer.value) {
+      terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
+    }
+  }, 300);
+}
 
 watch(
   () => launcherStore.isTerminalOpen,
   (open) => {
     if (open) {
+      triggerScrollToBottom(true);
+    }
+  },
+  { flush: 'post' }
+);
+
+watch(
+  terminalContainer,
+  (el) => {
+    if (el && launcherStore.isTerminalOpen) {
+      triggerScrollToBottom(true);
+    }
+  },
+  { flush: 'post' }
+);
+
+watch(
+  () => filteredLogs.value.length,
+  () => {
+    if (launcherStore.isTerminalOpen) {
       scrollToBottom();
     }
-  }
+  },
+  { flush: 'post' }
 );
+
+watch(autoScroll, (enabled) => {
+  if (enabled && launcherStore.isTerminalOpen) {
+    scrollToBottom(true);
+  }
+});
 
 function copyAllLogs() {
   const text = launcherStore.logs
@@ -80,9 +129,9 @@ function copyAllLogs() {
   <Sheet v-model:open="launcherStore.isTerminalOpen">
     <SheetContent
       side="bottom"
-      class="border-border bg-sidebar text-foreground h-[45vh] max-h-[80vh] border-t p-0"
+      class="border-border bg-sidebar text-foreground flex h-[45vh] max-h-[80vh] flex-col gap-0 border-t p-0"
     >
-      <SheetHeader class="border-border border-b px-4 py-2.5">
+      <SheetHeader class="border-border shrink-0 border-b px-4 py-2.5">
         <div class="flex items-center justify-between pr-6">
           <div class="flex items-center gap-3">
             <div class="flex items-center gap-2">
@@ -196,7 +245,7 @@ function copyAllLogs() {
 
       <div
         ref="terminalContainer"
-        class="bg-background h-[calc(45vh-45px)] w-full overflow-y-auto p-3 font-mono text-xs leading-relaxed select-text"
+        class="bg-background min-h-0 flex-1 w-full overflow-y-auto p-3 font-mono text-xs leading-relaxed select-text"
       >
         <div
           v-if="filteredLogs.length === 0"
