@@ -117,7 +117,10 @@
 - [yet_essential](https://github.com/KidiXDev/yet_essential)
 - [ComfyUI-WD-Timm-Tagger](https://github.com/bedovyy/ComfyUI-WD-Timm-Tagger)
 - [ComfyUI_UltimateSDUpscale](https://github.com/ssitu/ComfyUI_UltimateSDUpscale)
-- [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack) (For FaceDetailer)
+- [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+- [ComfyUI-Impack-Subpack](https://github.com/ltdrdata/ComfyUI-Impact-Subpack)
+- [ComfyUI-Aaalice-Nodes](https://github.com/Aaalice233/ComfyUI-Aaalice-Nodes)
+- [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
 
 ## Development & Installation
 
