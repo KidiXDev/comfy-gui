@@ -133,6 +133,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const bridgeModels = shallowRef<BridgeModelsResponse | null>(null);
   const bridgeSystem = shallowRef<BridgeSystemResponse | null>(null);
   const isFaceDetailerAvailable = ref(false);
+  const isCacheDiTAvailable = ref(false);
   const availableBBoxDetectors = ref<string[]>([]);
   const availableSegmDetectors = ref<string[]>([]);
 
@@ -412,6 +413,8 @@ export const useComfyStore = defineStore('comfy', () => {
       isConnected.value = ok;
       if (!ok) {
         isYetEssentialAvailable.value = false;
+        isFaceDetailerAvailable.value = false;
+        isCacheDiTAvailable.value = false;
       } else if (!wasConnected || !isYetEssentialAvailable.value) {
         if (!wasConnected) {
           wsClient?.connect(launcherStore.config.serverUrl, clientId.value);
@@ -470,6 +473,9 @@ export const useComfyStore = defineStore('comfy', () => {
       } else {
         wsClient?.disconnect();
         isConnected.value = false;
+        isYetEssentialAvailable.value = false;
+        isFaceDetailerAvailable.value = false;
+        isCacheDiTAvailable.value = false;
         pendingGenerations.clear();
         pendingGenerationCount.value = 0;
         isGenerating.value = false;
@@ -499,16 +505,21 @@ export const useComfyStore = defineStore('comfy', () => {
         );
       }
 
-      const [faceDetailerNode, detectorNode] = await Promise.all([
+      const [faceDetailerNode, detectorNode, cacheDiTNode] = await Promise.all([
         ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'FaceDetailer'),
         ComfyApi.fetchNodeInfo(
           launcherStore.config.serverUrl,
           'UltralyticsDetectorProvider'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'CacheDiT_Model_Optimizer'
         )
       ]);
       const detectorInput = detectorNode?.input.required.model_name?.[0];
       const detectorModels = Array.isArray(detectorInput) ? detectorInput : [];
       isFaceDetailerAvailable.value = Boolean(faceDetailerNode && detectorNode);
+      isCacheDiTAvailable.value = Boolean(cacheDiTNode);
       availableBBoxDetectors.value = detectorModels.filter((model) =>
         model.startsWith('bbox/')
       );
@@ -586,6 +597,7 @@ export const useComfyStore = defineStore('comfy', () => {
     bridgeModels,
     bridgeSystem,
     isFaceDetailerAvailable,
+    isCacheDiTAvailable,
     availableBBoxDetectors,
     availableSegmDetectors,
     isGenerating,

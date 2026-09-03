@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Folder, History, Images } from '@lucide/vue';
 import ModelSection from '@/components/template/ModelSection.vue';
+import AdvancedSettingsSection from '@/components/template/AdvancedSettingsSection.vue';
 import PromptSection from '@/components/template/PromptSection.vue';
 import ImageInputSection from '@/components/template/ImageInputSection.vue';
 import WDTaggerSection from '@/components/template/WDTaggerSection.vue';
@@ -130,6 +131,13 @@ async function openOutputFolder() {
             class="border-border bg-card hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs transition-colors"
           >
             <ModelSection />
+          </section>
+
+          <!-- Advanced Settings (AuraFlow Shift, CacheDiT, RenormCFG) -->
+          <section
+            class="border-border bg-card hover:border-primary/40 rounded-xl border p-1 shadow-2xs transition-colors"
+          >
+            <AdvancedSettingsSection />
           </section>
 
           <!-- 2. Prompts (Positive & Negative) -->

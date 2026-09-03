@@ -79,15 +79,49 @@ export function buildWorkflowPrompt(
     lastModelNodeId = loraNodeId;
   });
 
-  // 3. ModelSamplingAuraFlow (Node 13)
-  prompt['13'] = {
-    inputs: {
-      shift: state.models.shift,
-      model: [lastModelNodeId, 0]
-    },
-    class_type: 'ModelSamplingAuraFlow',
-    _meta: { title: 'ModelSamplingAuraFlow' }
-  };
+  if (state.advanced.cacheDiT.enabled) {
+    prompt['cache_dit'] = {
+      inputs: {
+        model: [lastModelNodeId, 0],
+        enable: true,
+        model_type: state.advanced.cacheDiT.modelType,
+        warmup_steps: state.advanced.cacheDiT.warmupSteps,
+        skip_interval: state.advanced.cacheDiT.skipInterval,
+        print_summary: state.advanced.cacheDiT.printSummary,
+        threshold: state.advanced.cacheDiT.threshold,
+        noise_scale: state.advanced.cacheDiT.noiseScale,
+        strategy: state.advanced.cacheDiT.strategy
+      },
+      class_type: 'CacheDiT_Model_Optimizer',
+      _meta: { title: '⚡ CacheDiT Accelerator' }
+    };
+    lastModelNodeId = 'cache_dit';
+  }
+
+  if (state.advanced.auraFlowEnabled) {
+    prompt['13'] = {
+      inputs: {
+        shift: state.models.shift,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'ModelSamplingAuraFlow',
+      _meta: { title: 'ModelSamplingAuraFlow' }
+    };
+    lastModelNodeId = '13';
+  }
+
+  if (state.advanced.renormCfg.enabled) {
+    prompt['renorm_cfg'] = {
+      inputs: {
+        model: [lastModelNodeId, 0],
+        cfg_trunc: state.advanced.renormCfg.cfgTrunc,
+        renorm_cfg: state.advanced.renormCfg.renormCfg
+      },
+      class_type: 'RenormCFG',
+      _meta: { title: 'RenormCFG' }
+    };
+    lastModelNodeId = 'renorm_cfg';
+  }
 
   // 4. CLIP Loader (Node 28)
   prompt['28'] = {
@@ -193,7 +227,7 @@ export function buildWorkflowPrompt(
       sampler_name: state.sampler.samplerName,
       scheduler: state.sampler.scheduler,
       denoise: state.sampler.denoise,
-      model: ['13', 0],
+      model: [lastModelNodeId, 0],
       positive: ['18', 0],
       negative: ['18', 1],
       latent_image: ['19', 0],

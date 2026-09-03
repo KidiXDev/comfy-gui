@@ -65,6 +65,25 @@ export interface ModelSettings {
   shift: number;
 }
 
+export interface AdvancedSettings {
+  auraFlowEnabled: boolean;
+  cacheDiT: {
+    enabled: boolean;
+    modelType: string;
+    warmupSteps: number;
+    skipInterval: number;
+    printSummary: boolean;
+    threshold: number;
+    noiseScale: number;
+    strategy: 'preset' | 'adaptive' | 'static' | 'dynamic';
+  };
+  renormCfg: {
+    enabled: boolean;
+    cfgTrunc: number;
+    renormCfg: number;
+  };
+}
+
 export interface ResolutionSettings {
   preset: string;
   batchSize: number;
@@ -120,6 +139,7 @@ export interface WorkflowState {
   positivePrompt: string;
   negativePrompt: string;
   models: ModelSettings;
+  advanced: AdvancedSettings;
   loras: LoraItem[];
   sampler: SamplerSettings;
   imageInput: ImageInputSettings;

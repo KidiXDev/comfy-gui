@@ -33,7 +33,6 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle
@@ -1505,11 +1504,6 @@ async function checkForUpdates() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Install custom node</DialogTitle>
-          <DialogDescription>
-            Paste a trusted GitHub repository URL. ComfyGUI will clone it into
-            <code>custom_nodes</code> and install its
-            <code>requirements.txt</code> with the configured Python runtime.
-          </DialogDescription>
         </DialogHeader>
 
         <Field class="gap-1.5">

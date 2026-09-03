@@ -10,8 +10,6 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
-import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import ModelGridSelectorDialog from '../common/ModelGridSelectorDialog.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
@@ -41,15 +39,6 @@ const vaeOptions = computed(() => {
     return comfyStore.availableVaes;
   }
   return workflowStore.models.vaeName ? [workflowStore.models.vaeName] : [];
-});
-
-const shiftModel = computed({
-  get: () => [workflowStore.models.shift],
-  set: (val: number[]) => {
-    if (val && val[0] !== undefined) {
-      workflowStore.models.shift = Number(val[0].toFixed(1));
-    }
-  }
 });
 </script>
 
@@ -189,8 +178,8 @@ const shiftModel = computed({
       </WorkflowField>
     </div>
 
-    <!-- Row 2: CLIP & AuraFlow Shift -->
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <!-- Row 2: CLIP -->
+    <div class="grid grid-cols-1 gap-3">
       <!-- CLIP Model -->
       <WorkflowField label="CLIP Model">
         <template #action>
@@ -234,29 +223,6 @@ const shiftModel = computed({
             </SelectGroup>
           </SelectContent>
         </Select>
-      </WorkflowField>
-
-      <!-- AuraFlow Shift Slider -->
-      <WorkflowField label="AuraFlow Shift">
-        <template #action>
-          <EditableNumberBadge
-            v-model="workflowStore.models.shift"
-            :min="0.1"
-            :max="20.0"
-            :step="0.1"
-            :decimals="1"
-            badge-class="text-primary"
-          />
-        </template>
-        <div class="flex items-center gap-3 pt-1">
-          <Slider
-            v-model="shiftModel"
-            :min="0.5"
-            :max="8.0"
-            :step="0.1"
-            class="w-full"
-          />
-        </div>
       </WorkflowField>
     </div>
 

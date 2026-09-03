@@ -11,6 +11,20 @@ const state: WorkflowState = {
     vaeName: 'vae.safetensors',
     shift: 2.5
   },
+  advanced: {
+    auraFlowEnabled: false,
+    cacheDiT: {
+      enabled: false,
+      modelType: 'Auto',
+      warmupSteps: 0,
+      skipInterval: 0,
+      printSummary: true,
+      threshold: 0.25,
+      noiseScale: 0.001,
+      strategy: 'adaptive'
+    },
+    renormCfg: { enabled: false, cfgTrunc: 100, renormCfg: 1 }
+  },
   loras: [],
   sampler: {
     steps: 20,
@@ -94,6 +108,25 @@ const img2img = buildWorkflowPrompt(state) as Record<
 assert.equal(img2img['30'].class_type, 'LoadImage');
 assert.equal(img2img['19'].class_type, 'VAEEncode');
 assert.equal(img2img['9'].class_type, 'KSampler');
+assert.equal(img2img['13'], undefined);
+
+state.loras = [
+  { id: '1', name: 'test.safetensors', strength: 1, enabled: true }
+];
+state.advanced.cacheDiT.enabled = true;
+state.advanced.auraFlowEnabled = true;
+state.advanced.renormCfg.enabled = true;
+const advanced = buildWorkflowPrompt(state) as Record<
+  string,
+  { class_type: string; inputs: Record<string, unknown> }
+>;
+assert.deepEqual(advanced.cache_dit.inputs.model, ['101', 0]);
+assert.equal(advanced.cache_dit.inputs.strategy, 'adaptive');
+assert.equal(advanced.cache_dit.inputs.threshold, 0.25);
+assert.equal(advanced.cache_dit.inputs.noise_scale, 0.001);
+assert.deepEqual(advanced['13'].inputs.model, ['cache_dit', 0]);
+assert.deepEqual(advanced.renorm_cfg.inputs.model, ['13', 0]);
+assert.deepEqual(advanced['9'].inputs.model, ['renorm_cfg', 0]);
 
 state.sampler.variationEnabled = true;
 const variation = buildWorkflowPrompt(state) as Record<

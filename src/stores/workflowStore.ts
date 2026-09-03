@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import type {
+  AdvancedSettings,
   FaceDetailerSettings,
   ImageInputSettings,
   LoraItem,
@@ -25,6 +26,21 @@ const DEFAULT_MODELS: ModelSettings = {
   clipName: '',
   vaeName: '',
   shift: 2.5
+};
+
+const DEFAULT_ADVANCED: AdvancedSettings = {
+  auraFlowEnabled: false,
+  cacheDiT: {
+    enabled: false,
+    modelType: 'Auto',
+    warmupSteps: 3,
+    skipInterval: 2,
+    printSummary: true,
+    threshold: 0.25,
+    noiseScale: 0.001,
+    strategy: 'adaptive'
+  },
+  renormCfg: { enabled: false, cfgTrunc: 100, renormCfg: 1 }
 };
 
 const DEFAULT_SAMPLER: SamplerSettings = {
@@ -118,6 +134,9 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const positivePrompt = ref(DEFAULT_POSITIVE_PROMPT);
   const negativePrompt = ref(DEFAULT_NEGATIVE_PROMPT);
   const models = ref<ModelSettings>({ ...DEFAULT_MODELS });
+  const advanced = ref<AdvancedSettings>(
+    JSON.parse(JSON.stringify(DEFAULT_ADVANCED))
+  );
   const loras = ref<LoraItem[]>([]);
   const sampler = ref<SamplerSettings>({ ...DEFAULT_SAMPLER });
   const imageInput = ref<ImageInputSettings>({ ...DEFAULT_IMAGE_INPUT });
@@ -157,6 +176,20 @@ export const useWorkflowStore = defineStore('workflow', () => {
         }
         if (saved.models && typeof saved.models === 'object') {
           models.value = { ...DEFAULT_MODELS, ...saved.models };
+        }
+        if (saved.advanced && typeof saved.advanced === 'object') {
+          advanced.value = {
+            ...DEFAULT_ADVANCED,
+            ...saved.advanced,
+            cacheDiT: {
+              ...DEFAULT_ADVANCED.cacheDiT,
+              ...saved.advanced.cacheDiT
+            },
+            renormCfg: {
+              ...DEFAULT_ADVANCED.renormCfg,
+              ...saved.advanced.renormCfg
+            }
+          };
         }
         if (Array.isArray(saved.loras)) {
           loras.value = saved.loras.map((l, index) => ({
@@ -227,6 +260,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
       positivePrompt,
       negativePrompt,
       models,
+      advanced,
       loras,
       sampler,
       imageInput,
@@ -313,6 +347,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
       positivePrompt: positivePrompt.value,
       negativePrompt: negativePrompt.value,
       models: JSON.parse(JSON.stringify(models.value)),
+      advanced: JSON.parse(JSON.stringify(advanced.value)),
       loras: JSON.parse(JSON.stringify(loras.value)),
       sampler: JSON.parse(JSON.stringify(sampler.value)),
       imageInput: JSON.parse(JSON.stringify(imageInput.value)),
@@ -326,6 +361,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
     positivePrompt.value = state.positivePrompt;
     negativePrompt.value = state.negativePrompt;
     models.value = JSON.parse(JSON.stringify(state.models));
+    advanced.value = {
+      ...DEFAULT_ADVANCED,
+      ...JSON.parse(JSON.stringify(state.advanced || {})),
+      cacheDiT: {
+        ...DEFAULT_ADVANCED.cacheDiT,
+        ...JSON.parse(JSON.stringify(state.advanced?.cacheDiT || {}))
+      },
+      renormCfg: {
+        ...DEFAULT_ADVANCED.renormCfg,
+        ...JSON.parse(JSON.stringify(state.advanced?.renormCfg || {}))
+      }
+    };
     loras.value = JSON.parse(JSON.stringify(state.loras));
     sampler.value = {
       ...DEFAULT_SAMPLER,
@@ -355,6 +402,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     positivePrompt,
     negativePrompt,
     models,
+    advanced,
     loras,
     sampler,
     imageInput,
