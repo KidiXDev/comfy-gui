@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
+  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -11,7 +12,6 @@ import {
   Copy,
   Download,
   ExternalLink,
-  Eye,
   FolderOpen,
   HardDriveDownload,
   ImageOff,
@@ -19,19 +19,14 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Tag,
   ThumbsUp,
   X
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -91,18 +86,16 @@ const loadingMore = ref(false);
 const errorMessage = ref('');
 let unlistenProgress: (() => void) | null = null;
 
-// Trigger words copy feedback
+// Dedicated Detail View State
+const activeModel = ref<CivitaiModel | null>(null);
+const detailImageIndex = ref(0);
+
+// Copy feedback states
 const copiedTrigger = ref<number | null>(null);
 let copyTriggerTimeout: ReturnType<typeof setTimeout> | null = null;
 
-// Metadata copy feedback in modal
 const copiedMetaKey = ref<string | null>(null);
 let copyMetaTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Detail Modal
-const detailModel = ref<CivitaiModel | null>(null);
-const detailOpen = ref(false);
-const detailActiveImageIndex = ref(0);
 
 const hasModels = computed(() => models.value.length > 0);
 
@@ -113,6 +106,19 @@ function selectedVersion(model: CivitaiModel): CivitaiVersion | undefined {
     model.modelVersions[0]
   );
 }
+
+const activeVersion = computed(() => {
+  if (!activeModel.value) return;
+  return selectedVersion(activeModel.value);
+});
+
+const detailImages = computed(() => {
+  return activeVersion.value?.images ?? [];
+});
+
+const currentDetailImage = computed(() => {
+  return detailImages.value[detailImageIndex.value] ?? detailImages.value[0];
+});
 
 function primaryFile(version?: CivitaiVersion) {
   return version?.files.find((file) => file.primary) ?? version?.files[0];
@@ -173,9 +179,24 @@ function currentImage(model: CivitaiModel) {
   return images[idx] ?? images[0];
 }
 
-function onVersionChange(modelId: number, versionId: string) {
-  selectedVersions.value[modelId] = versionId;
-  activeImageIndices.value[modelId] = 0;
+function isModelDownloaded(model: CivitaiModel): boolean {
+  return model.modelVersions.some((version) => !!downloaded.value[version.id]);
+}
+
+function openDetail(model: CivitaiModel) {
+  activeModel.value = model;
+  detailImageIndex.value = activeImageIndices.value[model.id] ?? 0;
+}
+
+function closeDetail() {
+  activeModel.value = null;
+}
+
+function onDetailVersionChange(versionId: string) {
+  if (!activeModel.value) return;
+  selectedVersions.value[activeModel.value.id] = versionId;
+  activeImageIndices.value[activeModel.value.id] = 0;
+  detailImageIndex.value = 0;
 }
 
 async function copyTrainedWords(model: CivitaiModel, event?: Event) {
@@ -208,24 +229,6 @@ async function copyMetaText(text: string, key: string) {
     console.error('Failed to copy prompt', error);
   }
 }
-
-function openDetail(model: CivitaiModel) {
-  detailModel.value = model;
-  detailActiveImageIndex.value = getActiveImageIndex(model.id);
-  detailOpen.value = true;
-}
-
-const detailImages = computed(() => {
-  if (!detailModel.value) return [];
-  const version = selectedVersion(detailModel.value);
-  return version?.images || [];
-});
-
-const currentDetailImage = computed(() => {
-  return (
-    detailImages.value[detailActiveImageIndex.value] ?? detailImages.value[0]
-  );
-});
 
 function formatDescription(html?: string): string {
   if (!html) return 'No description provided.';
@@ -304,7 +307,14 @@ async function downloadModel(model: CivitaiModel) {
   }
 }
 
+function onKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && activeModel.value) {
+    closeDetail();
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('keydown', onKeyDown);
   apiKey.value =
     (await loadAppData<{ apiKey?: string }>('civitai_settings'))?.apiKey ?? '';
   unlistenProgress = await listen<{
@@ -318,6 +328,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown);
   unlistenProgress?.();
   if (copyTriggerTimeout) clearTimeout(copyTriggerTimeout);
   if (copyMetaTimeout) clearTimeout(copyMetaTimeout);
@@ -326,614 +337,492 @@ onUnmounted(() => {
 
 <template>
   <div class="bg-background flex h-full flex-col overflow-hidden select-none">
-    <!-- Header / Toolbar -->
-    <header
-      class="border-border/80 bg-card/75 flex shrink-0 flex-col gap-3 border-b px-6 py-4 backdrop-blur-md"
-    >
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <div
-            class="border-primary/30 bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs"
-          >
-            <HardDriveDownload class="h-4 w-4" />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-xs font-bold tracking-wider uppercase">
-                Civitai Model Browser
-              </h1>
-              <Badge
-                v-if="hasModels && !loading"
-                variant="secondary"
-                class="px-1.5 py-0 text-xs"
-              >
-                {{ models.length }} models
-              </Badge>
-            </div>
-            <p class="text-muted-foreground text-xs">
-              Explore and install AI models directly into your ComfyUI workspace
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-8 text-xs"
-                :disabled="loading"
-                @click="loadModels(false)"
-              >
-                <RefreshCw
-                  class="h-3.5 w-3.5"
-                  :class="{ 'animate-spin': loading }"
-                />
-                <span class="hidden sm:inline">Refresh</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reload models list</TooltipContent>
-          </Tooltip>
-
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-8 text-xs"
-            @click="openUrl('https://civitai.com/models')"
-          >
-            <ExternalLink class="h-3.5 w-3.5" />
-            <span class="hidden sm:inline">Civitai.com</span>
-          </Button>
-        </div>
-      </div>
-
-      <!-- Search & Filters -->
-      <div class="flex flex-col gap-2.5">
-        <form
-          class="flex flex-wrap items-center gap-2"
-          @submit.prevent="loadModels(false)"
-        >
-          <div class="relative min-w-60 flex-1">
-            <Search
-              class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
-            />
-            <Input
-              v-model="query"
-              class="pr-8 pl-9 text-xs"
-              placeholder="Search checkpoints, LoRAs, ControlNets, VAEs..."
-            />
-            <button
-              v-if="query"
-              type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer p-0.5"
-              @click="clearSearch"
-            >
-              <X class="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <Select
-            v-model="modelType"
-            @update:model-value="() => loadModels(false)"
-          >
-            <SelectTrigger class="w-38 text-xs">
-              <SelectValue placeholder="Model type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="Checkpoint">Checkpoint</SelectItem>
-                <SelectItem value="LORA">LoRA</SelectItem>
-                <SelectItem value="Controlnet">ControlNet</SelectItem>
-                <SelectItem value="VAE">VAE</SelectItem>
-                <SelectItem value="Upscaler">Upscaler</SelectItem>
-                <SelectItem value="TextualInversion">Embedding</SelectItem>
-                <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="sort" @update:model-value="() => loadModels(false)">
-            <SelectTrigger class="w-38 text-xs">
-              <SelectValue placeholder="Sort" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="Most Downloaded">Most Downloaded</SelectItem>
-                <SelectItem value="Highest Rated">Highest Rated</SelectItem>
-                <SelectItem value="Newest">Newest</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select
-            v-model="period"
-            @update:model-value="() => loadModels(false)"
-          >
-            <SelectTrigger class="w-32 text-xs">
-              <SelectValue placeholder="Period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="AllTime">All time</SelectItem>
-                <SelectItem value="Year">Year</SelectItem>
-                <SelectItem value="Month">Month</SelectItem>
-                <SelectItem value="Week">Week</SelectItem>
-                <SelectItem value="Day">Day</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Button
-            type="submit"
-            size="sm"
-            class="h-8 text-xs"
-            :disabled="loading"
-          >
-            <Loader2 v-if="loading" class="h-3.5 w-3.5 animate-spin" />
-            <Search v-else class="h-3.5 w-3.5" />
-            <span>Search</span>
-          </Button>
-        </form>
-
-        <!-- Category Shortcut Pills -->
-        <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span class="text-muted-foreground mr-1 text-xs">Filter:</span>
-          <button
-            v-for="shortcut in TYPE_SHORTCUTS"
-            :key="shortcut.value"
-            type="button"
-            class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-            :class="
-              modelType === shortcut.value
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-            "
-            @click="selectModelType(shortcut.value)"
-          >
-            {{ shortcut.label }}
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Content Viewport -->
-    <div class="flex-1 overflow-y-auto p-5">
-      <!-- Error Message Banner -->
-      <div
-        v-if="errorMessage"
-        class="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center justify-between rounded-lg border px-4 py-3 text-xs shadow-xs"
+    <!-- VIEW MODE 1: PURE BROWSING VIEW -->
+    <template v-if="!activeModel">
+      <!-- Header / Toolbar -->
+      <header
+        class="border-border/80 bg-card/75 flex shrink-0 flex-col gap-3 border-b px-6 py-4 backdrop-blur-md"
       >
-        <span>{{ errorMessage }}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-7 text-xs"
-          @click="loadModels(false)"
-        >
-          Retry
-        </Button>
-      </div>
-
-      <!-- Skeleton Loading State (Responsive 6 Columns) -->
-      <div
-        v-if="loading"
-        class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-      >
-        <div
-          v-for="n in 12"
-          :key="n"
-          class="border-border/60 bg-card/60 overflow-hidden rounded-xl border p-0 shadow-xs"
-        >
-          <Skeleton class="aspect-3/4 w-full rounded-b-none" />
-          <div class="flex flex-col gap-2.5 p-3">
-            <Skeleton class="h-3.5 w-3/4 rounded" />
-            <Skeleton class="h-3 w-1/2 rounded" />
-            <Skeleton class="h-7 w-full rounded-md" />
-            <div class="flex items-center gap-2 pt-1">
-              <Skeleton class="h-8 flex-1 rounded-md" />
-              <Skeleton class="h-8 w-8 rounded-md" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Empty State -->
-      <div
-        v-else-if="!hasModels"
-        class="border-border/60 bg-card/40 mx-auto my-12 flex max-w-md flex-col items-center justify-center rounded-xl border p-8 text-center text-xs shadow-xs"
-      >
-        <div
-          class="bg-muted text-muted-foreground mb-3 flex h-12 w-12 items-center justify-center rounded-full"
-        >
-          <ImageOff class="h-6 w-6" />
-        </div>
-        <h3 class="text-sm font-semibold">No models found</h3>
-        <p class="text-muted-foreground mt-1 text-xs">
-          Try adjusting your search query, model type, or time period filters.
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          class="mt-4 text-xs"
-          @click="resetFilters"
-        >
-          Reset Filters
-        </Button>
-      </div>
-
-      <!-- Responsive 6-Column Models Grid -->
-      <div
-        v-else
-        class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-      >
-        <article
-          v-for="model in models"
-          :key="model.id"
-          class="border-border/70 bg-card/75 hover:border-primary/40 hover:bg-card/95 group relative flex flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:shadow-md"
-        >
-          <!-- Card Thumbnail Area (3:4 Portrait Ratio for Civitai Art) -->
-          <div
-            class="bg-muted/40 relative aspect-3/4 w-full cursor-pointer overflow-hidden select-none"
-            @click="openDetail(model)"
-          >
-            <!-- Preview Image with Smooth Hover Scale -->
-            <img
-              v-if="currentImage(model)?.url"
-              :src="previewUrl(currentImage(model)?.url || '', 450)"
-              :alt="`${model.name} preview`"
-              class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-              loading="lazy"
-              draggable="false"
-            />
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
             <div
-              v-else
-              class="text-muted-foreground flex h-full items-center justify-center"
+              class="border-primary/30 bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs"
             >
-              <ImageOff class="h-8 w-8" />
+              <HardDriveDownload class="h-4 w-4" />
             </div>
-
-            <!-- Top Gradient Overlay -->
-            <div
-              class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
-            />
-
-            <!-- Top Badges Row -->
-            <div
-              class="pointer-events-none absolute inset-x-2 top-2 flex items-start justify-between gap-1"
-            >
-              <!-- Model Type Badge -->
-              <Badge
-                variant="outline"
-                class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
-              >
-                {{ model.type }}
-              </Badge>
-
-              <!-- Base Model Badge -->
-              <Badge
-                v-if="selectedVersion(model)?.baseModel"
-                variant="outline"
-                class="max-w-28 truncate border-amber-500/30 bg-black/65 px-1.5 py-0.5 text-xs text-amber-300 shadow-sm backdrop-blur-md"
-              >
-                {{ selectedVersion(model)?.baseModel }}
-              </Badge>
-            </div>
-
-            <!-- Multi-Image Carousel Controls (Hover) -->
-            <template v-if="(selectedVersion(model)?.images?.length || 0) > 1">
-              <button
-                type="button"
-                aria-label="Previous preview image"
-                class="absolute top-1/2 left-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                @click="prevImage(model, $event)"
-              >
-                <ChevronLeft class="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next preview image"
-                class="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                @click="nextImage(model, $event)"
-              >
-                <ChevronRight class="h-3.5 w-3.5" />
-              </button>
-
-              <!-- Carousel Indicators (Dots) -->
-              <div
-                class="pointer-events-none absolute inset-x-0 bottom-9 flex justify-center gap-1"
-              >
-                <span
-                  v-for="(_, imgIdx) in (
-                    selectedVersion(model)?.images || []
-                  ).slice(0, 5)"
-                  :key="imgIdx"
-                  class="h-1 rounded-full transition-all"
-                  :class="
-                    imgIdx === getActiveImageIndex(model.id)
-                      ? 'w-3.5 bg-white shadow-xs'
-                      : 'w-1 bg-white/50'
-                  "
-                />
-              </div>
-            </template>
-
-            <!-- Bottom Gradient Overlay with Stats -->
-            <div
-              class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2.5 text-white"
-            >
-              <div class="flex items-center gap-2 text-xs font-medium">
-                <span class="flex items-center gap-1 drop-shadow-xs">
-                  <Download class="h-3 w-3 text-white/80" />
-                  {{ formatCount(model.stats?.downloadCount) }}
-                </span>
-                <span
-                  v-if="model.stats?.thumbsUpCount"
-                  class="flex items-center gap-1 drop-shadow-xs"
-                >
-                  <ThumbsUp class="h-3 w-3 text-white/80" />
-                  {{ formatCount(model.stats?.thumbsUpCount) }}
-                </span>
-              </div>
-
-              <!-- Quick View Button -->
-              <span
-                class="flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white/90 backdrop-blur-xs transition-colors hover:bg-black/80"
-              >
-                <Eye class="h-3 w-3" />
-                <span>Info</span>
-              </span>
-            </div>
-          </div>
-
-          <!-- Card Body Area -->
-          <div class="flex flex-1 flex-col justify-between gap-2.5 p-3">
-            <!-- Model Name & Creator -->
             <div>
-              <h2
-                class="group-hover:text-primary cursor-pointer truncate text-xs font-semibold transition-colors"
-                :title="model.name"
-                @click="openDetail(model)"
-              >
-                {{ model.name }}
-              </h2>
-
-              <div
-                class="text-muted-foreground mt-0.5 flex items-center justify-between gap-2 text-xs"
-              >
-                <span class="truncate">
-                  by {{ model.creator?.username || 'Unknown' }}
-                </span>
-                <span
-                  v-if="primaryFile(selectedVersion(model))?.sizeKB"
-                  class="bg-muted/70 text-foreground/80 shrink-0 rounded px-1.5 py-0.5 font-mono text-xs"
+              <div class="flex items-center gap-2">
+                <h1 class="text-xs font-bold tracking-wider uppercase">
+                  Civitai Model Browser
+                </h1>
+                <Badge
+                  v-if="hasModels && !loading"
+                  variant="secondary"
+                  class="px-1.5 py-0 text-xs"
                 >
-                  {{ formatSize(primaryFile(selectedVersion(model))?.sizeKB) }}
-                </span>
+                  {{ models.length }} models
+                </Badge>
               </div>
+              <p class="text-muted-foreground text-xs">
+                Explore AI models for your ComfyUI workspace
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-8 text-xs"
+                  :disabled="loading"
+                  @click="loadModels(false)"
+                >
+                  <RefreshCw
+                    class="h-3.5 w-3.5"
+                    :class="{ 'animate-spin': loading }"
+                  />
+                  <span class="hidden sm:inline">Refresh</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reload models list</TooltipContent>
+            </Tooltip>
+
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 text-xs"
+              @click="openUrl('https://civitai.com/models')"
+            >
+              <ExternalLink class="h-3.5 w-3.5" />
+              <span class="hidden sm:inline">Civitai.com</span>
+            </Button>
+          </div>
+        </div>
+
+        <!-- Search & Filters -->
+        <div class="flex flex-col gap-2.5">
+          <form
+            class="flex flex-wrap items-center gap-2"
+            @submit.prevent="loadModels(false)"
+          >
+            <div class="relative min-w-60 flex-1">
+              <Search
+                class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+              />
+              <Input
+                v-model="query"
+                class="pr-8 pl-9 text-xs"
+                placeholder="Search checkpoints, LoRAs, ControlNets, VAEs..."
+              />
+              <button
+                v-if="query"
+                type="button"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer p-0.5"
+                @click="clearSearch"
+              >
+                <X class="h-3.5 w-3.5" />
+              </button>
             </div>
 
-            <!-- Version Selector (Wrapped in SelectGroup for AGENTS.md rules) -->
             <Select
-              :model-value="selectedVersions[model.id]"
-              @update:model-value="
-                (val) => onVersionChange(model.id, String(val))
-              "
+              v-model="modelType"
+              @update:model-value="() => loadModels(false)"
             >
-              <SelectTrigger class="h-7.5 w-full text-xs">
-                <SelectValue placeholder="Select version" />
+              <SelectTrigger class="w-38 text-xs">
+                <SelectValue placeholder="Model type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem
-                    v-for="version in model.modelVersions"
-                    :key="version.id"
-                    :value="String(version.id)"
-                  >
-                    {{ version.name }}
-                    <span
-                      v-if="version.baseModel"
-                      class="text-muted-foreground ml-1 text-xs"
-                    >
-                      · {{ version.baseModel }}
-                    </span>
-                  </SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="Checkpoint">Checkpoint</SelectItem>
+                  <SelectItem value="LORA">LoRA</SelectItem>
+                  <SelectItem value="Controlnet">ControlNet</SelectItem>
+                  <SelectItem value="VAE">VAE</SelectItem>
+                  <SelectItem value="Upscaler">Upscaler</SelectItem>
+                  <SelectItem value="TextualInversion">Embedding</SelectItem>
+                  <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
 
-            <!-- Trigger Words Pill (One-click copy with feedback) -->
-            <div
-              v-if="selectedVersion(model)?.trainedWords?.length"
-              class="bg-muted/40 hover:bg-muted/70 group/trig border-border/50 flex cursor-pointer items-center justify-between rounded-md border px-2 py-1 text-xs transition-colors"
-              :title="`Click to copy trigger words: ${selectedVersion(model)?.trainedWords?.join(', ')}`"
-              @click="copyTrainedWords(model, $event)"
+            <Select
+              v-model="sort"
+              @update:model-value="() => loadModels(false)"
             >
-              <div class="flex items-center gap-1.5 overflow-hidden">
-                <Sparkles class="text-primary h-3 w-3 shrink-0" />
-                <span class="truncate font-mono text-xs">
-                  {{ selectedVersion(model)?.trainedWords?.[0] }}
+              <SelectTrigger class="w-38 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="Most Downloaded"
+                    >Most Downloaded</SelectItem
+                  >
+                  <SelectItem value="Highest Rated">Highest Rated</SelectItem>
+                  <SelectItem value="Newest">Newest</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="period"
+              @update:model-value="() => loadModels(false)"
+            >
+              <SelectTrigger class="w-32 text-xs">
+                <SelectValue placeholder="Period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="AllTime">All time</SelectItem>
+                  <SelectItem value="Year">Year</SelectItem>
+                  <SelectItem value="Month">Month</SelectItem>
+                  <SelectItem value="Week">Week</SelectItem>
+                  <SelectItem value="Day">Day</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="submit"
+              size="sm"
+              class="h-8 text-xs"
+              :disabled="loading"
+            >
+              <Loader2 v-if="loading" class="h-3.5 w-3.5 animate-spin" />
+              <Search v-else class="h-3.5 w-3.5" />
+              <span>Search</span>
+            </Button>
+          </form>
+
+          <!-- Category Shortcut Pills -->
+          <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <span class="text-muted-foreground mr-1 text-xs">Filter:</span>
+            <button
+              v-for="shortcut in TYPE_SHORTCUTS"
+              :key="shortcut.value"
+              type="button"
+              class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+              :class="
+                modelType === shortcut.value
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+              "
+              @click="selectModelType(shortcut.value)"
+            >
+              {{ shortcut.label }}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content Viewport -->
+      <div class="flex-1 overflow-y-auto p-5">
+        <!-- Error Message Banner -->
+        <div
+          v-if="errorMessage"
+          class="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center justify-between rounded-lg border px-4 py-3 text-xs shadow-xs"
+        >
+          <span>{{ errorMessage }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs"
+            @click="loadModels(false)"
+          >
+            Retry
+          </Button>
+        </div>
+
+        <!-- Skeleton Loading State (Responsive 6 Columns) -->
+        <div
+          v-if="loading"
+          class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+        >
+          <div
+            v-for="n in 12"
+            :key="n"
+            class="border-border/60 bg-card/60 overflow-hidden rounded-xl border p-0 shadow-xs"
+          >
+            <Skeleton class="aspect-3/4 w-full rounded-b-none" />
+            <div class="flex flex-col gap-2 p-2.5">
+              <Skeleton class="h-3.5 w-3/4 rounded" />
+              <Skeleton class="h-3 w-1/2 rounded" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div
+          v-else-if="!hasModels"
+          class="border-border/60 bg-card/40 mx-auto my-12 flex max-w-md flex-col items-center justify-center rounded-xl border p-8 text-center text-xs shadow-xs"
+        >
+          <div
+            class="bg-muted text-muted-foreground mb-3 flex h-12 w-12 items-center justify-center rounded-full"
+          >
+            <ImageOff class="h-6 w-6" />
+          </div>
+          <h3 class="text-sm font-semibold">No models found</h3>
+          <p class="text-muted-foreground mt-1 text-xs">
+            Try adjusting your search query, model type, or time period filters.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            class="mt-4 text-xs"
+            @click="resetFilters"
+          >
+            Reset Filters
+          </Button>
+        </div>
+
+        <!-- Pure Browsing 6-Column Models Grid -->
+        <div
+          v-else
+          class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+        >
+          <article
+            v-for="model in models"
+            :key="model.id"
+            class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            @click="openDetail(model)"
+          >
+            <!-- Card Thumbnail Area (3:4 Portrait Ratio) -->
+            <div
+              class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
+            >
+              <!-- Preview Image with Smooth Hover Scale -->
+              <img
+                v-if="currentImage(model)?.url"
+                :src="previewUrl(currentImage(model)?.url || '', 450)"
+                :alt="`${model.name} preview`"
+                class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
+                loading="lazy"
+                draggable="false"
+              />
+              <div
+                v-else
+                class="text-muted-foreground flex h-full items-center justify-center"
+              >
+                <ImageOff class="h-8 w-8" />
+              </div>
+
+              <!-- Top Gradient Overlay -->
+              <div
+                class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
+              />
+
+              <!-- Top Badges Row -->
+              <div
+                class="pointer-events-none absolute inset-x-2 top-2 flex items-start justify-between gap-1"
+              >
+                <!-- Model Type Badge -->
+                <Badge
+                  variant="outline"
+                  class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
+                >
+                  {{ model.type }}
+                </Badge>
+
+                <!-- Installed or Base Model Badge -->
+                <div class="flex items-center gap-1">
+                  <Badge
+                    v-if="isModelDownloaded(model)"
+                    class="flex items-center gap-1 border-emerald-500/30 bg-emerald-600/90 px-1.5 py-0.5 text-xs text-white shadow-sm backdrop-blur-md"
+                  >
+                    <CheckCircle2 class="h-3 w-3" />
+                    <span>Installed</span>
+                  </Badge>
+                  <Badge
+                    v-else-if="selectedVersion(model)?.baseModel"
+                    variant="outline"
+                    class="max-w-28 truncate border-amber-500/30 bg-black/65 px-1.5 py-0.5 text-xs text-amber-300 shadow-sm backdrop-blur-md"
+                  >
+                    {{ selectedVersion(model)?.baseModel }}
+                  </Badge>
+                </div>
+              </div>
+
+              <!-- Multi-Image Hover Carousel Controls -->
+              <template
+                v-if="(selectedVersion(model)?.images?.length || 0) > 1"
+              >
+                <button
+                  type="button"
+                  aria-label="Previous preview image"
+                  class="absolute top-1/2 left-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                  @click="prevImage(model, $event)"
+                >
+                  <ChevronLeft class="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next preview image"
+                  class="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                  @click="nextImage(model, $event)"
+                >
+                  <ChevronRight class="h-3.5 w-3.5" />
+                </button>
+
+                <!-- Carousel Indicators (Dots) -->
+                <div
+                  class="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center gap-1"
+                >
+                  <span
+                    v-for="(_, imgIdx) in (
+                      selectedVersion(model)?.images || []
+                    ).slice(0, 5)"
+                    :key="imgIdx"
+                    class="h-1 rounded-full transition-all"
+                    :class="
+                      imgIdx === getActiveImageIndex(model.id)
+                        ? 'w-3 bg-white shadow-xs'
+                        : 'w-1 bg-white/50'
+                    "
+                  />
+                </div>
+              </template>
+
+              <!-- Bottom Gradient Overlay with Stats -->
+              <div
+                class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
+              >
+                <div class="flex items-center gap-2 text-xs font-medium">
+                  <span class="flex items-center gap-1 drop-shadow-xs">
+                    <Download class="h-3 w-3 text-white/80" />
+                    {{ formatCount(model.stats?.downloadCount) }}
+                  </span>
+                  <span
+                    v-if="model.stats?.thumbsUpCount"
+                    class="flex items-center gap-1 drop-shadow-xs"
+                  >
+                    <ThumbsUp class="h-3 w-3 text-white/80" />
+                    {{ formatCount(model.stats?.thumbsUpCount) }}
+                  </span>
+                </div>
+
+                <span
+                  class="text-xs text-white/70 transition-colors group-hover:text-white"
+                >
+                  {{ model.modelVersions.length }}
+                  {{ model.modelVersions.length > 1 ? 'vers' : 'ver' }}
                 </span>
               </div>
-              <div class="shrink-0 pl-1">
-                <Check
-                  v-if="copiedTrigger === model.id"
-                  class="animate-in fade-in h-3 w-3 text-emerald-500"
-                />
-                <Copy
-                  v-else
-                  class="text-muted-foreground group-hover/trig:text-foreground h-3 w-3 transition-colors"
-                />
-              </div>
             </div>
 
-            <!-- Actions Row -->
-            <div class="flex items-center gap-1.5 pt-0.5">
-              <!-- Primary Download Button with Progress & Completed States -->
-              <Button
-                class="h-8 flex-1 text-xs font-medium"
-                size="sm"
-                :variant="
-                  downloaded[selectedVersion(model)?.id || 0]
-                    ? 'secondary'
-                    : 'default'
-                "
-                :disabled="
-                  !primaryFile(selectedVersion(model)) ||
-                  !!progress[selectedVersion(model)?.id || 0]
-                "
-                @click="downloadModel(model)"
+            <!-- Pure Card Footer: Name & Creator -->
+            <div class="flex flex-col gap-0.5 p-2.5">
+              <h2
+                class="group-hover:text-primary truncate text-xs font-semibold transition-colors"
+                :title="model.name"
               >
-                <!-- Loading State -->
-                <template v-if="progress[selectedVersion(model)?.id || 0]">
-                  <Loader2 class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  <span>
-                    {{
-                      downloadPercent(selectedVersion(model)?.id || 0) !== null
-                        ? `${downloadPercent(selectedVersion(model)?.id || 0)}%`
-                        : 'Downloading...'
-                    }}
-                  </span>
-                </template>
-
-                <!-- Downloaded State -->
-                <template
-                  v-else-if="downloaded[selectedVersion(model)?.id || 0]"
-                >
-                  <CheckCircle2 class="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
-                  <span>Installed</span>
-                </template>
-
-                <!-- Idle State -->
-                <template v-else>
-                  <Download class="mr-1.5 h-3.5 w-3.5" />
-                  <span>Download</span>
-                </template>
-              </Button>
-
-              <!-- Show in Folder (When Downloaded) -->
-              <Tooltip v-if="downloaded[selectedVersion(model)?.id || 0]">
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="h-8 w-8 p-0"
-                    @click="
-                      invoke('show_in_folder', {
-                        path: downloaded[selectedVersion(model)?.id || 0]
-                          .modelPath
-                      })
-                    "
-                  >
-                    <FolderOpen class="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Show file in folder</TooltipContent>
-              </Tooltip>
-
-              <!-- Civitai External Link -->
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="h-8 w-8 p-0"
-                    @click="openUrl(`https://civitai.com/models/${model.id}`)"
-                  >
-                    <ExternalLink class="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Open model on Civitai</TooltipContent>
-              </Tooltip>
+                {{ model.name }}
+              </h2>
+              <p class="text-muted-foreground truncate text-xs">
+                by {{ model.creator?.username || 'Unknown' }}
+              </p>
             </div>
-          </div>
-        </article>
-      </div>
+          </article>
+        </div>
 
-      <!-- Load More Button -->
-      <div v-if="nextCursor && !loading" class="flex justify-center pt-8 pb-4">
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-8 px-6 text-xs"
-          :disabled="loadingMore"
-          @click="loadModels(true)"
-        >
-          <Loader2 v-if="loadingMore" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          <span>Load More Models</span>
-        </Button>
-      </div>
-    </div>
-
-    <!-- Model Detail Dialog / Modal -->
-    <Dialog v-model:open="detailOpen">
-      <DialogContent
-        class="bg-card flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden p-0 sm:max-w-4xl"
-      >
-        <!-- Modal Header -->
-        <DialogHeader class="border-border/70 border-b px-6 py-4">
-          <div class="flex items-start justify-between gap-4 pr-6">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <Badge variant="outline" class="text-xs">
-                  {{ detailModel?.type }}
-                </Badge>
-                <Badge
-                  v-if="detailModel && selectedVersion(detailModel)?.baseModel"
-                  variant="secondary"
-                  class="text-xs"
-                >
-                  {{ selectedVersion(detailModel)?.baseModel }}
-                </Badge>
-              </div>
-              <DialogTitle class="mt-1 truncate text-base font-bold">
-                {{ detailModel?.name }}
-              </DialogTitle>
-              <DialogDescription class="text-muted-foreground mt-0.5 text-xs">
-                Created by {{ detailModel?.creator?.username || 'Unknown' }} ·
-                {{ formatCount(detailModel?.stats?.downloadCount) }} downloads ·
-                {{ formatCount(detailModel?.stats?.thumbsUpCount) }} likes
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <!-- Modal Body (Two Columns: Image Preview & Details) -->
+        <!-- Load More Button -->
         <div
-          v-if="detailModel"
-          class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-12"
+          v-if="nextCursor && !loading"
+          class="flex justify-center pt-8 pb-4"
         >
-          <!-- Left Column: Image Carousel & Metadata -->
-          <div
-            class="bg-muted/20 border-border/70 flex flex-col gap-3 overflow-y-auto p-5 lg:col-span-7 lg:border-r"
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 px-6 text-xs"
+            :disabled="loadingMore"
+            @click="loadModels(true)"
           >
-            <!-- Main Preview Image -->
+            <Loader2
+              v-if="loadingMore"
+              class="mr-1.5 h-3.5 w-3.5 animate-spin"
+            />
+            <span>Load More Models</span>
+          </Button>
+        </div>
+      </div>
+    </template>
+
+    <!-- VIEW MODE 2: DEDICATED DETAIL PAGE -->
+    <template v-else>
+      <!-- Dedicated Detail Header -->
+      <header
+        class="border-border/80 bg-card/85 flex shrink-0 items-center justify-between border-b px-6 py-3.5 backdrop-blur-md"
+      >
+        <div class="flex min-w-0 items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 cursor-pointer gap-1.5 text-xs font-medium"
+            @click="closeDetail"
+          >
+            <ArrowLeft class="h-3.5 w-3.5" />
+            <span>Back to Browser</span>
+          </Button>
+
+          <div class="bg-border/80 h-4 w-px shrink-0" />
+
+          <div class="flex items-center gap-2 truncate text-xs">
+            <span class="text-muted-foreground shrink-0">Civitai</span>
+            <span class="text-muted-foreground">/</span>
+            <Badge variant="outline" class="shrink-0 py-0 text-xs">
+              {{ activeModel.type }}
+            </Badge>
+            <span class="text-muted-foreground">/</span>
+            <span class="text-foreground truncate font-semibold">
+              {{ activeModel.name }}
+            </span>
+          </div>
+        </div>
+
+        <div class="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 gap-1.5 text-xs"
+            @click="openUrl(`https://civitai.com/models/${activeModel.id}`)"
+          >
+            <ExternalLink class="h-3.5 w-3.5" />
+            <span>View on Civitai</span>
+          </Button>
+        </div>
+      </header>
+
+      <!-- Dedicated Detail Viewport -->
+      <div class="flex-1 overflow-y-auto p-6 lg:p-8">
+        <div class="mx-auto grid w-full grid-cols-1 gap-8 lg:grid-cols-12">
+          <!-- Left Column: Visual Showcase & Generation Parameters -->
+          <div class="flex flex-col gap-4 lg:col-span-7">
+            <!-- Large Image Preview Stage -->
             <div
-              class="border-border/50 relative aspect-3/4 w-full overflow-hidden rounded-xl border bg-black/30"
+              class="border-border/60 relative flex aspect-3/4 max-h-145 w-full items-center justify-center overflow-hidden rounded-2xl border bg-black/40 shadow-md"
             >
               <img
                 v-if="currentDetailImage?.url"
                 :src="previewUrl(currentDetailImage.url, 1024)"
-                :alt="`${detailModel.name} full preview`"
+                :alt="`${activeModel.name} preview`"
                 class="h-full w-full object-contain"
               />
               <div
                 v-else
                 class="text-muted-foreground flex h-full items-center justify-center"
               >
-                <ImageOff class="h-10 w-10" />
+                <ImageOff class="h-12 w-12" />
               </div>
 
-              <!-- Dialog Image Navigation Arrows -->
+              <!-- Carousel Left/Right Buttons -->
               <template v-if="detailImages.length > 1">
                 <button
                   type="button"
                   aria-label="Previous image"
-                  class="absolute top-1/2 left-2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white backdrop-blur-xs transition-colors hover:bg-black/90"
+                  class="absolute top-1/2 left-3 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90"
                   @click="
-                    detailActiveImageIndex =
-                      (detailActiveImageIndex - 1 + detailImages.length) %
+                    detailImageIndex =
+                      (detailImageIndex - 1 + detailImages.length) %
                       detailImages.length
                   "
                 >
@@ -942,33 +831,40 @@ onUnmounted(() => {
                 <button
                   type="button"
                   aria-label="Next image"
-                  class="absolute top-1/2 right-2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white backdrop-blur-xs transition-colors hover:bg-black/90"
+                  class="absolute top-1/2 right-3 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90"
                   @click="
-                    detailActiveImageIndex =
-                      (detailActiveImageIndex + 1) % detailImages.length
+                    detailImageIndex =
+                      (detailImageIndex + 1) % detailImages.length
                   "
                 >
                   <ChevronRight class="h-4 w-4" />
                 </button>
+
+                <!-- Image Position Counter -->
+                <div
+                  class="absolute right-3 bottom-3 rounded-full bg-black/70 px-2.5 py-0.5 font-mono text-xs text-white backdrop-blur-xs"
+                >
+                  {{ detailImageIndex + 1 }} / {{ detailImages.length }}
+                </div>
               </template>
             </div>
 
-            <!-- Image Thumbnails Strip -->
+            <!-- Thumbnail Strip -->
             <div
               v-if="detailImages.length > 1"
-              class="flex items-center gap-2 overflow-x-auto pb-1"
+              class="flex items-center gap-2.5 overflow-x-auto pb-1"
             >
               <button
                 v-for="(img, idx) in detailImages"
                 :key="idx"
                 type="button"
-                class="relative h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-md border-2 transition-all"
+                class="relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-lg border-2 transition-all"
                 :class="
-                  detailActiveImageIndex === idx
-                    ? 'border-primary shadow-xs'
+                  detailImageIndex === idx
+                    ? 'border-primary ring-primary/30 shadow-xs ring-2'
                     : 'border-transparent opacity-60 hover:opacity-100'
                 "
-                @click="detailActiveImageIndex = idx"
+                @click="detailImageIndex = idx"
               >
                 <img
                   :src="previewUrl(img.url, 150)"
@@ -978,31 +874,31 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <!-- Image Generation Meta (Prompts, Sampler, Seed) if present -->
+            <!-- Generation Parameters Metadata Card (Prompt & Settings) -->
             <div
               v-if="
                 currentDetailImage?.meta &&
                 Object.keys(currentDetailImage.meta).length > 0
               "
-              class="border-border/60 bg-card/60 flex flex-col gap-2 rounded-lg border p-3 text-xs"
+              class="border-border/70 bg-card/70 flex flex-col gap-3 rounded-xl border p-4 shadow-xs"
             >
-              <div class="flex items-center gap-1.5 text-xs font-medium">
+              <div class="flex items-center gap-1.5 text-xs font-semibold">
                 <Sparkles class="text-primary h-3.5 w-3.5" />
-                <span>Image Generation Parameters</span>
+                <span>Sample Generation Parameters</span>
               </div>
 
               <!-- Positive Prompt -->
               <div
                 v-if="currentDetailImage.meta.prompt"
-                class="flex flex-col gap-1"
+                class="flex flex-col gap-1.5"
               >
                 <div
                   class="text-muted-foreground flex items-center justify-between text-xs"
                 >
-                  <span>Prompt</span>
+                  <span class="font-medium">Positive Prompt</span>
                   <button
                     type="button"
-                    class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs"
+                    class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium"
                     @click="
                       copyMetaText(
                         String(currentDetailImage.meta.prompt),
@@ -1016,12 +912,12 @@ onUnmounted(() => {
                     />
                     <Copy v-else class="h-3 w-3" />
                     <span>{{
-                      copiedMetaKey === 'prompt' ? 'Copied' : 'Copy'
+                      copiedMetaKey === 'prompt' ? 'Copied' : 'Copy Prompt'
                     }}</span>
                   </button>
                 </div>
                 <p
-                  class="bg-muted/60 max-h-24 overflow-y-auto rounded p-2 font-mono text-xs select-text"
+                  class="bg-muted/60 border-border/40 max-h-28 overflow-y-auto rounded-lg border p-2.5 font-mono text-xs leading-relaxed select-text"
                 >
                   {{ currentDetailImage.meta.prompt }}
                 </p>
@@ -1030,15 +926,15 @@ onUnmounted(() => {
               <!-- Negative Prompt -->
               <div
                 v-if="currentDetailImage.meta.negativePrompt"
-                class="flex flex-col gap-1"
+                class="flex flex-col gap-1.5"
               >
                 <div
                   class="text-muted-foreground flex items-center justify-between text-xs"
                 >
-                  <span>Negative Prompt</span>
+                  <span class="font-medium">Negative Prompt</span>
                   <button
                     type="button"
-                    class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs"
+                    class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium"
                     @click="
                       copyMetaText(
                         String(currentDetailImage.meta.negativePrompt),
@@ -1052,40 +948,40 @@ onUnmounted(() => {
                     />
                     <Copy v-else class="h-3 w-3" />
                     <span>{{
-                      copiedMetaKey === 'negPrompt' ? 'Copied' : 'Copy'
+                      copiedMetaKey === 'negPrompt' ? 'Copied' : 'Copy Negative'
                     }}</span>
                   </button>
                 </div>
                 <p
-                  class="bg-muted/60 max-h-20 overflow-y-auto rounded p-2 font-mono text-xs select-text"
+                  class="bg-muted/60 border-border/40 max-h-24 overflow-y-auto rounded-lg border p-2.5 font-mono text-xs leading-relaxed select-text"
                 >
                   {{ currentDetailImage.meta.negativePrompt }}
                 </p>
               </div>
 
-              <!-- Other Meta Specs (Sampler, Steps, CFG, Seed) -->
+              <!-- Extra Meta Tags -->
               <div class="flex flex-wrap gap-1.5 pt-1">
                 <span
                   v-if="currentDetailImage.meta.sampler"
-                  class="bg-muted/80 rounded px-2 py-0.5 text-xs"
+                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
                 >
                   Sampler: {{ currentDetailImage.meta.sampler }}
                 </span>
                 <span
                   v-if="currentDetailImage.meta.steps"
-                  class="bg-muted/80 rounded px-2 py-0.5 text-xs"
+                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
                 >
                   Steps: {{ currentDetailImage.meta.steps }}
                 </span>
                 <span
                   v-if="currentDetailImage.meta.cfgScale"
-                  class="bg-muted/80 rounded px-2 py-0.5 text-xs"
+                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
                 >
                   CFG: {{ currentDetailImage.meta.cfgScale }}
                 </span>
                 <span
                   v-if="currentDetailImage.meta.seed"
-                  class="bg-muted/80 rounded px-2 py-0.5 font-mono text-xs"
+                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
                 >
                   Seed: {{ currentDetailImage.meta.seed }}
                 </span>
@@ -1093,208 +989,292 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Right Column: Specs, Trigger Words, Files, Description & Actions -->
-          <div class="flex flex-col gap-4 overflow-y-auto p-5 lg:col-span-5">
-            <!-- Version Selector -->
-            <div>
-              <label
-                class="text-muted-foreground mb-1.5 block text-xs font-medium"
+          <!-- Right Column: Model Information, Version Picker, Download & Description -->
+          <div class="flex flex-col gap-5 lg:col-span-5">
+            <!-- Main Title & Creator Header Card -->
+            <div class="flex flex-col gap-2.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" class="text-xs">
+                  {{ activeModel.type }}
+                </Badge>
+                <Badge
+                  v-if="activeVersion?.baseModel"
+                  variant="secondary"
+                  class="text-xs"
+                >
+                  {{ activeVersion.baseModel }}
+                </Badge>
+                <Badge
+                  v-if="activeModel.nsfw"
+                  variant="destructive"
+                  class="text-xs"
+                >
+                  NSFW
+                </Badge>
+              </div>
+
+              <h1 class="text-foreground text-xl font-bold tracking-tight">
+                {{ activeModel.name }}
+              </h1>
+
+              <div
+                class="text-muted-foreground flex flex-wrap items-center gap-3 text-xs"
               >
-                Select Model Version
-              </label>
-              <Select
-                :model-value="selectedVersions[detailModel.id]"
-                @update:model-value="
-                  (val) => onVersionChange(detailModel!.id, String(val))
-                "
-              >
-                <SelectTrigger class="w-full text-xs">
-                  <SelectValue placeholder="Select version" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem
-                      v-for="version in detailModel.modelVersions"
-                      :key="version.id"
-                      :value="String(version.id)"
-                    >
-                      {{ version.name }} ({{
-                        version.baseModel || 'Unknown base'
-                      }})
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                <span
+                  >Created by
+                  <strong class="text-foreground">{{
+                    activeModel.creator?.username || 'Unknown'
+                  }}</strong></span
+                >
+                <span>·</span>
+                <span class="flex items-center gap-1">
+                  <Download class="h-3 w-3" />
+                  {{ formatCount(activeModel.stats?.downloadCount) }} downloads
+                </span>
+                <span>·</span>
+                <span class="flex items-center gap-1">
+                  <ThumbsUp class="h-3 w-3" />
+                  {{ formatCount(activeModel.stats?.thumbsUpCount) }} likes
+                </span>
+              </div>
             </div>
 
-            <!-- Technical File Details -->
+            <!-- Version Selector Card -->
             <div
-              class="border-border/60 bg-muted/20 grid grid-cols-2 gap-2.5 rounded-lg border p-3 text-xs"
+              class="border-border/70 bg-card/70 flex flex-col gap-3 rounded-xl border p-4 shadow-xs"
             >
               <div>
-                <span class="text-muted-foreground block">Base Model</span>
-                <span class="font-medium">
-                  {{ selectedVersion(detailModel)?.baseModel || '—' }}
-                </span>
+                <label
+                  class="text-muted-foreground mb-1.5 block text-xs font-medium"
+                >
+                  Model Version
+                </label>
+                <Select
+                  :model-value="selectedVersions[activeModel.id]"
+                  @update:model-value="
+                    (val) => onDetailVersionChange(String(val))
+                  "
+                >
+                  <SelectTrigger class="w-full text-xs">
+                    <SelectValue placeholder="Select version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup class="max-h-40 overflow-y-auto">
+                      <SelectItem
+                        v-for="version in activeModel.modelVersions"
+                        :key="version.id"
+                        :value="String(version.id)"
+                      >
+                        {{ version.name }} ({{
+                          version.baseModel || 'Unknown base'
+                        }})
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
-              <div>
-                <span class="text-muted-foreground block">File Size</span>
-                <span class="font-medium">
-                  {{
-                    formatSize(
-                      primaryFile(selectedVersion(detailModel))?.sizeKB
-                    )
-                  }}
-                </span>
+
+              <!-- Technical File Specs -->
+              <div class="grid grid-cols-2 gap-2.5 pt-1 text-xs">
+                <div
+                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
+                >
+                  <span class="text-muted-foreground block text-xs"
+                    >Base Architecture</span
+                  >
+                  <span class="text-xs font-semibold">{{
+                    activeVersion?.baseModel || '—'
+                  }}</span>
+                </div>
+                <div
+                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
+                >
+                  <span class="text-muted-foreground block text-xs"
+                    >File Size</span
+                  >
+                  <span class="text-xs font-semibold">{{
+                    formatSize(primaryFile(activeVersion)?.sizeKB)
+                  }}</span>
+                </div>
+                <div
+                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
+                >
+                  <span class="text-muted-foreground block text-xs"
+                    >Format</span
+                  >
+                  <span class="text-xs font-semibold">{{
+                    primaryFile(activeVersion)?.metadata?.format || 'SafeTensor'
+                  }}</span>
+                </div>
+                <div
+                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
+                >
+                  <span class="text-muted-foreground block text-xs"
+                    >Virus Scan</span
+                  >
+                  <span class="text-xs font-semibold text-emerald-500">{{
+                    primaryFile(activeVersion)?.virusScanResult || 'Clean'
+                  }}</span>
+                </div>
               </div>
-              <div>
-                <span class="text-muted-foreground block">Format</span>
-                <span class="font-medium">
-                  {{
-                    primaryFile(selectedVersion(detailModel))?.metadata
-                      ?.format || 'SafeTensor'
-                  }}
-                </span>
-              </div>
-              <div>
-                <span class="text-muted-foreground block">Virus Scan</span>
-                <span class="font-medium">
-                  {{
-                    primaryFile(selectedVersion(detailModel))
-                      ?.virusScanResult || 'Clean'
-                  }}
-                </span>
+
+              <!-- Primary Download Action Section -->
+              <div class="flex flex-col gap-2.5 pt-2">
+                <!-- Download Progress Bar (If Downloading) -->
+                <div
+                  v-if="progress[activeVersion?.id || 0]"
+                  class="flex flex-col gap-1.5"
+                >
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="text-muted-foreground"
+                      >Downloading model file...</span
+                    >
+                    <span class="font-mono font-medium">
+                      {{
+                        downloadPercent(activeVersion?.id || 0) !== null
+                          ? `${downloadPercent(activeVersion?.id || 0)}%`
+                          : '...'
+                      }}
+                    </span>
+                  </div>
+                  <Progress
+                    :model-value="downloadPercent(activeVersion?.id || 0) ?? 0"
+                    class="h-2"
+                  />
+                </div>
+
+                <Button
+                  class="h-10 w-full cursor-pointer text-xs font-semibold shadow-sm"
+                  size="default"
+                  :variant="
+                    downloaded[activeVersion?.id || 0] ? 'secondary' : 'default'
+                  "
+                  :disabled="
+                    !primaryFile(activeVersion) ||
+                    !!progress[activeVersion?.id || 0]
+                  "
+                  @click="downloadModel(activeModel)"
+                >
+                  <template v-if="progress[activeVersion?.id || 0]">
+                    <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+                    <span>
+                      Downloading Model
+                      {{
+                        downloadPercent(activeVersion?.id || 0) !== null
+                          ? `(${downloadPercent(activeVersion?.id || 0)}%)`
+                          : ''
+                      }}
+                    </span>
+                  </template>
+                  <template v-else-if="downloaded[activeVersion?.id || 0]">
+                    <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
+                    <span>Installed in ComfyUI</span>
+                  </template>
+                  <template v-else>
+                    <Download class="mr-2 h-4 w-4" />
+                    <span
+                      >Download to ComfyUI ({{
+                        formatSize(primaryFile(activeVersion)?.sizeKB)
+                      }})</span
+                    >
+                  </template>
+                </Button>
+
+                <!-- Show in folder button if downloaded -->
+                <Button
+                  v-if="downloaded[activeVersion?.id || 0]"
+                  variant="outline"
+                  size="sm"
+                  class="h-9 w-full cursor-pointer gap-1.5 text-xs"
+                  @click="
+                    invoke('show_in_folder', {
+                      path: downloaded[activeVersion?.id || 0].modelPath
+                    })
+                  "
+                >
+                  <FolderOpen class="h-3.5 w-3.5" />
+                  <span>Show File in Folder</span>
+                </Button>
               </div>
             </div>
 
-            <!-- Trigger / Trained Words -->
-            <div v-if="selectedVersion(detailModel)?.trainedWords?.length">
-              <div class="mb-1.5 flex items-center justify-between">
-                <label class="text-muted-foreground text-xs font-medium">
-                  Trigger Words
-                </label>
+            <!-- Trigger Words / Trained Words Card -->
+            <div
+              v-if="activeVersion?.trainedWords?.length"
+              class="border-border/70 bg-card/70 flex flex-col gap-2.5 rounded-xl border p-4 shadow-xs"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-xs font-semibold">
+                  <Sparkles class="text-primary h-3.5 w-3.5" />
+                  <span>Trigger Words</span>
+                </div>
                 <button
                   type="button"
-                  class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs"
-                  @click="copyTrainedWords(detailModel)"
+                  class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium"
+                  @click="copyTrainedWords(activeModel)"
                 >
                   <Check
-                    v-if="copiedTrigger === detailModel.id"
+                    v-if="copiedTrigger === activeModel.id"
                     class="h-3 w-3 text-emerald-500"
                   />
                   <Copy v-else class="h-3 w-3" />
-                  <span>
-                    {{
-                      copiedTrigger === detailModel.id ? 'Copied' : 'Copy all'
-                    }}
-                  </span>
+                  <span>{{
+                    copiedTrigger === activeModel.id ? 'Copied!' : 'Copy All'
+                  }}</span>
                 </button>
               </div>
-              <div
-                class="bg-muted/40 border-border/50 flex flex-wrap gap-1.5 rounded-lg border p-2.5"
-              >
+
+              <div class="flex flex-wrap gap-1.5">
                 <span
-                  v-for="(word, wIdx) in selectedVersion(detailModel)
-                    ?.trainedWords"
+                  v-for="(word, wIdx) in activeVersion.trainedWords"
                   :key="wIdx"
-                  class="bg-background border-border/70 rounded border px-2 py-0.5 font-mono text-xs select-text"
+                  class="bg-muted/70 border-border/70 rounded-md border px-2.5 py-1 font-mono text-xs select-text"
                 >
                   {{ word }}
                 </span>
               </div>
             </div>
 
-            <!-- Actions Row -->
-            <div class="flex flex-col gap-2 pt-1">
-              <Button
-                class="w-full text-xs font-medium"
-                size="sm"
-                :variant="
-                  downloaded[selectedVersion(detailModel)?.id || 0]
-                    ? 'secondary'
-                    : 'default'
-                "
-                :disabled="
-                  !primaryFile(selectedVersion(detailModel)) ||
-                  !!progress[selectedVersion(detailModel)?.id || 0]
-                "
-                @click="downloadModel(detailModel)"
+            <!-- Model Tags -->
+            <div
+              v-if="activeModel.tags?.length"
+              class="flex flex-wrap items-center gap-1.5"
+            >
+              <span
+                class="text-muted-foreground flex items-center gap-1 text-xs"
               >
-                <template
-                  v-if="progress[selectedVersion(detailModel)?.id || 0]"
-                >
-                  <Loader2 class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  <span>
-                    Downloading
-                    {{
-                      downloadPercent(selectedVersion(detailModel)?.id || 0) !==
-                      null
-                        ? `(${downloadPercent(selectedVersion(detailModel)?.id || 0)}%)`
-                        : '...'
-                    }}
-                  </span>
-                </template>
-                <template
-                  v-else-if="downloaded[selectedVersion(detailModel)?.id || 0]"
-                >
-                  <CheckCircle2 class="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
-                  <span>Model Installed</span>
-                </template>
-                <template v-else>
-                  <Download class="mr-1.5 h-3.5 w-3.5" />
-                  <span>Download Model to ComfyUI</span>
-                </template>
-              </Button>
-
-              <div class="flex items-center gap-2">
-                <Button
-                  v-if="downloaded[selectedVersion(detailModel)?.id || 0]"
-                  variant="outline"
-                  size="sm"
-                  class="flex-1 text-xs"
-                  @click="
-                    invoke('show_in_folder', {
-                      path: downloaded[selectedVersion(detailModel)?.id || 0]
-                        .modelPath
-                    })
-                  "
-                >
-                  <FolderOpen class="mr-1.5 h-3.5 w-3.5" />
-                  Show in Folder
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  class="flex-1 text-xs"
-                  @click="
-                    openUrl(`https://civitai.com/models/${detailModel.id}`)
-                  "
-                >
-                  <ExternalLink class="mr-1.5 h-3.5 w-3.5" />
-                  View on Civitai
-                </Button>
-              </div>
+                <Tag class="h-3 w-3" />
+                Tags:
+              </span>
+              <span
+                v-for="tag in activeModel.tags.slice(0, 10)"
+                :key="tag"
+                class="bg-muted/60 text-muted-foreground rounded px-2 py-0.5 text-xs"
+              >
+                {{ tag }}
+              </span>
             </div>
 
-            <!-- Model Description -->
-            <div class="flex flex-col gap-1.5 pt-2">
-              <label class="text-muted-foreground text-xs font-medium">
+            <!-- Description Card -->
+            <div
+              class="border-border/70 bg-card/70 flex flex-col gap-2 rounded-xl border p-4 shadow-xs"
+            >
+              <label class="text-foreground text-xs font-semibold">
                 About this Model
               </label>
               <ScrollArea
-                class="border-border/50 bg-muted/20 h-44 rounded-lg border p-3 text-xs"
+                class="border-border/40 bg-muted/20 h-60 rounded-lg border p-3 text-xs"
               >
                 <p
                   class="text-muted-foreground leading-relaxed whitespace-pre-line select-text"
                 >
-                  {{ formatDescription(detailModel.description) }}
+                  {{ formatDescription(activeModel.description) }}
                 </p>
               </ScrollArea>
             </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </template>
   </div>
 </template>
