@@ -10,7 +10,6 @@ import {
 } from 'vue';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   ArrowLeft,
@@ -25,6 +24,8 @@ import {
   HardDriveDownload,
   ImageOff,
   Loader2,
+  Pause,
+  Play,
   RefreshCw,
   Search,
   Sparkles,
@@ -52,14 +53,14 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import {
-  downloadCivitaiModel,
   fetchCivitaiBaseModels,
   fetchCivitaiModels,
-  type CivitaiDownloadResult,
   type CivitaiModel,
   type CivitaiVersion
 } from '../services/civitai';
+import type { DownloadRecord } from '../services/downloadManager';
 import { loadAppData } from '../services/appStorage';
+import { useDownloadStore } from '../stores/downloadStore';
 import { useLauncherStore } from '../stores/launcherStore';
 
 defineOptions({ name: 'CivitaiBrowserView' });
@@ -83,6 +84,7 @@ const CARD_FOOTER_HEIGHT = 53;
 const OVERSCAN_ROWS = 3;
 
 const launcherStore = useLauncherStore();
+const downloadStore = useDownloadStore();
 const apiKey = ref('');
 const query = ref('');
 const modelType = ref('all');
@@ -94,17 +96,13 @@ const models = ref<CivitaiModel[]>([]);
 const nextCursor = ref<string>();
 const selectedVersions = ref<Record<number, string>>({});
 const activeImageIndices = ref<Record<number, number>>({});
-const progress = ref<Record<number, { downloaded: number; total?: number }>>(
-  {}
-);
-const downloaded = ref<Record<number, CivitaiDownloadResult>>({});
+const queueingVersions = ref(new Set<number>());
 const loading = ref(false);
 const loadingMore = ref(false);
 const errorMessage = ref('');
 const scrollViewport = ref<HTMLElement | null>(null);
 const gridWidth = ref(1200);
 const isViewActive = ref(true);
-let unlistenProgress: (() => void) | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
 
@@ -120,6 +118,20 @@ const copiedMetaKey = ref<string | null>(null);
 let copyMetaTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hasModels = computed(() => models.value.length > 0);
+const progress = computed<Record<number, DownloadRecord>>(() =>
+  Object.fromEntries(
+    downloadStore.items
+      .filter((item) => ['active', 'waiting', 'paused'].includes(item.status))
+      .map((item) => [item.versionId, item])
+  )
+);
+const downloaded = computed<Record<number, DownloadRecord>>(() =>
+  Object.fromEntries(
+    downloadStore.items
+      .filter((item) => item.status === 'complete')
+      .map((item) => [item.versionId, item])
+  )
+);
 const columns = computed(() => {
   if (gridWidth.value < 600) return 1;
   if (gridWidth.value < 760) return 2;
@@ -195,9 +207,46 @@ function previewUrl(url: string, width = 600) {
 
 function downloadPercent(versionId: number) {
   const current = progress.value[versionId];
-  return current?.total
-    ? Math.min(100, Math.round((current.downloaded / current.total) * 100))
+  return current?.totalLength
+    ? Math.min(
+        100,
+        Math.round((current.completedLength / current.totalLength) * 100)
+      )
     : null;
+}
+
+function isDownloadBusy(versionId: number) {
+  return !!progress.value[versionId] || queueingVersions.value.has(versionId);
+}
+
+function downloadStatusLabel(versionId: number) {
+  const status = progress.value[versionId]?.status;
+  if (status === 'paused') return 'Download Paused';
+  if (status === 'waiting') return 'Download Queued';
+  return 'Downloading Model';
+}
+
+async function toggleDownload(versionId: number) {
+  const item = progress.value[versionId];
+  if (!item) return;
+  errorMessage.value = '';
+  try {
+    if (item.status === 'paused') await downloadStore.resume(item.gid);
+    else await downloadStore.pause(item.gid);
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function cancelDownload(versionId: number) {
+  const item = progress.value[versionId];
+  if (!item) return;
+  errorMessage.value = '';
+  try {
+    await downloadStore.cancel(item.gid);
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  }
 }
 
 function getActiveImageIndex(modelId: number): number {
@@ -349,11 +398,11 @@ async function loadModels(append = false) {
 
 async function downloadModel(model: CivitaiModel) {
   const version = selectedVersion(model);
-  if (!version || progress.value[version.id]) return;
+  if (!version || isDownloadBusy(version.id)) return;
   errorMessage.value = '';
-  progress.value[version.id] = { downloaded: 0 };
+  queueingVersions.value.add(version.id);
   try {
-    downloaded.value[version.id] = await downloadCivitaiModel({
+    await downloadStore.enqueueCivitai({
       versionId: version.id,
       workingDir: launcherStore.config.workingDir,
       apiKey: apiKey.value
@@ -361,7 +410,7 @@ async function downloadModel(model: CivitaiModel) {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   } finally {
-    delete progress.value[version.id];
+    queueingVersions.value.delete(version.id);
   }
 }
 
@@ -402,13 +451,6 @@ onMounted(async () => {
   } catch (error) {
     console.error(error);
   }
-  unlistenProgress = await listen<{
-    versionId: number;
-    downloaded: number;
-    total?: number;
-  }>('civitai-download-progress', ({ payload }) => {
-    progress.value[payload.versionId] = payload;
-  });
   await loadModels();
   resizeObserver = new ResizeObserver(([entry]) => {
     if (entry) gridWidth.value = entry.contentRect.width;
@@ -422,7 +464,6 @@ onDeactivated(deactivateView);
 onUnmounted(() => {
   deactivateView();
   window.removeEventListener('keydown', onKeyDown);
-  unlistenProgress?.();
   if (copyTriggerTimeout) clearTimeout(copyTriggerTimeout);
   if (copyMetaTimeout) clearTimeout(copyMetaTimeout);
 });
@@ -1259,9 +1300,9 @@ onUnmounted(() => {
                   class="flex flex-col gap-1.5"
                 >
                   <div class="flex items-center justify-between text-xs">
-                    <span class="text-muted-foreground"
-                      >Downloading model file...</span
-                    >
+                    <span class="text-muted-foreground">
+                      {{ downloadStatusLabel(activeVersion?.id || 0) }}
+                    </span>
                     <span class="font-mono font-medium">
                       {{
                         downloadPercent(activeVersion?.id || 0) !== null
@@ -1274,9 +1315,40 @@ onUnmounted(() => {
                     :model-value="downloadPercent(activeVersion?.id || 0) ?? 0"
                     class="h-2"
                   />
+                  <div class="mt-1 flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="h-8 flex-1 cursor-pointer text-xs"
+                      @click="toggleDownload(activeVersion?.id || 0)"
+                    >
+                      <Play
+                        v-if="
+                          progress[activeVersion?.id || 0]?.status === 'paused'
+                        "
+                        class="mr-1.5 h-3.5 w-3.5"
+                      />
+                      <Pause v-else class="mr-1.5 h-3.5 w-3.5" />
+                      {{
+                        progress[activeVersion?.id || 0]?.status === 'paused'
+                          ? 'Resume'
+                          : 'Pause'
+                      }}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      class="h-8 flex-1 cursor-pointer text-xs"
+                      @click="cancelDownload(activeVersion?.id || 0)"
+                    >
+                      <X class="mr-1.5 h-3.5 w-3.5" />
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
 
                 <Button
+                  v-if="!progress[activeVersion?.id || 0]"
                   class="h-10 w-full cursor-pointer text-xs font-semibold shadow-sm"
                   size="default"
                   :variant="
@@ -1284,20 +1356,13 @@ onUnmounted(() => {
                   "
                   :disabled="
                     !primaryFile(activeVersion) ||
-                    !!progress[activeVersion?.id || 0]
+                    isDownloadBusy(activeVersion?.id || 0)
                   "
                   @click="downloadModel(activeModel)"
                 >
-                  <template v-if="progress[activeVersion?.id || 0]">
+                  <template v-if="queueingVersions.has(activeVersion?.id || 0)">
                     <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-                    <span>
-                      Downloading Model
-                      {{
-                        downloadPercent(activeVersion?.id || 0) !== null
-                          ? `(${downloadPercent(activeVersion?.id || 0)}%)`
-                          : ''
-                      }}
-                    </span>
+                    <span>Preparing aria2...</span>
                   </template>
                   <template v-else-if="downloaded[activeVersion?.id || 0]">
                     <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />

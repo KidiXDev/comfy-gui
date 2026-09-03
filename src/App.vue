@@ -17,11 +17,13 @@ import {
 } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useComfyStore } from './stores/comfyStore';
+import { useDownloadStore } from './stores/downloadStore';
 import { useLauncherStore } from './stores/launcherStore';
 import { usePromptSuggestionStore } from './stores/promptSuggestionStore';
 import { useWorkflowStore } from './stores/workflowStore';
 
 const launcherStore = useLauncherStore();
+const downloadStore = useDownloadStore();
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const promptSuggestionStore = usePromptSuggestionStore();
@@ -67,12 +69,16 @@ onMounted(async () => {
   }
 
   await launcherStore.initTauriListeners();
+  void downloadStore.init();
   comfyStore.init();
   void workflowStore.init();
   void promptSuggestionStore.init();
 });
 
-onUnmounted(() => unlistenClose?.());
+onUnmounted(() => {
+  unlistenClose?.();
+  downloadStore.stop();
+});
 </script>
 
 <template>

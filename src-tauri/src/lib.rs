@@ -1,4 +1,5 @@
 mod civitai;
+mod download_manager;
 mod image_gallery;
 mod preset_manager;
 mod process_manager;
@@ -241,6 +242,7 @@ fn show_in_folder(path: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let process_manager = ProcessManager::new();
+    let download_manager = download_manager::DownloadManager::default();
     let gallery_files = image_gallery::GalleryFiles::default();
     let protocol_files = gallery_files.clone();
     let window_state_flags = tauri_plugin_window_state::StateFlags::SIZE
@@ -262,6 +264,7 @@ pub fn run() {
                 .build(),
         )
         .manage(process_manager)
+        .manage(download_manager)
         .manage(gallery_files)
         .register_asynchronous_uri_scheme_protocol(
             "comfygui-image",
@@ -317,6 +320,10 @@ pub fn run() {
             civitai::models,
             civitai::enums,
             civitai::download,
+            download_manager::list,
+            download_manager::pause,
+            download_manager::resume,
+            download_manager::cancel,
             image_gallery::list_output_images,
             image_gallery::prepare_output_gallery,
             image_gallery::clear_gallery_cache,

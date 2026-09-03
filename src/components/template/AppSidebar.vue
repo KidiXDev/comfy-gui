@@ -13,6 +13,7 @@ import {
   Terminal
 } from '@lucide/vue';
 import appLogoUrl from '@/assets/comfygui-logo.png';
+import DownloadManagerPopover from '@/components/template/DownloadManagerPopover.vue';
 import {
   Tooltip,
   TooltipContent,
@@ -144,6 +145,8 @@ function navigate(path: string) {
 
     <!-- Bottom: Secondary Actions -->
     <div class="flex w-full flex-col items-center gap-2.5 px-2">
+      <DownloadManagerPopover />
+
       <!-- Server Status Dot Indicator with Tooltip -->
       <Tooltip>
         <TooltipTrigger as-child>

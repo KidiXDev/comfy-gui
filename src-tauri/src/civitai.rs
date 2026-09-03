@@ -1,29 +1,13 @@
 use reqwest::blocking::{Client, Response};
-use serde::Serialize;
 use serde_json::Value;
-use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, State};
+
+use crate::download_manager::{DownloadManager, DownloadRecord, NewDownload};
 
 const API_BASE: &str = "https://civitai.com/api/v1";
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DownloadProgress {
-    version_id: u64,
-    downloaded: u64,
-    total: Option<u64>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DownloadResult {
-    model_path: String,
-    metadata_path: String,
-    preview_path: Option<String>,
-}
 
 fn client() -> Result<Client, String> {
     Client::builder()
@@ -143,9 +127,43 @@ fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
     }
 }
 
-fn model_folder(model_type: &str) -> Result<&'static str, String> {
+fn is_diffusion_model(base_model: &str, file_type: &str) -> bool {
+    let base = base_model.to_ascii_lowercase();
+    let file = file_type.to_ascii_lowercase();
+    file.contains("diffusion")
+        || file.contains("unet")
+        || [
+            "anima",
+            "auraflow",
+            "chroma",
+            "cogvideox",
+            "flux",
+            "hidream",
+            "hunyuan",
+            "ltxv",
+            "lumina",
+            "mochi",
+            "pixart",
+            "qwen",
+            "svd",
+            "wan",
+            "zimage",
+        ]
+        .iter()
+        .any(|prefix| base.starts_with(prefix))
+}
+
+fn model_folder(
+    model_type: &str,
+    base_model: &str,
+    file_type: &str,
+) -> Result<&'static str, String> {
     match model_type.to_ascii_lowercase().as_str() {
+        "checkpoint" if is_diffusion_model(base_model, file_type) => Ok("diffusion_models"),
         "checkpoint" => Ok("checkpoints"),
+        "unet" => Ok("diffusion_models"),
+        "textencoder" | "clip" => Ok("text_encoders"),
+        "clipvision" => Ok("clip_vision"),
         "lora" | "locon" | "dora" => Ok("loras"),
         "vae" => Ok("vae"),
         "textualinversion" => Ok("embeddings"),
@@ -176,54 +194,6 @@ fn safe_filename(name: &str) -> String {
     }
 }
 
-fn stream_to_file(
-    mut response: Response,
-    path: &Path,
-    version_id: u64,
-    app_handle: &AppHandle,
-) -> Result<(), String> {
-    if !response.status().is_success() {
-        return Err(format!("Download failed with {}", response.status()));
-    }
-    let total = response.content_length();
-    let part_path = path.with_extension(format!(
-        "{}.part",
-        path.extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-    ));
-    let result = (|| {
-        let mut file = File::create(&part_path).map_err(|error| error.to_string())?;
-        let mut buffer = [0_u8; 128 * 1024];
-        let mut downloaded = 0_u64;
-        loop {
-            let count = response
-                .read(&mut buffer)
-                .map_err(|error| error.to_string())?;
-            if count == 0 {
-                break;
-            }
-            file.write_all(&buffer[..count])
-                .map_err(|error| error.to_string())?;
-            downloaded += count as u64;
-            let _ = app_handle.emit(
-                "civitai-download-progress",
-                DownloadProgress {
-                    version_id,
-                    downloaded,
-                    total,
-                },
-            );
-        }
-        file.sync_all().map_err(|error| error.to_string())?;
-        fs::rename(&part_path, path).map_err(|error| error.to_string())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(part_path);
-    }
-    result
-}
-
 fn preview_extension(url: &reqwest::Url) -> &'static str {
     match Path::new(url.path())
         .extension()
@@ -245,10 +215,11 @@ fn is_civitai_host(url: &reqwest::Url) -> bool {
 
 fn download_blocking(
     app_handle: AppHandle,
+    manager: DownloadManager,
     version_id: u64,
     working_dir: String,
     api_key: String,
-) -> Result<DownloadResult, String> {
+) -> Result<DownloadRecord, String> {
     let client = client()?;
     let metadata_url = format!("{API_BASE}/model-versions/{version_id}");
     let metadata = response_json(
@@ -273,6 +244,12 @@ fn download_blocking(
     let model_type = metadata["model"]["type"]
         .as_str()
         .ok_or("Civitai did not return the model type.")?;
+    let model_name = metadata["model"]["name"]
+        .as_str()
+        .unwrap_or("Civitai model");
+    let version_name = metadata["name"].as_str().unwrap_or_default();
+    let base_model = metadata["baseModel"].as_str().unwrap_or("Unknown");
+    let file_type = primary_file["type"].as_str().unwrap_or("Model");
     let filename = safe_filename(primary_file["name"].as_str().unwrap_or("model.safetensors"));
     let download_url = primary_file["downloadUrl"]
         .as_str()
@@ -285,9 +262,9 @@ fn download_blocking(
 
     let directory = comfy_dir(&working_dir)?
         .join("models")
-        .join(model_folder(&model_type)?);
+        .join(model_folder(model_type, base_model, file_type)?);
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let model_path = directory.join(filename);
+    let model_path = directory.join(&filename);
     if model_path.exists() {
         return Err(format!("Model already exists: {}", model_path.display()));
     }
@@ -314,20 +291,20 @@ fn download_blocking(
         })
         .transpose()?;
 
-    let response = authorized(client.get(download_url), &api_key)
-        .send()
-        .map_err(|error| error.to_string())?;
-    stream_to_file(response, &model_path, version_id, &app_handle)?;
-
     let stem = model_path
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("model");
     let metadata_path = directory.join(format!("{stem}.civitai.info"));
     let metadata_bytes = serde_json::to_vec_pretty(&metadata).map_err(|error| error.to_string())?;
-    fs::write(&metadata_path, metadata_bytes).map_err(|error| error.to_string())?;
+    fs::write(&metadata_path, &metadata_bytes).map_err(|error| error.to_string())?;
+    fs::write(
+        directory.join(format!("{stem}.cm-info.json")),
+        metadata_bytes,
+    )
+    .map_err(|error| error.to_string())?;
 
-    let preview_path = preview
+    preview
         .map(|(extension, bytes)| {
             let path = directory.join(format!("{stem}.preview.{extension}"));
             fs::write(&path, bytes).map_err(|error| error.to_string())?;
@@ -335,22 +312,41 @@ fn download_blocking(
         })
         .transpose()?;
 
-    Ok(DownloadResult {
-        model_path: model_path.to_string_lossy().to_string(),
-        metadata_path: metadata_path.to_string_lossy().to_string(),
-        preview_path,
-    })
+    manager.add(
+        &app_handle,
+        NewDownload {
+            version_id,
+            name: if version_name.is_empty() {
+                model_name.to_string()
+            } else {
+                format!("{model_name} — {version_name}")
+            },
+            file_name: filename,
+            model_type: model_type.to_string(),
+            base_model: base_model.to_string(),
+            model_path,
+            preview_url: metadata["images"]
+                .as_array()
+                .and_then(|images| images.first())
+                .and_then(|image| image["url"].as_str())
+                .map(str::to_string),
+            url: download_url.to_string(),
+            api_key,
+        },
+    )
 }
 
 #[tauri::command]
 pub async fn download(
     app_handle: AppHandle,
+    manager: State<'_, DownloadManager>,
     version_id: u64,
     working_dir: String,
     api_key: String,
-) -> Result<DownloadResult, String> {
+) -> Result<DownloadRecord, String> {
+    let manager = (*manager).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        download_blocking(app_handle, version_id, working_dir, api_key)
+        download_blocking(app_handle, manager, version_id, working_dir, api_key)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -362,8 +358,28 @@ mod tests {
 
     #[test]
     fn maps_supported_types_and_sanitizes_filenames() {
-        assert_eq!(model_folder("LORA"), Ok("loras"));
-        assert_eq!(model_folder("Checkpoint"), Ok("checkpoints"));
+        assert_eq!(model_folder("LORA", "Flux.1 D", "Model"), Ok("loras"));
+        assert_eq!(model_folder("VAE", "SDXL 1.0", "Model"), Ok("vae"));
+        assert_eq!(
+            model_folder("TextualInversion", "SDXL 1.0", "Model"),
+            Ok("embeddings")
+        );
+        assert_eq!(
+            model_folder("UNet", "Unknown", "Model"),
+            Ok("diffusion_models")
+        );
+        assert_eq!(
+            model_folder("Checkpoint", "SDXL 1.0", "Model"),
+            Ok("checkpoints")
+        );
+        assert_eq!(
+            model_folder("Checkpoint", "Flux.1 D", "Model"),
+            Ok("diffusion_models")
+        );
+        assert_eq!(
+            model_folder("Checkpoint", "Anima", "Model"),
+            Ok("diffusion_models")
+        );
         assert_eq!(
             safe_filename("../bad:model?.safetensors"),
             "bad_model_.safetensors"

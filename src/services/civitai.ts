@@ -47,12 +47,6 @@ export interface CivitaiModelsResponse {
   metadata: { nextCursor?: string };
 }
 
-export interface CivitaiDownloadResult {
-  modelPath: string;
-  metadataPath: string;
-  previewPath?: string;
-}
-
 export function fetchCivitaiModels(options: {
   query: string;
   modelType: string;
@@ -68,12 +62,4 @@ export function fetchCivitaiModels(options: {
 export async function fetchCivitaiBaseModels() {
   const enums = await invoke<{ BaseModel: string[] }>('enums');
   return enums.BaseModel;
-}
-
-export function downloadCivitaiModel(options: {
-  versionId: number;
-  workingDir: string;
-  apiKey: string;
-}) {
-  return invoke<CivitaiDownloadResult>('download', options);
 }
