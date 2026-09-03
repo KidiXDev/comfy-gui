@@ -12,12 +12,29 @@ export interface CivitaiFile {
 }
 
 export interface CivitaiImage {
+  id?: number;
   url: string;
   width: number;
   height: number;
+  type?: 'image' | 'video' | string;
   nsfw?: boolean | string;
   nsfwLevel?: number;
   meta?: Record<string, unknown> | null;
+}
+
+export function isVideoMedia(
+  media?: CivitaiImage | null | { url?: string; type?: string }
+): boolean {
+  if (!media?.url) return false;
+  if (media.type === 'video') return true;
+  const cleanUrl = media.url.split('?')[0].toLowerCase();
+  return (
+    cleanUrl.endsWith('.mp4') ||
+    cleanUrl.endsWith('.webm') ||
+    cleanUrl.endsWith('.ogg') ||
+    cleanUrl.endsWith('.mov') ||
+    cleanUrl.endsWith('.mkv')
+  );
 }
 
 export interface CivitaiVersion {

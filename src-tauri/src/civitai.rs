@@ -58,7 +58,7 @@ fn models_blocking(
     {
         let mut params = url.query_pairs_mut();
         params.append_pair("limit", "24");
-        params.append_pair("nsfw", "false");
+        params.append_pair("nsfw", "true");
         params.append_pair("primaryFileOnly", "true");
         params.append_pair("sort", &sort);
         params.append_pair("period", &period);
@@ -204,6 +204,10 @@ fn preview_extension(url: &reqwest::Url) -> &'static str {
     {
         "png" => "png",
         "webp" => "webp",
+        "mp4" => "mp4",
+        "webm" => "webm",
+        "mkv" => "mkv",
+        "gif" => "gif",
         _ => "jpg",
     }
 }
@@ -211,6 +215,22 @@ fn preview_extension(url: &reqwest::Url) -> &'static str {
 fn is_civitai_host(url: &reqwest::Url) -> bool {
     url.domain()
         .is_some_and(|host| host == "civitai.com" || host.ends_with(".civitai.com"))
+}
+
+fn is_image_item(item: &serde_json::Value) -> bool {
+    let is_video_type = item["type"].as_str() == Some("video");
+    if is_video_type {
+        return false;
+    }
+    let Some(url) = item["url"].as_str() else {
+        return false;
+    };
+    let clean_url = url.split('?').next().unwrap_or(url).to_ascii_lowercase();
+    !clean_url.ends_with(".mp4")
+        && !clean_url.ends_with(".webm")
+        && !clean_url.ends_with(".mov")
+        && !clean_url.ends_with(".mkv")
+        && !clean_url.ends_with(".ogg")
 }
 
 fn download_blocking(
@@ -269,9 +289,11 @@ fn download_blocking(
         return Err(format!("Model already exists: {}", model_path.display()));
     }
 
-    let preview = metadata["images"]
+    let preview_image = metadata["images"]
         .as_array()
-        .and_then(|images| images.first())
+        .and_then(|images| images.iter().find(|image| is_image_item(image)));
+
+    let preview = preview_image
         .and_then(|image| image["url"].as_str())
         .and_then(|url| reqwest::Url::parse(url).ok())
         .filter(|url| url.scheme() == "https" && is_civitai_host(url))
@@ -325,9 +347,7 @@ fn download_blocking(
             model_type: model_type.to_string(),
             base_model: base_model.to_string(),
             model_path,
-            preview_url: metadata["images"]
-                .as_array()
-                .and_then(|images| images.first())
+            preview_url: preview_image
                 .and_then(|image| image["url"].as_str())
                 .map(str::to_string),
             url: download_url.to_string(),
@@ -354,7 +374,9 @@ pub async fn download(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_civitai_host, model_folder, safe_filename};
+    use super::{
+        is_civitai_host, is_image_item, model_folder, preview_extension, safe_filename,
+    };
 
     #[test]
     fn maps_supported_types_and_sanitizes_filenames() {
@@ -390,5 +412,25 @@ mod tests {
         assert!(!is_civitai_host(
             &reqwest::Url::parse("https://example.com/image.jpg").unwrap()
         ));
+        assert_eq!(
+            preview_extension(&reqwest::Url::parse("https://image.civitai.com/video.mp4").unwrap()),
+            "mp4"
+        );
+        assert_eq!(
+            preview_extension(&reqwest::Url::parse("https://image.civitai.com/image.webp").unwrap()),
+            "webp"
+        );
+        assert!(is_image_item(&serde_json::json!({
+            "type": "image",
+            "url": "https://image.civitai.com/preview.jpeg"
+        })));
+        assert!(!is_image_item(&serde_json::json!({
+            "type": "video",
+            "url": "https://image.civitai.com/video.mp4"
+        })));
+        assert!(!is_image_item(&serde_json::json!({
+            "type": "image",
+            "url": "https://image.civitai.com/video.mp4"
+        })));
     }
 }

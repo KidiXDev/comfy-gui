@@ -6,7 +6,8 @@ import {
   onDeactivated,
   onMounted,
   onUnmounted,
-  ref
+  ref,
+  watch
 } from 'vue';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
@@ -31,10 +32,19 @@ import {
   Sparkles,
   Tag,
   ThumbsUp,
+  Video,
   X
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  type CarouselApi
+} from '@/components/ui/carousel';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -55,6 +65,7 @@ import {
 import {
   fetchCivitaiBaseModels,
   fetchCivitaiModels,
+  isVideoMedia,
   type CivitaiModel,
   type CivitaiVersion
 } from '../services/civitai';
@@ -109,6 +120,34 @@ let savedScrollTop = 0;
 // Dedicated Detail View State
 const activeModel = ref<CivitaiModel | null>(null);
 const detailImageIndex = ref(0);
+const detailCarouselApi = ref<CarouselApi>();
+
+function onDetailCarouselInit(api: CarouselApi) {
+  if (!api) return;
+  detailCarouselApi.value = api;
+  api.on('select', () => {
+    detailImageIndex.value = api.selectedScrollSnap();
+  });
+  if (detailImageIndex.value !== api.selectedScrollSnap()) {
+    api.scrollTo(detailImageIndex.value, true);
+  }
+}
+
+function selectDetailImage(index: number) {
+  detailImageIndex.value = index;
+  detailCarouselApi.value?.scrollTo(index);
+}
+
+function onCardCarouselInit(modelId: number, api: CarouselApi) {
+  if (!api) return;
+  api.on('select', () => {
+    activeImageIndices.value[modelId] = api.selectedScrollSnap();
+  });
+  const savedIndex = activeImageIndices.value[modelId];
+  if (savedIndex && savedIndex !== api.selectedScrollSnap()) {
+    api.scrollTo(savedIndex, true);
+  }
+}
 
 // Copy feedback states
 const copiedTrigger = ref<number | null>(null);
@@ -253,25 +292,6 @@ function getActiveImageIndex(modelId: number): number {
   return activeImageIndices.value[modelId] ?? 0;
 }
 
-function prevImage(model: CivitaiModel, event: Event) {
-  event.stopPropagation();
-  const version = selectedVersion(model);
-  const images = version?.images || [];
-  if (images.length <= 1) return;
-  const current = getActiveImageIndex(model.id);
-  activeImageIndices.value[model.id] =
-    (current - 1 + images.length) % images.length;
-}
-
-function nextImage(model: CivitaiModel, event: Event) {
-  event.stopPropagation();
-  const version = selectedVersion(model);
-  const images = version?.images || [];
-  if (images.length <= 1) return;
-  const current = getActiveImageIndex(model.id);
-  activeImageIndices.value[model.id] = (current + 1) % images.length;
-}
-
 function currentImage(model: CivitaiModel) {
   const version = selectedVersion(model);
   const images = version?.images || [];
@@ -285,7 +305,11 @@ function isModelDownloaded(model: CivitaiModel): boolean {
 
 function openDetail(model: CivitaiModel) {
   activeModel.value = model;
-  detailImageIndex.value = activeImageIndices.value[model.id] ?? 0;
+  const initialIndex = activeImageIndices.value[model.id] ?? 0;
+  detailImageIndex.value = initialIndex;
+  nextTick(() => {
+    detailCarouselApi.value?.scrollTo(initialIndex, true);
+  });
 }
 
 async function closeDetail() {
@@ -298,6 +322,9 @@ function onDetailVersionChange(versionId: string) {
   selectedVersions.value[activeModel.value.id] = versionId;
   activeImageIndices.value[activeModel.value.id] = 0;
   detailImageIndex.value = 0;
+  nextTick(() => {
+    detailCarouselApi.value?.scrollTo(0, true);
+  });
 }
 
 async function copyTrainedWords(model: CivitaiModel, event?: Event) {
@@ -379,9 +406,13 @@ async function loadModels(append = false) {
       cursor: append ? nextCursor.value : undefined,
       apiKey: apiKey.value
     });
-    models.value = append
-      ? [...models.value, ...response.items]
-      : response.items;
+    if (append) {
+      const existingIds = new Set(models.value.map((m) => m.id));
+      const newItems = response.items.filter((m) => !existingIds.has(m.id));
+      models.value = [...models.value, ...newItems];
+    } else {
+      models.value = response.items;
+    }
     nextCursor.value = response.metadata.nextCursor;
     for (const model of response.items) {
       if (model.modelVersions[0] && !selectedVersions.value[model.id]) {
@@ -420,9 +451,44 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
-function rememberScroll(event: Event) {
-  savedScrollTop = (event.target as HTMLElement).scrollTop;
+// Auto-fetch when user scrolls near the bottom (Infinite Scroll)
+function handleScroll(event: Event) {
+  const target = event.target as HTMLElement;
+  if (!target) return;
+  savedScrollTop = target.scrollTop;
+  if (
+    loading.value ||
+    loadingMore.value ||
+    !nextCursor.value ||
+    models.value.length === 0
+  )
+    return;
+  const bottomThreshold = 600;
+  if (
+    target.scrollHeight - target.scrollTop - target.clientHeight <
+    bottomThreshold
+  ) {
+    void loadModels(true);
+  }
 }
+
+// Watch virtual rows to trigger pre-fetch when approaching list end
+watch(virtualRows, (rows) => {
+  if (
+    !isViewActive.value ||
+    activeModel.value ||
+    rows.length === 0 ||
+    loading.value ||
+    loadingMore.value ||
+    !nextCursor.value ||
+    models.value.length === 0
+  )
+    return;
+  const lastRow = rows.at(-1);
+  if (lastRow && lastRow.index >= totalRows.value - 2) {
+    void loadModels(true);
+  }
+});
 
 async function restoreBrowseScroll() {
   isViewActive.value = true;
@@ -435,6 +501,7 @@ async function restoreBrowseScroll() {
   if (scrollViewport.value) resizeObserver?.observe(scrollViewport.value);
   rowVirtualizer.value.measure();
   rowVirtualizer.value.scrollToOffset(savedScrollTop);
+  scrollViewport.value?.dispatchEvent(new Event('scroll'));
 }
 
 function deactivateView() {
@@ -675,7 +742,7 @@ onUnmounted(() => {
       <div
         ref="scrollViewport"
         class="min-h-0 flex-1 overflow-y-auto p-5"
-        @scroll.passive="rememberScroll"
+        @scroll.passive="handleScroll"
       >
         <!-- Error Message Banner -->
         <div
@@ -757,22 +824,110 @@ onUnmounted(() => {
                 (virtualRow.index + 1) * columns
               )"
               :key="model.id"
-              class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+              class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:shadow-md"
               @click="openDetail(model)"
             >
               <!-- Card Thumbnail Area (3:4 Portrait Ratio) -->
               <div
                 class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
               >
-                <!-- Preview Image with Smooth Hover Scale -->
-                <img
-                  v-if="currentImage(model)?.url"
-                  :src="previewUrl(currentImage(model)?.url || '', 450)"
-                  :alt="`${model.name} preview`"
-                  class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-                  loading="lazy"
-                  draggable="false"
-                />
+                <!-- Multi-image Carousel with Smooth Sliding Animation -->
+                <Carousel
+                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
+                  v-slot="{ scrollPrev, scrollNext, carouselApi }"
+                  class="h-full w-full select-none"
+                  :opts="{ loop: true, watchDrag: false }"
+                  @init-api="(api) => onCardCarouselInit(model.id, api)"
+                >
+                  <CarouselContent class="ml-0 h-full">
+                    <CarouselItem
+                      v-for="(img, imgIdx) in selectedVersion(model)?.images ||
+                      []"
+                      :key="imgIdx"
+                      class="relative h-full pl-0"
+                    >
+                      <video
+                        v-if="isVideoMedia(img)"
+                        :src="previewUrl(img.url, 450)"
+                        autoplay
+                        loop
+                        muted
+                        playsinline
+                        class="pointer-events-none h-full w-full object-cover"
+                      />
+                      <img
+                        v-else
+                        :src="previewUrl(img.url, 450)"
+                        :alt="`${model.name} preview ${imgIdx + 1}`"
+                        class="h-full w-full object-cover"
+                        loading="lazy"
+                        draggable="false"
+                      />
+                    </CarouselItem>
+                  </CarouselContent>
+
+                  <!-- Multi-Image Hover Carousel Controls -->
+                  <button
+                    type="button"
+                    aria-label="Previous preview image"
+                    class="absolute top-1/2 left-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                    @click.stop="scrollPrev"
+                  >
+                    <ChevronLeft class="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next preview image"
+                    class="absolute top-1/2 right-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                    @click.stop="scrollNext"
+                  >
+                    <ChevronRight class="h-3.5 w-3.5" />
+                  </button>
+
+                  <!-- Carousel Indicators (Dots) -->
+                  <div
+                    class="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-1"
+                  >
+                    <button
+                      v-for="(_, imgIdx) in (
+                        selectedVersion(model)?.images || []
+                      ).slice(0, 5)"
+                      :key="imgIdx"
+                      type="button"
+                      :aria-label="`Go to preview ${imgIdx + 1}`"
+                      class="h-1 cursor-pointer rounded-full transition-all"
+                      :class="
+                        imgIdx === getActiveImageIndex(model.id)
+                          ? 'w-3 bg-white shadow-xs'
+                          : 'w-1 bg-white/50 hover:bg-white/80'
+                      "
+                      @click.stop="carouselApi?.scrollTo(imgIdx)"
+                    />
+                  </div>
+                </Carousel>
+
+                <!-- Single Media Preview (When only 1 image exists) -->
+                <template v-else-if="currentImage(model)?.url">
+                  <video
+                    v-if="isVideoMedia(currentImage(model))"
+                    :src="previewUrl(currentImage(model)!.url, 450)"
+                    autoplay
+                    loop
+                    muted
+                    playsinline
+                    class="pointer-events-none h-full w-full object-cover"
+                  />
+                  <img
+                    v-else
+                    :src="previewUrl(currentImage(model)?.url || '', 450)"
+                    :alt="`${model.name} preview`"
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                    draggable="false"
+                  />
+                </template>
+
+                <!-- Fallback empty -->
                 <div
                   v-else
                   class="text-muted-foreground flex h-full items-center justify-center"
@@ -782,20 +937,30 @@ onUnmounted(() => {
 
                 <!-- Top Gradient Overlay -->
                 <div
-                  class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
+                  class="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
                 />
 
                 <!-- Top Badges Row -->
                 <div
-                  class="pointer-events-none absolute inset-x-2 top-2 flex items-start justify-between gap-1"
+                  class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-1"
                 >
-                  <!-- Model Type Badge -->
-                  <Badge
-                    variant="outline"
-                    class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
-                  >
-                    {{ model.type }}
-                  </Badge>
+                  <!-- Model Type Badge & Video Indicator -->
+                  <div class="flex items-center gap-1">
+                    <Badge
+                      variant="outline"
+                      class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
+                    >
+                      {{ model.type }}
+                    </Badge>
+                    <Badge
+                      v-if="isVideoMedia(currentImage(model))"
+                      variant="outline"
+                      class="flex items-center gap-1 border-sky-400/30 bg-sky-950/70 px-1.5 py-0.5 text-xs font-medium text-sky-300 shadow-sm backdrop-blur-md"
+                    >
+                      <Video class="h-3 w-3" />
+                      <span>Video</span>
+                    </Badge>
+                  </div>
 
                   <!-- Installed or Base Model Badge -->
                   <div class="flex items-center gap-1">
@@ -816,49 +981,9 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Multi-Image Hover Carousel Controls -->
-                <template
-                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
-                >
-                  <button
-                    type="button"
-                    aria-label="Previous preview image"
-                    class="absolute top-1/2 left-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                    @click="prevImage(model, $event)"
-                  >
-                    <ChevronLeft class="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Next preview image"
-                    class="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                    @click="nextImage(model, $event)"
-                  >
-                    <ChevronRight class="h-3.5 w-3.5" />
-                  </button>
-
-                  <!-- Carousel Indicators (Dots) -->
-                  <div
-                    class="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center gap-1"
-                  >
-                    <span
-                      v-for="(_, imgIdx) in (
-                        selectedVersion(model)?.images || []
-                      ).slice(0, 5)"
-                      :key="imgIdx"
-                      class="h-1 rounded-full transition-all"
-                      :class="
-                        imgIdx === getActiveImageIndex(model.id)
-                          ? 'w-3 bg-white shadow-xs'
-                          : 'w-1 bg-white/50'
-                      "
-                    />
-                  </div>
-                </template>
-
                 <!-- Bottom Gradient Overlay with Stats -->
                 <div
-                  class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
+                  class="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
                 >
                   <div class="flex items-center gap-2 text-xs font-medium">
                     <span class="flex items-center gap-1 drop-shadow-xs">
@@ -899,24 +1024,19 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Load More Button -->
+        <!-- Infinite Scroll Loading Spinner / Indicator -->
         <div
-          v-if="nextCursor && !loading"
-          class="flex justify-center pt-8 pb-4"
+          v-if="loadingMore"
+          class="text-muted-foreground flex items-center justify-center gap-2 py-8 text-xs"
         >
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-8 px-6 text-xs"
-            :disabled="loadingMore"
-            @click="loadModels(true)"
-          >
-            <Loader2
-              v-if="loadingMore"
-              class="mr-1.5 h-3.5 w-3.5 animate-spin"
-            />
-            <span>Load More Models</span>
-          </Button>
+          <Loader2 class="text-primary h-4 w-4 animate-spin" />
+          <span>Loading more models...</span>
+        </div>
+        <div
+          v-else-if="hasModels && !nextCursor && !loading"
+          class="text-muted-foreground py-8 text-center text-xs"
+        >
+          All models loaded
         </div>
       </div>
     </template>
@@ -971,56 +1091,70 @@ onUnmounted(() => {
         <div class="mx-auto grid w-full grid-cols-1 gap-8 lg:grid-cols-12">
           <!-- Left Column: Visual Showcase & Generation Parameters -->
           <div class="flex flex-col gap-4 lg:col-span-7">
-            <!-- Large Image Preview Stage -->
+            <!-- Large Image / Video Preview Stage with Carousel -->
             <div
-              class="border-border/60 relative flex aspect-3/4 max-h-145 w-full items-center justify-center overflow-hidden rounded-2xl border bg-black/40 shadow-md"
+              class="border-border/60 relative aspect-3/4 max-h-145 w-full overflow-hidden rounded-2xl border bg-black/40 shadow-md"
             >
-              <img
-                v-if="currentDetailImage?.url"
-                :src="previewUrl(currentDetailImage.url, 1024)"
-                :alt="`${activeModel.name} preview`"
-                class="h-full w-full object-contain"
-              />
-              <div
-                v-else
-                class="text-muted-foreground flex h-full items-center justify-center"
+              <Carousel
+                class="h-full w-full select-none"
+                :opts="{ loop: detailImages.length > 1 }"
+                @init-api="onDetailCarouselInit"
               >
-                <ImageOff class="h-12 w-12" />
-              </div>
+                <CarouselContent class="ml-0 h-full">
+                  <CarouselItem
+                    v-for="(img, idx) in detailImages"
+                    :key="idx"
+                    class="relative flex h-full items-center justify-center pl-0"
+                  >
+                    <video
+                      v-if="isVideoMedia(img)"
+                      :key="img.url"
+                      :src="previewUrl(img.url, 1024)"
+                      autoplay
+                      loop
+                      muted
+                      controls
+                      playsinline
+                      class="h-full w-full object-contain"
+                    />
+                    <img
+                      v-else
+                      :src="previewUrl(img.url, 1024)"
+                      :alt="`${activeModel.name} preview ${idx + 1}`"
+                      class="h-full w-full object-contain select-none"
+                      draggable="false"
+                    />
+                  </CarouselItem>
 
-              <!-- Carousel Left/Right Buttons -->
-              <template v-if="detailImages.length > 1">
-                <button
-                  type="button"
-                  aria-label="Previous image"
-                  class="absolute top-1/2 left-3 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90"
-                  @click="
-                    detailImageIndex =
-                      (detailImageIndex - 1 + detailImages.length) %
-                      detailImages.length
-                  "
-                >
-                  <ChevronLeft class="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Next image"
-                  class="absolute top-1/2 right-3 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90"
-                  @click="
-                    detailImageIndex =
-                      (detailImageIndex + 1) % detailImages.length
-                  "
-                >
-                  <ChevronRight class="h-4 w-4" />
-                </button>
+                  <div
+                    v-if="detailImages.length === 0"
+                    class="text-muted-foreground flex h-full w-full items-center justify-center"
+                  >
+                    <ImageOff class="h-12 w-12" />
+                  </div>
+                </CarouselContent>
 
-                <!-- Image Position Counter -->
-                <div
-                  class="absolute right-3 bottom-3 rounded-full bg-black/70 px-2.5 py-0.5 font-mono text-xs text-white backdrop-blur-xs"
-                >
-                  {{ detailImageIndex + 1 }} / {{ detailImages.length }}
-                </div>
-              </template>
+                <!-- Carousel Controls inside Stage -->
+                <template v-if="detailImages.length > 1">
+                  <CarouselPrevious
+                    class="top-1/2 left-3 -translate-y-1/2 border-white/20 bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90 hover:text-white"
+                  >
+                    <ChevronLeft class="h-4 w-4" />
+                  </CarouselPrevious>
+                  <CarouselNext
+                    class="top-1/2 right-3 -translate-y-1/2 border-white/20 bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90 hover:text-white"
+                  >
+                    <ChevronRight class="h-4 w-4" />
+                  </CarouselNext>
+
+                  <!-- Image Position Counter -->
+                  <div
+                    class="pointer-events-none absolute right-3 bottom-3 rounded-full bg-black/70 px-2.5 py-0.5 font-mono text-xs text-white backdrop-blur-xs"
+                  >
+                    {{ detailImageIndex + 1 }} / {{ detailImages.length }}
+                  </div>
+                </template>
+              </Carousel>
             </div>
 
             <!-- Thumbnail Strip -->
@@ -1038,13 +1172,29 @@ onUnmounted(() => {
                     ? 'border-primary ring-primary/30 shadow-xs ring-2'
                     : 'border-transparent opacity-60 hover:opacity-100'
                 "
-                @click="detailImageIndex = idx"
+                @click="selectDetailImage(idx)"
               >
+                <video
+                  v-if="isVideoMedia(img)"
+                  :src="previewUrl(img.url, 150)"
+                  muted
+                  loop
+                  autoplay
+                  playsinline
+                  class="pointer-events-none h-full w-full object-cover"
+                />
                 <img
+                  v-else
                   :src="previewUrl(img.url, 150)"
                   alt="thumbnail"
                   class="h-full w-full object-cover"
                 />
+                <div
+                  v-if="isVideoMedia(img)"
+                  class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30"
+                >
+                  <Video class="h-3.5 w-3.5 text-white drop-shadow-xs" />
+                </div>
               </button>
             </div>
 

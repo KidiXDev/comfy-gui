@@ -23,6 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatFileSize, formatShortDate } from '@/utils/formatters';
 import { useDownloadStore } from '@/stores/downloadStore';
 import type { DownloadRecord } from '@/services/downloadManager';
+import { isVideoMedia } from '@/services/civitai';
 
 const downloadStore = useDownloadStore();
 const orderedDownloads = computed(() => downloadStore.items);
@@ -103,8 +104,17 @@ function statusLabel(item: DownloadRecord) {
             <div
               class="bg-muted flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md"
             >
+              <video
+                v-if="item.previewUrl && isVideoMedia({ url: item.previewUrl })"
+                :src="item.previewUrl"
+                autoplay
+                loop
+                muted
+                playsinline
+                class="pointer-events-none h-full w-full object-cover"
+              />
               <img
-                v-if="item.previewUrl"
+                v-else-if="item.previewUrl"
                 :src="item.previewUrl"
                 :alt="item.name"
                 class="h-full w-full object-cover"
