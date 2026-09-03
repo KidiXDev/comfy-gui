@@ -62,6 +62,7 @@ fn response_json(response: Response) -> Result<Value, String> {
 fn models_blocking(
     query: String,
     model_type: String,
+    base_model: String,
     sort: String,
     period: String,
     cursor: Option<String>,
@@ -87,6 +88,9 @@ fn models_blocking(
         {
             params.append_pair("types", model_type);
         }
+        if !base_model.trim().is_empty() {
+            params.append_pair("baseModels", base_model.trim());
+        }
         if let Some(cursor) = cursor.filter(|value| !value.is_empty()) {
             params.append_pair("cursor", &cursor);
         }
@@ -102,13 +106,27 @@ fn models_blocking(
 pub async fn models(
     query: String,
     model_type: String,
+    base_model: String,
     sort: String,
     period: String,
     cursor: Option<String>,
     api_key: String,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        models_blocking(query, model_type, sort, period, cursor, api_key)
+        models_blocking(query, model_type, base_model, sort, period, cursor, api_key)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn enums() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let response = client()?
+            .get(format!("{API_BASE}/enums"))
+            .send()
+            .map_err(|error| error.to_string())?;
+        response_json(response)
     })
     .await
     .map_err(|error| error.to_string())?

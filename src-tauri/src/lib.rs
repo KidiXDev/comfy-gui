@@ -315,6 +315,7 @@ pub fn run() {
             install_custom_node,
             show_in_folder,
             civitai::models,
+            civitai::enums,
             civitai::download,
             image_gallery::list_output_images,
             image_gallery::prepare_output_gallery,

@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/tooltip';
 import {
   downloadCivitaiModel,
+  fetchCivitaiBaseModels,
   fetchCivitaiModels,
   type CivitaiDownloadResult,
   type CivitaiModel,
@@ -71,6 +72,8 @@ const launcherStore = useLauncherStore();
 const apiKey = ref('');
 const query = ref('');
 const modelType = ref('all');
+const baseModel = ref('all');
+const baseModels = ref<string[]>([]);
 const sort = ref('Most Downloaded');
 const period = ref('AllTime');
 const models = ref<CivitaiModel[]>([]);
@@ -254,6 +257,7 @@ function clearSearch() {
 function resetFilters() {
   query.value = '';
   modelType.value = 'all';
+  baseModel.value = 'all';
   sort.value = 'Most Downloaded';
   period.value = 'AllTime';
   void loadModels();
@@ -267,6 +271,7 @@ async function loadModels(append = false) {
     const response = await fetchCivitaiModels({
       query: query.value,
       modelType: modelType.value === 'all' ? SUPPORTED_TYPES : modelType.value,
+      baseModel: baseModel.value === 'all' ? '' : baseModel.value,
       sort: sort.value,
       period: period.value,
       cursor: append ? nextCursor.value : undefined,
@@ -317,6 +322,11 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeyDown);
   apiKey.value =
     (await loadAppData<{ apiKey?: string }>('civitai_settings'))?.apiKey ?? '';
+  try {
+    baseModels.value = await fetchCivitaiBaseModels();
+  } catch (error) {
+    console.error(error);
+  }
   unlistenProgress = await listen<{
     versionId: number;
     downloaded: number;
@@ -443,6 +453,27 @@ onUnmounted(() => {
                   <SelectItem value="Upscaler">Upscaler</SelectItem>
                   <SelectItem value="TextualInversion">Embedding</SelectItem>
                   <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="baseModel"
+              @update:model-value="() => loadModels(false)"
+            >
+              <SelectTrigger class="w-42 text-xs">
+                <SelectValue placeholder="Base model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="all">All base models</SelectItem>
+                  <SelectItem
+                    v-for="value in baseModels"
+                    :key="value"
+                    :value="value"
+                  >
+                    {{ value }}
+                  </SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>

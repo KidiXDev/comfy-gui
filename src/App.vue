@@ -92,8 +92,8 @@ onUnmounted(() => unlistenClose?.());
         <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           <RouterView v-slot="{ Component }">
             <KeepAlive
-              include="BooruGalleryView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView"
-              :max="5"
+              include="BooruGalleryView,CivitaiBrowserView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView"
+              :max="6"
             >
               <component :is="Component" />
             </KeepAlive>

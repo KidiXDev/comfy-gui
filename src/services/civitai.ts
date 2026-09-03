@@ -56,12 +56,18 @@ export interface CivitaiDownloadResult {
 export function fetchCivitaiModels(options: {
   query: string;
   modelType: string;
+  baseModel: string;
   sort: string;
   period: string;
   cursor?: string;
   apiKey: string;
 }) {
   return invoke<CivitaiModelsResponse>('models', options);
+}
+
+export async function fetchCivitaiBaseModels() {
+  const enums = await invoke<{ BaseModel: string[] }>('enums');
+  return enums.BaseModel;
 }
 
 export function downloadCivitaiModel(options: {
