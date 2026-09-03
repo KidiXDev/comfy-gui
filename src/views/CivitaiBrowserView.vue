@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  ref
+} from 'vue';
+import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -68,6 +77,11 @@ const TYPE_SHORTCUTS = [
   { label: 'Embedding', value: 'TextualInversion' }
 ];
 
+const GRID_GAP = 14;
+const CARD_ASPECT_RATIO = 4 / 3;
+const CARD_FOOTER_HEIGHT = 53;
+const OVERSCAN_ROWS = 3;
+
 const launcherStore = useLauncherStore();
 const apiKey = ref('');
 const query = ref('');
@@ -87,7 +101,12 @@ const downloaded = ref<Record<number, CivitaiDownloadResult>>({});
 const loading = ref(false);
 const loadingMore = ref(false);
 const errorMessage = ref('');
+const scrollViewport = ref<HTMLElement | null>(null);
+const gridWidth = ref(1200);
+const isViewActive = ref(true);
 let unlistenProgress: (() => void) | null = null;
+let resizeObserver: ResizeObserver | null = null;
+let savedScrollTop = 0;
 
 // Dedicated Detail View State
 const activeModel = ref<CivitaiModel | null>(null);
@@ -101,6 +120,35 @@ const copiedMetaKey = ref<string | null>(null);
 let copyMetaTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hasModels = computed(() => models.value.length > 0);
+const columns = computed(() => {
+  if (gridWidth.value < 600) return 1;
+  if (gridWidth.value < 760) return 2;
+  if (gridWidth.value < 1000) return 3;
+  if (gridWidth.value < 1240) return 4;
+  if (gridWidth.value < 1480) return 5;
+  return 6;
+});
+const cardWidth = computed(
+  () => (gridWidth.value - GRID_GAP * (columns.value - 1)) / columns.value
+);
+const rowHeight = computed(
+  () => cardWidth.value * CARD_ASPECT_RATIO + CARD_FOOTER_HEIGHT + GRID_GAP
+);
+const totalRows = computed(() =>
+  Math.ceil(models.value.length / columns.value)
+);
+const rowVirtualizer = useVirtualizer(
+  computed(() => ({
+    count: totalRows.value,
+    enabled: isViewActive.value && !activeModel.value,
+    getScrollElement: () => scrollViewport.value,
+    initialOffset: () => savedScrollTop,
+    estimateSize: () => rowHeight.value,
+    overscan: OVERSCAN_ROWS
+  }))
+);
+const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems());
+const totalVirtualHeight = computed(() => rowVirtualizer.value.getTotalSize());
 
 function selectedVersion(model: CivitaiModel): CivitaiVersion | undefined {
   const selected = Number(selectedVersions.value[model.id]);
@@ -191,8 +239,9 @@ function openDetail(model: CivitaiModel) {
   detailImageIndex.value = activeImageIndices.value[model.id] ?? 0;
 }
 
-function closeDetail() {
+async function closeDetail() {
   activeModel.value = null;
+  await restoreBrowseScroll();
 }
 
 function onDetailVersionChange(versionId: string) {
@@ -267,6 +316,10 @@ async function loadModels(append = false) {
   if (append) loadingMore.value = true;
   else loading.value = true;
   errorMessage.value = '';
+  if (!append) {
+    savedScrollTop = 0;
+    scrollViewport.value?.scrollTo({ top: 0 });
+  }
   try {
     const response = await fetchCivitaiModels({
       query: query.value,
@@ -318,8 +371,30 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
-onMounted(async () => {
+function rememberScroll(event: Event) {
+  savedScrollTop = (event.target as HTMLElement).scrollTop;
+}
+
+async function restoreBrowseScroll() {
+  isViewActive.value = true;
   window.addEventListener('keydown', onKeyDown);
+  if (activeModel.value) return;
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+  if (scrollViewport.value) resizeObserver?.observe(scrollViewport.value);
+  rowVirtualizer.value.measure();
+  rowVirtualizer.value.scrollToOffset(savedScrollTop);
+}
+
+function deactivateView() {
+  isViewActive.value = false;
+  resizeObserver?.disconnect();
+  window.removeEventListener('keydown', onKeyDown);
+}
+
+onMounted(async () => {
   apiKey.value =
     (await loadAppData<{ apiKey?: string }>('civitai_settings'))?.apiKey ?? '';
   try {
@@ -335,9 +410,17 @@ onMounted(async () => {
     progress.value[payload.versionId] = payload;
   });
   await loadModels();
+  resizeObserver = new ResizeObserver(([entry]) => {
+    if (entry) gridWidth.value = entry.contentRect.width;
+  });
+  await restoreBrowseScroll();
 });
 
+onActivated(restoreBrowseScroll);
+onDeactivated(deactivateView);
+
 onUnmounted(() => {
+  deactivateView();
   window.removeEventListener('keydown', onKeyDown);
   unlistenProgress?.();
   if (copyTriggerTimeout) clearTimeout(copyTriggerTimeout);
@@ -548,7 +631,11 @@ onUnmounted(() => {
       </header>
 
       <!-- Main Content Viewport -->
-      <div class="flex-1 overflow-y-auto p-5">
+      <div
+        ref="scrollViewport"
+        class="min-h-0 flex-1 overflow-y-auto p-5"
+        @scroll.passive="rememberScroll"
+      >
         <!-- Error Message Banner -->
         <div
           v-if="errorMessage"
@@ -607,153 +694,168 @@ onUnmounted(() => {
           </Button>
         </div>
 
-        <!-- Pure Browsing 6-Column Models Grid -->
+        <!-- Virtualized responsive model grid -->
         <div
           v-else
-          class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+          class="relative w-full"
+          :style="{ height: `${totalVirtualHeight}px` }"
         >
-          <article
-            v-for="model in models"
-            :key="model.id"
-            class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-            @click="openDetail(model)"
+          <div
+            v-for="virtualRow in virtualRows"
+            :key="virtualRow.index"
+            class="absolute top-0 left-0 grid w-full gap-3.5"
+            :style="{
+              height: `${virtualRow.size - GRID_GAP}px`,
+              transform: `translateY(${virtualRow.start}px)`,
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
+            }"
           >
-            <!-- Card Thumbnail Area (3:4 Portrait Ratio) -->
-            <div
-              class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
+            <article
+              v-for="model in models.slice(
+                virtualRow.index * columns,
+                (virtualRow.index + 1) * columns
+              )"
+              :key="model.id"
+              class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+              @click="openDetail(model)"
             >
-              <!-- Preview Image with Smooth Hover Scale -->
-              <img
-                v-if="currentImage(model)?.url"
-                :src="previewUrl(currentImage(model)?.url || '', 450)"
-                :alt="`${model.name} preview`"
-                class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-                loading="lazy"
-                draggable="false"
-              />
+              <!-- Card Thumbnail Area (3:4 Portrait Ratio) -->
               <div
-                v-else
-                class="text-muted-foreground flex h-full items-center justify-center"
+                class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
               >
-                <ImageOff class="h-8 w-8" />
-              </div>
-
-              <!-- Top Gradient Overlay -->
-              <div
-                class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
-              />
-
-              <!-- Top Badges Row -->
-              <div
-                class="pointer-events-none absolute inset-x-2 top-2 flex items-start justify-between gap-1"
-              >
-                <!-- Model Type Badge -->
-                <Badge
-                  variant="outline"
-                  class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
-                >
-                  {{ model.type }}
-                </Badge>
-
-                <!-- Installed or Base Model Badge -->
-                <div class="flex items-center gap-1">
-                  <Badge
-                    v-if="isModelDownloaded(model)"
-                    class="flex items-center gap-1 border-emerald-500/30 bg-emerald-600/90 px-1.5 py-0.5 text-xs text-white shadow-sm backdrop-blur-md"
-                  >
-                    <CheckCircle2 class="h-3 w-3" />
-                    <span>Installed</span>
-                  </Badge>
-                  <Badge
-                    v-else-if="selectedVersion(model)?.baseModel"
-                    variant="outline"
-                    class="max-w-28 truncate border-amber-500/30 bg-black/65 px-1.5 py-0.5 text-xs text-amber-300 shadow-sm backdrop-blur-md"
-                  >
-                    {{ selectedVersion(model)?.baseModel }}
-                  </Badge>
-                </div>
-              </div>
-
-              <!-- Multi-Image Hover Carousel Controls -->
-              <template
-                v-if="(selectedVersion(model)?.images?.length || 0) > 1"
-              >
-                <button
-                  type="button"
-                  aria-label="Previous preview image"
-                  class="absolute top-1/2 left-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                  @click="prevImage(model, $event)"
-                >
-                  <ChevronLeft class="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Next preview image"
-                  class="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                  @click="nextImage(model, $event)"
-                >
-                  <ChevronRight class="h-3.5 w-3.5" />
-                </button>
-
-                <!-- Carousel Indicators (Dots) -->
+                <!-- Preview Image with Smooth Hover Scale -->
+                <img
+                  v-if="currentImage(model)?.url"
+                  :src="previewUrl(currentImage(model)?.url || '', 450)"
+                  :alt="`${model.name} preview`"
+                  class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
+                  loading="lazy"
+                  draggable="false"
+                />
                 <div
-                  class="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center gap-1"
+                  v-else
+                  class="text-muted-foreground flex h-full items-center justify-center"
                 >
-                  <span
-                    v-for="(_, imgIdx) in (
-                      selectedVersion(model)?.images || []
-                    ).slice(0, 5)"
-                    :key="imgIdx"
-                    class="h-1 rounded-full transition-all"
-                    :class="
-                      imgIdx === getActiveImageIndex(model.id)
-                        ? 'w-3 bg-white shadow-xs'
-                        : 'w-1 bg-white/50'
-                    "
-                  />
+                  <ImageOff class="h-8 w-8" />
                 </div>
-              </template>
 
-              <!-- Bottom Gradient Overlay with Stats -->
-              <div
-                class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
-              >
-                <div class="flex items-center gap-2 text-xs font-medium">
-                  <span class="flex items-center gap-1 drop-shadow-xs">
-                    <Download class="h-3 w-3 text-white/80" />
-                    {{ formatCount(model.stats?.downloadCount) }}
-                  </span>
-                  <span
-                    v-if="model.stats?.thumbsUpCount"
-                    class="flex items-center gap-1 drop-shadow-xs"
+                <!-- Top Gradient Overlay -->
+                <div
+                  class="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
+                />
+
+                <!-- Top Badges Row -->
+                <div
+                  class="pointer-events-none absolute inset-x-2 top-2 flex items-start justify-between gap-1"
+                >
+                  <!-- Model Type Badge -->
+                  <Badge
+                    variant="outline"
+                    class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
                   >
-                    <ThumbsUp class="h-3 w-3 text-white/80" />
-                    {{ formatCount(model.stats?.thumbsUpCount) }}
-                  </span>
+                    {{ model.type }}
+                  </Badge>
+
+                  <!-- Installed or Base Model Badge -->
+                  <div class="flex items-center gap-1">
+                    <Badge
+                      v-if="isModelDownloaded(model)"
+                      class="flex items-center gap-1 border-emerald-500/30 bg-emerald-600/90 px-1.5 py-0.5 text-xs text-white shadow-sm backdrop-blur-md"
+                    >
+                      <CheckCircle2 class="h-3 w-3" />
+                      <span>Installed</span>
+                    </Badge>
+                    <Badge
+                      v-else-if="selectedVersion(model)?.baseModel"
+                      variant="outline"
+                      class="max-w-28 truncate border-amber-500/30 bg-black/65 px-1.5 py-0.5 text-xs text-amber-300 shadow-sm backdrop-blur-md"
+                    >
+                      {{ selectedVersion(model)?.baseModel }}
+                    </Badge>
+                  </div>
                 </div>
 
-                <span
-                  class="text-xs text-white/70 transition-colors group-hover:text-white"
+                <!-- Multi-Image Hover Carousel Controls -->
+                <template
+                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
                 >
-                  {{ model.modelVersions.length }}
-                  {{ model.modelVersions.length > 1 ? 'vers' : 'ver' }}
-                </span>
-              </div>
-            </div>
+                  <button
+                    type="button"
+                    aria-label="Previous preview image"
+                    class="absolute top-1/2 left-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                    @click="prevImage(model, $event)"
+                  >
+                    <ChevronLeft class="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next preview image"
+                    class="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                    @click="nextImage(model, $event)"
+                  >
+                    <ChevronRight class="h-3.5 w-3.5" />
+                  </button>
 
-            <!-- Pure Card Footer: Name & Creator -->
-            <div class="flex flex-col gap-0.5 p-2.5">
-              <h2
-                class="group-hover:text-primary truncate text-xs font-semibold transition-colors"
-                :title="model.name"
-              >
-                {{ model.name }}
-              </h2>
-              <p class="text-muted-foreground truncate text-xs">
-                by {{ model.creator?.username || 'Unknown' }}
-              </p>
-            </div>
-          </article>
+                  <!-- Carousel Indicators (Dots) -->
+                  <div
+                    class="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center gap-1"
+                  >
+                    <span
+                      v-for="(_, imgIdx) in (
+                        selectedVersion(model)?.images || []
+                      ).slice(0, 5)"
+                      :key="imgIdx"
+                      class="h-1 rounded-full transition-all"
+                      :class="
+                        imgIdx === getActiveImageIndex(model.id)
+                          ? 'w-3 bg-white shadow-xs'
+                          : 'w-1 bg-white/50'
+                      "
+                    />
+                  </div>
+                </template>
+
+                <!-- Bottom Gradient Overlay with Stats -->
+                <div
+                  class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
+                >
+                  <div class="flex items-center gap-2 text-xs font-medium">
+                    <span class="flex items-center gap-1 drop-shadow-xs">
+                      <Download class="h-3 w-3 text-white/80" />
+                      {{ formatCount(model.stats?.downloadCount) }}
+                    </span>
+                    <span
+                      v-if="model.stats?.thumbsUpCount"
+                      class="flex items-center gap-1 drop-shadow-xs"
+                    >
+                      <ThumbsUp class="h-3 w-3 text-white/80" />
+                      {{ formatCount(model.stats?.thumbsUpCount) }}
+                    </span>
+                  </div>
+
+                  <span
+                    class="text-xs text-white/70 transition-colors group-hover:text-white"
+                  >
+                    {{ model.modelVersions.length }}
+                    {{ model.modelVersions.length > 1 ? 'vers' : 'ver' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Pure Card Footer: Name & Creator -->
+              <div class="flex flex-col gap-0.5 p-2.5">
+                <h2
+                  class="group-hover:text-primary truncate text-xs font-semibold transition-colors"
+                  :title="model.name"
+                >
+                  {{ model.name }}
+                </h2>
+                <p class="text-muted-foreground truncate text-xs">
+                  by {{ model.creator?.username || 'Unknown' }}
+                </p>
+              </div>
+            </article>
+          </div>
         </div>
 
         <!-- Load More Button -->
