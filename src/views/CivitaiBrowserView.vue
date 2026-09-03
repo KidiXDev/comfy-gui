@@ -556,13 +556,6 @@ onUnmounted(() => {
                 <h1 class="text-xs font-bold tracking-wider uppercase">
                   Civitai Model Browser
                 </h1>
-                <Badge
-                  v-if="hasModels && !loading"
-                  variant="secondary"
-                  class="px-1.5 py-0 text-xs"
-                >
-                  {{ models.length }} models
-                </Badge>
               </div>
               <p class="text-muted-foreground text-xs">
                 Explore AI models for your ComfyUI workspace
