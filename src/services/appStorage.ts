@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 type AppDataName =
+  | 'civitai_settings'
   | 'launcher_config'
   | 'lora_presets'
   | 'prompt_textarea_sizes'
@@ -13,6 +14,7 @@ type DataFile = 'config' | 'history' | 'state';
 type DataContainer = Partial<Record<AppDataName, unknown>>;
 
 const dataFiles: Record<AppDataName, DataFile> = {
+  civitai_settings: 'config',
   launcher_config: 'config',
   lora_presets: 'state',
   prompt_textarea_sizes: 'state',

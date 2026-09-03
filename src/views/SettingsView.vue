@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -59,6 +59,7 @@ import {
   type BooruSettings,
   type BooruSettingsUpdate
 } from '../services/booruGallery';
+import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
 import { useComfyStore } from '../stores/comfyStore';
 import {
@@ -93,6 +94,9 @@ const booruCredentials = ref<BooruCredentials>({
 });
 const showDanbooruKey = ref(false);
 const showGelbooruKey = ref(false);
+const civitaiApiKey = ref('');
+const showCivitaiKey = ref(false);
+let applyingCivitaiSettings = true;
 
 const booruDefaultSource = ref('danbooru');
 const booruBlacklist = ref('');
@@ -130,6 +134,20 @@ const installResult = ref<{ ok: boolean; message: string } | null>(null);
 const autocompleteReady = computed(
   () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
 );
+
+async function loadCivitaiSettings() {
+  try {
+    civitaiApiKey.value =
+      (await loadAppData<{ apiKey?: string }>('civitai_settings'))?.apiKey ??
+      '';
+  } catch (error) {
+    console.error(error);
+  } finally {
+    applyingCivitaiSettings = false;
+  }
+}
+
+onMounted(loadCivitaiSettings);
 const danbooruConfigured = computed(
   () =>
     booruSettings.value?.credentialStatus.danbooru?.hasUsername &&
@@ -332,6 +350,15 @@ const autosaveGalleryPreferences = useDebounceFn(
   () => void saveGalleryPreferences().catch(console.error),
   600
 );
+const autosaveCivitaiSettings = useDebounceFn(
+  () =>
+    void saveAppData('civitai_settings', {
+      apiKey: civitaiApiKey.value.trim()
+    })
+      .then(showSaved)
+      .catch(console.error),
+  600
+);
 
 watch(
   [
@@ -367,6 +394,10 @@ watch(
   },
   { deep: true, flush: 'sync' }
 );
+
+watch(civitaiApiKey, () => {
+  if (!applyingCivitaiSettings) autosaveCivitaiSettings();
+});
 
 async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
   booruTesting.value = source;
@@ -437,6 +468,7 @@ function handleResetDefaults() {
     DEFAULT_LAUNCHER_CONFIG.autocompleteReplaceUnderscores;
   autocompleteIncludeArtistPrefix.value =
     DEFAULT_LAUNCHER_CONFIG.autocompleteIncludeArtistPrefix;
+  civitaiApiKey.value = '';
 }
 
 async function testConnection() {
@@ -1429,6 +1461,65 @@ async function checkForUpdates() {
               </div>
             </div>
           </div>
+        </section>
+
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div
+            class="border-border/80 flex items-center justify-between gap-4 border-b pb-3"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-orange-400"
+              >
+                <KeyRound class="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span class="text-xs font-bold tracking-wider uppercase">
+                  Civitai API
+                </span>
+                <p class="text-muted-foreground text-xs">
+                  Authentication for gated model downloads
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="text-xs"
+              @click="openUrl('https://civitai.com/user/account')"
+            >
+              <ExternalLink class="h-3.5 w-3.5" />
+              Manage API keys
+            </Button>
+          </div>
+
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">API Key</FieldLabel>
+            <div class="relative">
+              <Input
+                v-model="civitaiApiKey"
+                :type="showCivitaiKey ? 'text' : 'password'"
+                autocomplete="new-password"
+                placeholder="Optional for browsing, required by gated models"
+                class="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
+                title="Show or hide Civitai API key"
+                @click="showCivitaiKey = !showCivitaiKey"
+              >
+                <EyeOff v-if="showCivitaiKey" class="h-3.5 w-3.5" />
+                <Eye v-else class="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <FieldDescription class="text-xs">
+              Stored locally in ComfyGUI settings and sent only to Civitai.
+            </FieldDescription>
+          </Field>
         </section>
 
         <section

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   Eraser,
   GalleryVerticalEnd,
+  HardDriveDownload,
   Image,
   Images,
   Scaling,
@@ -43,6 +44,12 @@ const navItems = [
     label: 'Booru Gallery',
     icon: GalleryVerticalEnd,
     route: '/booru'
+  },
+  {
+    id: 'civitai',
+    label: 'Civitai Model Browser',
+    icon: HardDriveDownload,
+    route: '/civitai'
   },
   {
     id: 'upscaler',

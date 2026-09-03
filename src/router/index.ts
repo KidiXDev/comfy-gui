@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import BooruGalleryView from '../views/BooruGalleryView.vue';
+import CivitaiBrowserView from '../views/CivitaiBrowserView.vue';
 import FaceDetailerView from '../views/FaceDetailerView.vue';
 import ImageViewerView from '../views/ImageViewerView.vue';
 import RemoveBackgroundView from '../views/RemoveBackgroundView.vue';
@@ -29,6 +30,11 @@ const router = createRouter({
       path: '/booru',
       name: 'booru',
       component: BooruGalleryView
+    },
+    {
+      path: '/civitai',
+      name: 'civitai',
+      component: CivitaiBrowserView
     },
     {
       path: '/upscaler',

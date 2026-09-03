@@ -1,3 +1,4 @@
+mod civitai;
 mod image_gallery;
 mod preset_manager;
 mod process_manager;
@@ -313,6 +314,8 @@ pub fn run() {
             inject_bridge_custom_node,
             install_custom_node,
             show_in_folder,
+            civitai::models,
+            civitai::download,
             image_gallery::list_output_images,
             image_gallery::prepare_output_gallery,
             image_gallery::clear_gallery_cache,
