@@ -11,6 +11,7 @@ const STORAGE_KEY = 'session_history';
 
 export const useHistoryStore = defineStore('history', () => {
   const items = ref<HistoryItem[]>([]);
+  const isPanelOpen = ref(true);
   const isDrawerOpen = ref(false);
 
   async function loadHistory() {
@@ -70,6 +71,7 @@ export const useHistoryStore = defineStore('history', () => {
 
   return {
     items,
+    isPanelOpen,
     isDrawerOpen,
     loadHistory,
     addHistory,

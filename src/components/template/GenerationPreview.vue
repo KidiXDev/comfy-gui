@@ -253,13 +253,16 @@ const durationText = computed(() => {
 
       <!-- Action Buttons -->
       <div class="flex items-center gap-2">
-        <!-- Session History Drawer Toggle -->
+        <!-- Session History Panel Toggle -->
         <Button
-          variant="outline"
+          :variant="historyStore.isPanelOpen ? 'secondary' : 'outline'"
           size="sm"
           class="h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
-          title="Open Generation Session History"
-          @click="historyStore.isDrawerOpen = true"
+          :class="
+            historyStore.isPanelOpen ? 'border-primary/30 text-primary' : ''
+          "
+          title="Toggle Generation History Panel"
+          @click="historyStore.isPanelOpen = !historyStore.isPanelOpen"
         >
           <History class="h-3.5 w-3.5" />
           <span>History</span>

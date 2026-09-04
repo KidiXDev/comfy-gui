@@ -9,8 +9,8 @@ import SamplerSection from '@/components/template/SamplerSection.vue';
 import LoraChainSection from '@/components/template/LoraChainSection.vue';
 import PostFxSection from '@/components/template/PostFxSection.vue';
 import FaceDetailerSection from '@/components/template/FaceDetailerSection.vue';
+import GenerationHistoryPanel from '@/components/template/GenerationHistoryPanel.vue';
 import GenerationPreview from '@/components/template/GenerationPreview.vue';
-import HistoryDrawer from '@/components/template/HistoryDrawer.vue';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -55,12 +55,17 @@ async function openOutputFolder() {
           <span>Generation Studio</span>
         </div>
 
-        <!-- Session History Button -->
+        <!-- Session History Toggle Button -->
         <button
           type="button"
-          title="Open Generation Session History"
-          class="border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
-          @click="historyStore.isDrawerOpen = true"
+          title="Toggle Generation History Panel"
+          class="border-border inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
+          :class="
+            historyStore.isPanelOpen
+              ? 'border-primary/40 bg-primary/10 text-primary'
+              : 'bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground'
+          "
+          @click="historyStore.isPanelOpen = !historyStore.isPanelOpen"
         >
           <History class="h-3 w-3" />
           <span>History</span>
@@ -110,9 +115,9 @@ async function openOutputFolder() {
     >
       <!-- Left Column: Generation Parameters Panel (scrollable) -->
       <ResizablePanel
-        :default-size="54"
-        :min-size="30"
-        :max-size="75"
+        :default-size="historyStore.isPanelOpen ? 40 : 50"
+        :min-size="25"
+        :max-size="65"
         class="h-full min-h-0 min-w-0"
       >
         <div class="flex h-full flex-col gap-3 overflow-y-auto pr-2">
@@ -193,11 +198,11 @@ async function openOutputFolder() {
         class="hover:bg-primary/50 transition-colors"
       />
 
-      <!-- Right Column: Preview Viewport Panel -->
+      <!-- Middle Column: Preview Viewport Panel -->
       <ResizablePanel
-        :default-size="46"
+        :default-size="historyStore.isPanelOpen ? 47 : 50"
         :min-size="25"
-        :max-size="70"
+        :max-size="75"
         class="h-full min-h-0 min-w-0"
       >
         <section
@@ -206,9 +211,28 @@ async function openOutputFolder() {
           <GenerationPreview />
         </section>
       </ResizablePanel>
-    </ResizablePanelGroup>
 
-    <!-- Session History Slide-over Drawer -->
-    <HistoryDrawer />
+      <!-- History Resizable Divider Handle -->
+      <ResizableHandle
+        v-if="historyStore.isPanelOpen"
+        with-handle
+        class="hover:bg-primary/50 transition-colors"
+      />
+
+      <!-- Right Column: Generation History Panel (Images Only) -->
+      <ResizablePanel
+        v-if="historyStore.isPanelOpen"
+        :default-size="13"
+        :min-size="8"
+        :max-size="25"
+        class="h-full min-h-0 min-w-0"
+      >
+        <section
+          class="border-border bg-card flex h-full min-h-0 w-full flex-col rounded-xl border p-3 shadow-2xs"
+        >
+          <GenerationHistoryPanel />
+        </section>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   </div>
 </template>
