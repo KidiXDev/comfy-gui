@@ -282,10 +282,7 @@ export const useAiStore = defineStore('ai', () => {
 
     try {
       const model = getOpenRouterModel(config.value);
-      const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt, {
-        positivePrompt: workflowStore.positivePrompt,
-        negativePrompt: workflowStore.negativePrompt
-      });
+      const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt);
 
       // Exclude the empty assistant placeholder from history
       const coreMessages = session.messages.slice(0, -1).map((m) => {
@@ -324,8 +321,8 @@ export const useAiStore = defineStore('ai', () => {
           inputSchema: z.object({}),
           execute: async () => {
             return {
-              positivePrompt: workflowStore.positivePrompt,
-              negativePrompt: workflowStore.negativePrompt
+              positivePrompt: workflowStore.positivePrompt || '',
+              negativePrompt: workflowStore.negativePrompt || ''
             };
           }
         }),

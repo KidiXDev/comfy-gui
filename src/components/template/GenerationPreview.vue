@@ -275,12 +275,14 @@ const durationText = computed(() => {
         </Button>
 
         <!-- Unified Generate & Interrupt Button Group -->
-        <div class="inline-flex items-center">
-          <Button
-            size="sm"
+        <div
+          class="inline-flex h-8 items-stretch overflow-hidden rounded-md shadow-xs transition-all ring-1 ring-white/10"
+          :class="!comfyStore.isConnected ? 'opacity-60' : ''"
+        >
+          <button
+            type="button"
             :disabled="!comfyStore.isConnected || comfyStore.isQueueing"
-            class="bg-primary text-primary-foreground hover:bg-primary/90 h-8 cursor-pointer px-4 text-xs font-semibold shadow-[0_0_16px_rgba(37,99,235,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-            :class="comfyStore.isGenerating ? 'rounded-r-none' : ''"
+            class="bg-primary text-primary-foreground hover:bg-primary/90 flex h-full cursor-pointer items-center justify-center gap-1.5 px-3.5 text-xs font-semibold transition-colors active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             :title="
               comfyStore.isConnected
                 ? 'Queue image with the current settings (Ctrl+Enter)'
@@ -300,19 +302,18 @@ const durationText = computed(() => {
             >
               {{ comfyStore.queuedGenerationCount }}
             </span>
-          </Button>
+          </button>
 
-          <Button
+          <button
             v-if="comfyStore.isGenerating"
-            size="sm"
-            variant="destructive"
+            type="button"
             title="Interrupt current generation"
-            class="text-destructive-foreground h-8 cursor-pointer rounded-l-none border-l border-white/20 px-2.5 shadow-xs"
+            class="bg-rose-600 hover:bg-rose-500 active:bg-rose-700 flex h-full cursor-pointer items-center justify-center border-l border-white/20 px-2.5 text-white transition-colors"
             @click="comfyStore.interrupt"
           >
             <Square class="h-3.5 w-3.5 fill-current" />
             <span class="sr-only">Interrupt current generation</span>
-          </Button>
+          </button>
         </div>
       </div>
     </div>

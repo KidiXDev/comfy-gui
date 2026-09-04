@@ -1058,7 +1058,7 @@ function renderMarkdown(content: string): string {
                               class="flex flex-col gap-0.5"
                             >
                               <span
-                                class="text-muted-foreground font-sans text-[10px] font-semibold uppercase"
+                                class="text-muted-foreground font-sans text-xs font-semibold uppercase"
                                 >Active Negative</span
                               >
                               <p
