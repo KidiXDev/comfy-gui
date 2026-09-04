@@ -147,6 +147,7 @@ function cancelDeleteSession() {
 }
 
 const expandedThoughts = ref<Record<string, boolean>>({});
+const declineNotes = ref<Record<string, string>>({});
 
 function toggleThought(msgId: string) {
   expandedThoughts.value[msgId] = !expandedThoughts.value[msgId];
@@ -321,6 +322,7 @@ function isLastMessage(id: string): boolean {
 }
 
 function isPartActive(msg: ChatMessage, index: number): boolean {
+  if (msg.currentStep === 'awaiting_approval') return false;
   if (
     !aiStore.isGenerating ||
     !isLastMessage(msg.id) ||
@@ -1072,10 +1074,9 @@ function renderMarkdown(content: string): string {
                           </div>
                         </div>
 
-                        <!-- Tool: inject_prompt / inject_positive_prompt / inject_negative_prompt -->
+                        <!-- Prompt update -->
                         <div
                           v-else-if="
-                            part.invocation.name === 'inject_prompt' ||
                             part.invocation.name === 'inject_positive_prompt' ||
                             part.invocation.name === 'inject_negative_prompt'
                           "
@@ -1137,100 +1138,18 @@ function renderMarkdown(content: string): string {
                             {{ part.invocation.args.reason }}
                           </p>
 
-                          <!-- Positive Prompt Block -->
                           <div
-                            v-if="
-                              part.invocation.name === 'inject_positive_prompt'
-                                ? typeof (part.invocation.args.prompt ?? part.invocation.args.positive) === 'string'
-                                : typeof part.invocation.args.positive === 'string'
-                            "
-                            class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
+                            class="border-border/40 bg-muted/20 mb-2 rounded-lg border p-2 font-mono text-xs whitespace-pre-wrap"
                           >
-                            <span
-                              class="text-primary font-mono text-xs font-semibold uppercase"
-                              >Positive Prompt</span
-                            >
-                            <p
-                              class="text-foreground font-mono whitespace-pre-wrap select-text"
-                            >
-                              {{
-                                part.invocation.name === 'inject_positive_prompt'
-                                  ? (part.invocation.args.prompt ?? part.invocation.args.positive)
-                                  : part.invocation.args.positive
-                              }}
-                            </p>
-                          </div>
-
-                          <!-- Negative Prompt Block -->
-                          <div
-                            v-if="
-                              part.invocation.name === 'inject_negative_prompt'
-                                ? typeof (part.invocation.args.prompt ?? part.invocation.args.negative) === 'string'
-                                : typeof part.invocation.args.negative === 'string'
-                            "
-                            class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
-                          >
-                            <span
-                              class="text-muted-foreground font-mono text-xs font-semibold uppercase"
-                              >Negative Prompt</span
-                            >
-                            <p
-                              class="text-muted-foreground font-mono whitespace-pre-wrap select-text"
-                            >
-                              {{
-                                part.invocation.name === 'inject_negative_prompt'
-                                  ? (part.invocation.args.prompt ?? part.invocation.args.negative)
-                                  : part.invocation.args.negative
-                              }}
-                            </p>
+                            {{
+                              part.invocation.args.prompt ??
+                              (part.invocation.name === 'inject_positive_prompt'
+                                ? part.invocation.args.positive
+                                : part.invocation.args.negative)
+                            }}
                           </div>
 
                           <!-- Action buttons if pending -->
-                          <div
-                            v-if="part.invocation.state === 'pending'"
-                            class="flex items-center gap-2 pt-1"
-                          >
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              class="h-7 gap-1.5 text-xs font-medium"
-                              @click="
-                                aiStore.applyToolInvocation(
-                                  msg.id,
-                                  part.invocation.id
-                                )
-                              "
-                            >
-                              <Check class="h-3.5 w-3.5 text-emerald-500" />
-                              <span>Apply</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs font-medium"
-                              @click="
-                                aiStore.applyAndQueueToolInvocation(
-                                  msg.id,
-                                  part.invocation.id
-                                )
-                              "
-                            >
-                              <Play class="h-3.5 w-3.5" />
-                              <span>Apply & Queue</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              class="text-muted-foreground hover:text-destructive ml-auto h-7 text-xs"
-                              @click="
-                                aiStore.rejectToolInvocation(
-                                  msg.id,
-                                  part.invocation.id
-                                )
-                              "
-                            >
-                              Discard
-                            </Button>
-                          </div>
                         </div>
 
                         <!-- Tool: queue_generation -->
@@ -1265,7 +1184,9 @@ function renderMarkdown(content: string): string {
                               {{
                                 part.invocation.state === 'queued'
                                   ? '✓ Queued'
-                                  : 'Ready'
+                                  : part.invocation.state === 'rejected'
+                                    ? 'Declined'
+                                    : 'Pending Confirmation'
                               }}
                             </span>
                           </div>
@@ -1278,39 +1199,67 @@ function renderMarkdown(content: string): string {
                           >
                             {{ part.invocation.args.reason }}
                           </p>
-
-                          <div
-                            v-if="part.invocation.state === 'pending'"
-                            class="flex items-center gap-2 pt-1"
-                          >
+                        </div>
+                        <div
+                          v-if="
+                            part.invocation.state === 'pending' &&
+                            msg.currentStep === 'awaiting_approval'
+                          "
+                          class="mt-2 space-y-2"
+                        >
+                          <p class="text-muted-foreground text-xs">
+                            Waiting for your approval. The assistant is paused.
+                          </p>
+                          <textarea
+                            v-model="declineNotes[part.invocation.id]"
+                            aria-label="Optional decline note"
+                            placeholder="Optional note if you decline..."
+                            rows="2"
+                            class="border-border bg-background w-full rounded-md border p-2 text-xs"
+                          />
+                          <div class="flex items-center gap-2">
                             <Button
                               size="sm"
-                              class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs"
+                              variant="outline"
+                              @click="
+                                aiStore.applyToolInvocation(
+                                  msg.id,
+                                  part.invocation.id
+                                )
+                              "
+                              >Accept</Button
+                            >
+                            <Button
+                              v-if="part.invocation.name !== 'queue_generation'"
+                              size="sm"
                               @click="
                                 aiStore.applyAndQueueToolInvocation(
                                   msg.id,
                                   part.invocation.id
                                 )
                               "
+                              >Accept & Queue</Button
                             >
-                              <Play class="h-3.5 w-3.5" />
-                              <span>Run Queue Now</span>
-                            </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              class="text-muted-foreground hover:text-destructive h-7 text-xs"
                               @click="
                                 aiStore.rejectToolInvocation(
                                   msg.id,
-                                  part.invocation.id
+                                  part.invocation.id,
+                                  declineNotes[part.invocation.id]
                                 )
                               "
+                              >Decline</Button
                             >
-                              Cancel
-                            </Button>
                           </div>
                         </div>
+                        <p
+                          v-if="part.invocation.note"
+                          class="text-muted-foreground mt-2 text-xs"
+                        >
+                          Decline note: {{ part.invocation.note }}
+                        </p>
                       </div>
                     </div>
 

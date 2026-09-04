@@ -23,14 +23,24 @@ import type {
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
 
+type ApprovalDecision = {
+  action: 'accept' | 'queue' | 'decline';
+  note?: string;
+};
+
 function sanitizeLegacySessionInvocations(session: ChatSession) {
   for (const msg of session.messages) {
     if (msg.toolInvocations) {
       for (const inv of msg.toolInvocations) {
+        if (inv.state === 'pending') inv.state = 'rejected';
         if (inv.name === 'inspect_current_prompt') {
           inv.state = 'applied';
         }
       }
+    }
+    for (const part of msg.parts ?? []) {
+      if (part.type === 'tool' && part.invocation.state === 'pending')
+        part.invocation.state = 'rejected';
     }
     // Synthesize chronological parts for legacy messages if not present
     if (!msg.parts || msg.parts.length === 0) {
@@ -86,6 +96,14 @@ export const useAiStore = defineStore('ai', () => {
   const isGenerating = ref(false);
   const isLoaded = ref(false);
   let currentAbortController: AbortController | null = null;
+  const approvals = new Map<
+    string,
+    {
+      messageId: string;
+      promise: Promise<ApprovalDecision>;
+      resolve: (decision: ApprovalDecision) => void;
+    }
+  >();
 
   const hasApiKey = computed(() => !!config.value.apiKey.trim());
 
@@ -179,6 +197,14 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   function deleteSession(id: string) {
+    if (
+      sessions.value
+        .find((s) => s.id === id)
+        ?.messages.some((m) =>
+          [...approvals.values()].some((a) => a.messageId === m.id)
+        )
+    )
+      stopGeneration();
     const index = sessions.value.findIndex((s) => s.id === id);
     if (index !== -1) {
       sessions.value.splice(index, 1);
@@ -203,6 +229,7 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   function clearAllSessions() {
+    stopGeneration();
     sessions.value = [];
     createSession('New Chat');
   }
@@ -226,13 +253,13 @@ export const useAiStore = defineStore('ai', () => {
       currentAbortController.abort();
       currentAbortController = null;
     }
-    isGenerating.value = false;
   }
 
   async function sendMessage(
     text: string,
     attachments: ChatMessageAttachment[] = []
   ) {
+    if (isGenerating.value) return;
     if (!config.value.apiKey.trim()) {
       throw new Error(
         'OpenRouter API key is not configured. Please set it in Settings or the AI Drawer.'
@@ -279,6 +306,7 @@ export const useAiStore = defineStore('ai', () => {
 
     isGenerating.value = true;
     currentAbortController = new AbortController();
+    const signal = currentAbortController.signal;
 
     try {
       const model = getOpenRouterModel(config.value);
@@ -309,9 +337,111 @@ export const useAiStore = defineStore('ai', () => {
         }
         return {
           role: 'assistant' as const,
-          content: m.content
+          content:
+            m.content +
+            (m.toolInvocations?.length
+              ? '\nTool decisions: ' +
+                JSON.stringify(
+                  m.toolInvocations.map(
+                    ({ name, args, state, result, note }) => ({
+                      name,
+                      args,
+                      state,
+                      result,
+                      note
+                    })
+                  )
+                )
+              : '')
         };
       });
+
+      const executeStudioTool = async (
+        name:
+          | 'inject_positive_prompt'
+          | 'inject_negative_prompt'
+          | 'queue_generation',
+        input: { prompt?: string; reason?: string },
+        toolCallId: string
+      ) => {
+        signal.throwIfAborted();
+        const inv = reactive<ToolInvocation>({
+          id: toolCallId,
+          name,
+          args: input,
+          state: 'pending',
+          timestamp: Date.now()
+        });
+        assistantMsg.toolInvocations?.push(inv);
+        assistantMsg.parts?.push({ type: 'tool', invocation: inv });
+        try {
+          let decision: ApprovalDecision = { action: 'accept' };
+          if (!config.value.autoApply) {
+            assistantMsg.currentStep = 'awaiting_approval';
+            let resolveDecision!: (value: ApprovalDecision) => void;
+            const promise = new Promise<ApprovalDecision>((resolve) => {
+              resolveDecision = resolve;
+            });
+            const abort = () => finish({ action: 'decline' });
+            const finish = (value: ApprovalDecision) => {
+              signal.removeEventListener('abort', abort);
+              resolveDecision(value);
+            };
+            approvals.set(toolCallId, {
+              messageId: assistantMsg.id,
+              promise,
+              resolve: finish
+            });
+            signal.addEventListener('abort', abort, { once: true });
+            decision = await promise;
+          }
+          signal.throwIfAborted();
+          inv.note = decision.note;
+          if (decision.action === 'decline') {
+            inv.state = 'rejected';
+            return {
+              status: 'rejected_by_user',
+              note: decision.note || '',
+              applied: false
+            };
+          }
+          if (name !== 'queue_generation' && typeof input.prompt !== 'string')
+            throw new Error('Prompt text is required');
+          if (
+            name === 'inject_positive_prompt' &&
+            typeof input.prompt === 'string'
+          )
+            workflowStore.positivePrompt = input.prompt;
+          if (
+            name === 'inject_negative_prompt' &&
+            typeof input.prompt === 'string'
+          )
+            workflowStore.negativePrompt = input.prompt;
+          inv.state = name === 'queue_generation' ? 'pending' : 'applied';
+          if (name === 'queue_generation' || decision.action === 'queue') {
+            assistantMsg.currentStep = 'queueing';
+            const success = await comfyStore.generateImage(
+              workflowStore.getFullWorkflowState()
+            );
+            inv.state = success
+              ? 'queued'
+              : name === 'queue_generation'
+                ? 'rejected'
+                : 'applied';
+            return {
+              status: success ? 'generation_queued' : 'generation_failed',
+              prompt: input.prompt
+            };
+          }
+          return { status: 'applied', prompt: input.prompt };
+        } catch (error) {
+          if (inv.state === 'pending') inv.state = 'rejected';
+          throw error;
+        } finally {
+          approvals.delete(toolCallId);
+          void saveChatSessions();
+        }
+      };
 
       // Define Focused Agentic Tools
       const tools = {
@@ -337,26 +467,13 @@ export const useAiStore = defineStore('ai', () => {
               .optional()
               .describe('Stylistic enhancements or creative rationale')
           }),
-          execute: async (input: { prompt: string; reason?: string }) => {
-            if (config.value.autoApply) {
-              workflowStore.positivePrompt = input.prompt;
-              return {
-                status: 'applied_automatically',
-                prompt: input.prompt,
-                reason: input.reason
-              };
-            }
-            return {
-              status: 'pending_user_approval',
-              prompt: input.prompt,
-              reason: input.reason
-            };
-          }
+          execute: (input, { toolCallId }) =>
+            executeStudioTool('inject_positive_prompt', input, toolCallId)
         }),
 
         inject_negative_prompt: tool({
           description:
-            'Propose or inject a new or enhanced negative prompt into the studio.',
+            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use inject_positive_prompt and preserve the current negative prompt.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced negative prompt text'),
             reason: z
@@ -364,21 +481,8 @@ export const useAiStore = defineStore('ai', () => {
               .optional()
               .describe('Negative blocker adjustments or rationale')
           }),
-          execute: async (input: { prompt: string; reason?: string }) => {
-            if (config.value.autoApply) {
-              workflowStore.negativePrompt = input.prompt;
-              return {
-                status: 'applied_automatically',
-                prompt: input.prompt,
-                reason: input.reason
-              };
-            }
-            return {
-              status: 'pending_user_approval',
-              prompt: input.prompt,
-              reason: input.reason
-            };
-          }
+          execute: (input, { toolCallId }) =>
+            executeStudioTool('inject_negative_prompt', input, toolCallId)
         }),
 
         queue_generation: tool({
@@ -390,21 +494,8 @@ export const useAiStore = defineStore('ai', () => {
               .optional()
               .describe('Reason for queueing generation')
           }),
-          execute: async (input: { reason?: string }) => {
-            if (config.value.autoApply) {
-              const success = await comfyStore.generateImage(
-                workflowStore.getFullWorkflowState()
-              );
-              return {
-                status: success ? 'generation_queued' : 'generation_failed',
-                reason: input.reason
-              };
-            }
-            return {
-              status: 'pending_user_approval',
-              reason: input.reason
-            };
-          }
+          execute: (input, { toolCallId }) =>
+            executeStudioTool('queue_generation', input, toolCallId)
         })
       };
 
@@ -446,12 +537,15 @@ export const useAiStore = defineStore('ai', () => {
           assistantMsg.currentStep = 'thinking';
         } else if (part.type === 'tool-call') {
           const toolName = part.toolName as ToolName;
-          assistantMsg.currentStep =
-            toolName === 'inspect_current_prompt'
-              ? 'inspecting'
-              : toolName === 'queue_generation'
-                ? 'queueing'
-                : 'injecting';
+          if (toolName !== 'inspect_current_prompt') {
+            const approval = approvals.get(part.toolCallId);
+            assistantMsg.currentStep = approval
+              ? 'awaiting_approval'
+              : assistantMsg.currentStep;
+            await approval?.promise;
+            continue;
+          }
+          assistantMsg.currentStep = 'inspecting';
           const invocation: ToolInvocation = {
             id: part.toolCallId,
             name: toolName,
@@ -459,14 +553,7 @@ export const useAiStore = defineStore('ai', () => {
               'input' in part && part.input
                 ? (part.input as Record<string, unknown>)
                 : {},
-            state:
-              toolName === 'inspect_current_prompt'
-                ? 'applied'
-                : config.value.autoApply
-                  ? toolName === 'queue_generation'
-                    ? 'queued'
-                    : 'applied'
-                  : 'pending',
+            state: 'applied',
             timestamp: Date.now()
           };
           if (!assistantMsg.toolInvocations) {
@@ -523,133 +610,30 @@ export const useAiStore = defineStore('ai', () => {
     }
   }
 
-  // Interactive tool actions
-  function applyToolInvocation(messageId: string, toolId: string) {
-    const session = activeSession.value;
-    if (!session) return;
-    const msg = session.messages.find((m) => m.id === messageId);
-    if (!msg?.toolInvocations) return;
-    const inv = msg.toolInvocations.find((t) => t.id === toolId);
-    if (!inv) return;
-
-    if (inv.name === 'inject_positive_prompt') {
-      const pos =
-        (inv.args.prompt as string | undefined) ??
-        (inv.args.positive as string | undefined);
-      if (typeof pos === 'string') {
-        workflowStore.positivePrompt = pos;
-      }
-      inv.state = 'applied';
-      const partTool = msg.parts?.find(
-        (p) => p.type === 'tool' && p.invocation.id === toolId
-      );
-      if (partTool && partTool.type === 'tool') {
-        partTool.invocation.state = 'applied';
-      }
-      void saveChatSessions();
-    } else if (inv.name === 'inject_negative_prompt') {
-      const neg =
-        (inv.args.prompt as string | undefined) ??
-        (inv.args.negative as string | undefined);
-      if (typeof neg === 'string') {
-        workflowStore.negativePrompt = neg;
-      }
-      inv.state = 'applied';
-      const partTool = msg.parts?.find(
-        (p) => p.type === 'tool' && p.invocation.id === toolId
-      );
-      if (partTool && partTool.type === 'tool') {
-        partTool.invocation.state = 'applied';
-      }
-      void saveChatSessions();
-    } else if (inv.name === 'inject_prompt') {
-      const pos = inv.args.positive as string | undefined;
-      const neg = inv.args.negative as string | undefined;
-      if (typeof pos === 'string') {
-        workflowStore.positivePrompt = pos;
-      }
-      if (typeof neg === 'string') {
-        workflowStore.negativePrompt = neg;
-      }
-      inv.state = 'applied';
-      const partTool = msg.parts?.find(
-        (p) => p.type === 'tool' && p.invocation.id === toolId
-      );
-      if (partTool && partTool.type === 'tool') {
-        partTool.invocation.state = 'applied';
-      }
-      void saveChatSessions();
-    }
-  }
-
-  async function applyAndQueueToolInvocation(
+  function resolveApproval(
     messageId: string,
-    toolId: string
+    toolId: string,
+    decision: ApprovalDecision
   ) {
-    const session = activeSession.value;
-    if (!session) return;
-    const msg = session.messages.find((m) => m.id === messageId);
-    if (!msg?.toolInvocations) return;
-    const inv = msg.toolInvocations.find((t) => t.id === toolId);
-    if (!inv) return;
-
-    if (inv.name === 'inject_positive_prompt') {
-      const pos =
-        (inv.args.prompt as string | undefined) ??
-        (inv.args.positive as string | undefined);
-      if (typeof pos === 'string') {
-        workflowStore.positivePrompt = pos;
-      }
-      inv.state = 'queued';
-    } else if (inv.name === 'inject_negative_prompt') {
-      const neg =
-        (inv.args.prompt as string | undefined) ??
-        (inv.args.negative as string | undefined);
-      if (typeof neg === 'string') {
-        workflowStore.negativePrompt = neg;
-      }
-      inv.state = 'queued';
-    } else if (inv.name === 'inject_prompt') {
-      const pos = inv.args.positive as string | undefined;
-      const neg = inv.args.negative as string | undefined;
-      if (typeof pos === 'string') {
-        workflowStore.positivePrompt = pos;
-      }
-      if (typeof neg === 'string') {
-        workflowStore.negativePrompt = neg;
-      }
-      inv.state = 'queued';
-    } else if (inv.name === 'queue_generation') {
-      inv.state = 'queued';
-    }
-
-    const partTool = msg.parts?.find(
-      (p) => p.type === 'tool' && p.invocation.id === toolId
-    );
-    if (partTool && partTool.type === 'tool') {
-      partTool.invocation.state = 'queued';
-    }
-
-    await comfyStore.generateImage(workflowStore.getFullWorkflowState());
-    void saveChatSessions();
+    const approval = approvals.get(toolId);
+    if (!approval || approval.messageId !== messageId) return;
+    approvals.delete(toolId);
+    approval.resolve(decision);
   }
 
-  function rejectToolInvocation(messageId: string, toolId: string) {
-    const session = activeSession.value;
-    if (!session) return;
-    const msg = session.messages.find((m) => m.id === messageId);
-    if (!msg?.toolInvocations) return;
-    const inv = msg.toolInvocations.find((t) => t.id === toolId);
-    if (!inv) return;
+  function applyToolInvocation(messageId: string, toolId: string) {
+    resolveApproval(messageId, toolId, { action: 'accept' });
+  }
 
-    inv.state = 'rejected';
-    const partTool = msg.parts?.find(
-      (p) => p.type === 'tool' && p.invocation.id === toolId
-    );
-    if (partTool && partTool.type === 'tool') {
-      partTool.invocation.state = 'rejected';
-    }
-    void saveChatSessions();
+  function applyAndQueueToolInvocation(messageId: string, toolId: string) {
+    resolveApproval(messageId, toolId, { action: 'queue' });
+  }
+
+  function rejectToolInvocation(messageId: string, toolId: string, note = '') {
+    resolveApproval(messageId, toolId, {
+      action: 'decline',
+      note: note.trim()
+    });
   }
 
   async function init() {

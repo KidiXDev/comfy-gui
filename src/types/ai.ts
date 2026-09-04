@@ -34,7 +34,6 @@ export interface OpenRouterModel {
 
 export type ToolName =
   | 'inspect_current_prompt'
-  | 'inject_prompt'
   | 'inject_positive_prompt'
   | 'inject_negative_prompt'
   | 'queue_generation';
@@ -45,6 +44,7 @@ export interface ToolInvocation {
   args: Record<string, unknown>;
   state: 'pending' | 'applied' | 'queued' | 'rejected';
   result?: unknown;
+  note?: string;
   timestamp: number;
 }
 
@@ -59,6 +59,7 @@ export type AgentStep =
   | 'thinking'
   | 'inspecting'
   | 'injecting'
+  | 'awaiting_approval'
   | 'queueing'
   | 'tool_completed'
   | 'responding'

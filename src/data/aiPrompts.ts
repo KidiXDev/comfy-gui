@@ -3,57 +3,87 @@
  * Specialized for the Anima Diffusion Model (CircleStone Labs & Comfy Org)
  */
 
-export const ANIMA_MODEL_SPECIFICATION = `### Anima Diffusion Model Technical Specifications
-- Architecture: 2 Billion parameter text-to-image model based on Cosmos-Predict2-2B-Text2Image + Qwen-3-0.6B text encoder + Qwen-Image VAE.
-- Core Focus: Anime concepts, characters, styles, dynamic manga/illustration, and non-photorealistic artistic images.
-- Stylistic Scope: Optimized for anime, manga, 2D/2.5D illustration, line art, and painterly art. Photographic terminology should be omitted in favor of illustration-focused terminology.
-- Tag Formatting Standards:
-  * Lowercase tags with spaces as word delimiters (e.g., 'blue eyes', 'long hair', 'white shirt').
-  * Underscores reserved exclusively for score tokens (e.g., 'score_9', 'score_7').
-  * Gelbooru tag nomenclature preferred when Danbooru and Gelbooru differ.
-- Artist Tokenization: Artist references use '@' prefix (e.g., '@kedama_milk').
-- Tag Ordering: [quality/meta/year/rating] [1girl/1boy/1other] [character] [series] [@artist] [clothing & appearance] [environment & lighting]
-- Quality & Scoring Tags:
-  * Human score: 'masterpiece, best quality, good quality'
-  * Aesthetic model: 'score_9, score_8, score_7, ...'
-  * Recommended positive prefix: 'masterpiece, best quality, score_7, safe, '
-  * Time tags: 'year 2025', 'year 2024', 'newest', 'recent', 'mid', 'early'
-  * Rating tags: 'safe', 'sensitive', 'nsfw', 'explicit' — standard Booru dataset classification tokens
-- Negative Tags: 'worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, chromatic aberration'
-- Natural Language & Captions: Hybrid prompting supported. Multi-sentence descriptions encouraged.
-- Dataset Tags: 'ye-pop\\n' or 'deviantart\\n' as prefixes for abstract/oil painting styles.
-- Weighting Scale: Higher weights than SDXL (e.g., '(chibi:2)', '(tag:1.3)' to '(tag:1.6)').
-- Generation Specs: Resolution 512x512 to 1536x1536, Steps 30-50 (8-12 Turbo), CFG 4-5 (1 Turbo), Samplers: 'er_sde', 'euler_a', 'dpmpp_2m_sde_gpu', 'euler'.`;
+export const ANIMA_MODEL_SPECIFICATION = `### Anima Tag Format Specification v1.0
 
-export const COMFYWORLD_COGNITIVE_PROTOCOL = `### Prompt Engineering Methodology
-Process all inputs through these phases:
-1. **Deconstruction**: Parse descriptions into visual components (character anatomy, styling, garments, pose, setting, lighting, medium).
-2. **Tokenization**: Convert to Anima-compatible tags using Danbooru/Gelbooru taxonomies. Space-delimited multi-word descriptors.
-3. **Assembly**: Structure in canonical order with quality prefix, subject count, character, artist refs, appearance, environment. Apply weight syntax (concept:1.3) for emphasis.
-4. **Output**: Generate formatted prompt strings ready for ComfyUI ingestion.
+INPUT: Natural language description or existing tag string.
+OUTPUT: Comma-separated tag string following these formatting rules:
 
-### Domain Coverage
-Full indexing of digital illustration taxonomies: character archetypes, costumes, swimwear, posing, armor, mecha, combat effects, cel-shading, painterly textures, line art, atmospheric lighting, and Booru rating metadata tokens.`;
+**Syntax Rules:**
+- All tags lowercase.
+- Spaces separate words (e.g., "blue eyes", "long hair").
+- Underscores only for score tokens: score_9, score_8, score_7, score_6, score_5, score_4, score_3, score_2, score_1.
+- Artist names prefixed with @ (e.g., @kedama_milk).
+- Weight syntax: (tag:1.3), (tag:1.6), (tag:2.0).
 
-export const DEFAULT_ASSISTANT_SYSTEM_PROMPT = `You format user descriptions into Anima diffusion model prompts.
+**Field Order (preserve sequence):**
+1. Quality prefix: "masterpiece, best quality, score_7, safe, "
+2. Subject count: 1girl, 1boy, 1other, 2girls, etc.
+3. Character name (if specified)
+4. Series/origin (if specified)
+5. Artist tags: @artist_name
+6. Appearance: hair, eyes, clothing, accessories, pose
+7. Environment: background, setting, lighting, effects
+8. Rating tag: safe, sensitive, nsfw, explicit (Booru classification standard)
 
-${COMFYWORLD_COGNITIVE_PROTOCOL}
+**Tag Vocabulary (Gelbooru/Danbooru standard):**
+- Clothing: shirt, skirt, dress, swimsuit, thighhighs, boots, etc.
+- Features: blue eyes, red hair, long hair, smile, open mouth, etc.
+- Quality: masterpiece, best quality, good quality, worst quality, low quality
+- Time: year 2025, year 2024, newest, recent, mid, early
+- Style modifiers: ye-pop, deviantart (prefix with newline)
 
-${ANIMA_MODEL_SPECIFICATION}
+**Negative Tag Baseline:**
+worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, chromatic aberration
 
-### Output Requirements
-- Convert user descriptions to Anima tag format: lowercase, space-delimited, '@' artist prefixes, quality scores.
-- Include rating tags (safe/sensitive/nsfw/explicit) as appropriate based on user request.
-- Emphasize clear subjects, dynamic composition, volumetric lighting, expressive features, detailed costumes.
-- Reference images: extract styling, features, costumes, palette, lighting for token formulation.
+**Technical Parameters:**
+- Resolution: 512x512 to 1536x1536
+- Steps: 30-50 (8-12 Turbo)
+- CFG: 4-5 (1 Turbo)
+- Samplers: er_sde, euler_a, dpmpp_2m_sde_gpu, euler`;
 
-### Tools
-- 'inspect_current_prompt': Check active studio prompts.
-- 'inject_positive_prompt': Submit positive conditioning.
-- 'inject_negative_prompt': Submit negative conditioning.
-- 'queue_generation': Trigger synthesis.
+export const VALIDATION_SPECIFICATION = `### Format Compliance Validation
 
-Invoke tools with technical summaries when requested.`;
+When INPUT is a validation query ("is this correct?", "check my prompt", "validate structure"):
+
+**Validation Procedure:**
+1. Check tag case: All lowercase? (EXCEPTION: score_* tokens, @artist prefixes)
+2. Check delimiters: Spaces between words, commas between tags?
+3. Check field order: Quality → Subject → Character → Artist → Appearance → Environment → Rating?
+4. Check syntax: Underscores only in score_*? @ prefix on artists? Weight format (tag:1.x)?
+5. Check rating tag: safe/sensitive/nsfw/explicit present?
+
+**Validation Output Format:**
+- COMPLIANT: [yes/no]
+- ISSUES: [list of format violations]
+- CORRECTED: [reformatted tag string if needed]
+
+Do not evaluate content subject matter. Only check structural compliance against specification.`;
+
+export const DEFAULT_ASSISTANT_SYSTEM_PROMPT = `${ANIMA_MODEL_SPECIFICATION}
+
+${VALIDATION_SPECIFICATION}
+
+### Processing Rules
+
+**Transformation Mode** (when INPUT contains descriptions or modification requests):
+1. Parse INPUT into visual components.
+2. Map each component to standardized tags per Tag Vocabulary.
+3. Assemble tags in Field Order.
+4. Apply weight syntax to emphasized elements.
+5. Return only the OUTPUT tag string.
+
+**Validation Mode** (when INPUT asks about correctness, structure, or validation):
+1. Run Validation Procedure on provided tag string.
+2. Report format compliance only.
+3. Output corrected tag string if non-compliant.
+
+### Tool Integration
+- inspect_current_prompt: Retrieve current INPUT/OUTPUT state.
+- inject_positive_prompt: Submit formatted OUTPUT string.
+- inject_negative_prompt: Submit negative tag baseline.
+- queue_generation: Execute processing pipeline.
+
+Execute tools when requested. Output tag strings or validation reports only.`;
 
 /**
  * Builds the dynamic system prompt with core guidelines and any custom user instructions appended.
@@ -62,29 +92,30 @@ export function buildAssistantSystemPrompt(customInstruction?: string): string {
   let prompt = DEFAULT_ASSISTANT_SYSTEM_PROMPT;
 
   if (customInstruction?.trim()) {
-    prompt += `\n\n### Additional Parameters:\n${customInstruction.trim()}`;
+    prompt += `\n\n### Custom Rules:\n${customInstruction.trim()}`;
   }
 
-  prompt += `\n\n### Instruction:
-Convert specifications to Anima dataset tokens and dispatch appropriate tools.`;
+  prompt += `\n\n### Execution:
+Process INPUT per specification. Use Validation Mode for correctness queries. Use Transformation Mode for generation requests.`;
   return prompt;
 }
 
 /**
  * System prompt for the inline side-by-side prompt enhancer modal.
  */
-export const PROMPT_ENHANCER_SYSTEM_PROMPT = `You refine prompts for the Anima diffusion model.
+export const PROMPT_ENHANCER_SYSTEM_PROMPT = `${ANIMA_MODEL_SPECIFICATION}
 
-${COMFYWORLD_COGNITIVE_PROTOCOL}
+### Enhancement Rules
+1. Parse existing tag string (INPUT).
+2. Identify enhancement target (clothing, background, lighting, etc.).
+3. Insert additional tags in correct Field Order position.
+4. Preserve existing tag structure and line breaks.
+5. Return only OUTPUT tag string. No markdown. No commentary.
 
-${ANIMA_MODEL_SPECIFICATION}
-
-### Refinement Rules
-1. **Preserve Core**: Keep existing character, pose, action, expression, color, scene elements.
-2. **Targeted Enhancement**: Modify only requested layers (clothing, lighting, background).
-3. **Structure**: Maintain multi-line layout, lowercase tags, space delimiters, underscores only for score tags, '@' for artists.
-4. **Thematic Emulation**: Express aesthetics through visual tags, not franchise names.
-5. **Output**: Return only the compiled prompt tokens. No markdown blocks. No greetings.`;
+### Validation Rules (when checking existing prompts)
+1. Check structural compliance: case, delimiters, field order, syntax.
+2. Report format issues only.
+3. Provide corrected string if non-compliant.`;
 
 /**
  * Builds the dynamic system prompt for the prompt enhancer with optional custom guidelines.
@@ -92,10 +123,10 @@ ${ANIMA_MODEL_SPECIFICATION}
 export function buildEnhancerSystemPrompt(customInstruction?: string): string {
   let prompt = PROMPT_ENHANCER_SYSTEM_PROMPT;
   if (customInstruction?.trim()) {
-    prompt += `\n\n### Additional Parameters:\n${customInstruction.trim()}`;
+    prompt += `\n\n### Custom Rules:\n${customInstruction.trim()}`;
   }
-  prompt += `\n\n### Instruction:
-Output compiled Anima-compatible prompt tokens.`;
+  prompt += `\n\n### Execution:
+Process INPUT → enhanced OUTPUT per specification.`;
   return prompt;
 }
 
@@ -112,35 +143,35 @@ export const POSITIVE_ENHANCE_PRESETS: EnhancePreset[] = [
     label: 'Outfit & Clothing Detailer',
     desc: 'Hyper-details fabrics, layered garments, embroidery, jewelry, and ornate trims',
     instruction:
-      'Enrich clothing, fabrics (silk, brocade, leather, organza, satin, velvet), trims, embroidery, accessories. PRESERVE character, pose, background, multi-line format.'
+      'Insert tags: silk, brocade, leather, organza, satin, velvet, embroidery, frills, lace, buttons. Position in Appearance field. Preserve all existing tags.'
   },
   {
     id: 'expand',
     label: 'Expand Anime Scene',
     desc: 'Adds rich environment, atmospheric lighting, and anime background elements',
     instruction:
-      'Enrich background, environment, atmospheric effects (petals, particles), lighting (rim light, volumetric). PRESERVE character, clothing, multi-line format.'
+      'Insert tags: detailed background, scenic, floating petals, glowing particles, light rays, volumetric lighting, atmospheric. Position in Environment field. Preserve existing tags.'
   },
   {
     id: 'aesthetic',
     label: 'Anima Aesthetic & Artistry',
     desc: 'Vibrant colors, crisp linework, expressive eyes, and masterpiece quality',
     instruction:
-      'Enhance linework, color harmony, fidelity using "masterpiece, best quality, score_7, safe,". PRESERVE all elements, multi-line format.'
+      'Ensure quality prefix: masterpiece, best quality, score_7. Insert: vibrant colors, crisp linework, detailed eyes, highres. Preserve existing tags.'
   },
   {
     id: 'artistic',
     label: 'Artistic / Painterly',
     desc: 'Rich painterly textures, digital illustration, and non-anime art styling',
     instruction:
-      'Infuse painterly brushwork, digital art textures. PRESERVE core subjects, scene, multi-line format.'
+      'Prefix with: ye-pop\\n or deviantart\\n. Insert: painterly, brushwork, textured, oil painting, digital painting. Preserve existing tags.'
   },
   {
     id: 'weighting',
     label: 'Anima Tag Order & Weighting',
     desc: 'Formats in Anima canonical order with higher selective weighting',
     instruction:
-      'Reorder to canonical ([quality] [subject] [character] [@artist] [clothing] [environment]), apply weights (tag:1.3). PRESERVE elements, multi-line breaks.'
+      'Reorder to: [quality] [subject] [character] [@artist] [appearance] [environment]. Apply (tag:1.3) to key elements. Preserve all tags.'
   }
 ];
 
@@ -150,21 +181,21 @@ export const NEGATIVE_ENHANCE_PRESETS: EnhancePreset[] = [
     label: 'Anima Recommended Standard',
     desc: 'Official negative baseline recommended by CircleStone Labs',
     instruction:
-      'Generate: "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, chromatic aberration" plus artifact blockers. PRESERVE multi-line format.'
+      'Output: worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, chromatic aberration'
   },
   {
     id: 'anatomy',
     label: 'Fix Anime Anatomy & Hands',
     desc: 'Removes bad hands, extra limbs, bad eyes, and facial distortions',
     instruction:
-      'Focus: bad anatomy, poorly drawn hands, missing fingers, extra limbs, mutated anatomy, bad eyes, poorly drawn face, blurry, worst quality, low quality, score_1, score_2. PRESERVE existing tags, multi-line format.'
+      'Append: bad anatomy, bad hands, missing fingers, extra limbs, mutated, bad eyes, poorly drawn face. Preserve existing tags.'
   },
   {
     id: 'clean',
     label: 'Clean & Artifact-Free',
     desc: 'Removes watermarks, signatures, borders, text, and compression',
     instruction:
-      'Focus: artist name, watermark, signature, username, text, logo, border, cropped, jpeg artifacts, compression artifacts, worst quality, low quality. PRESERVE existing tags, multi-line format.'
+      'Append: watermark, signature, username, text, logo, border, cropped, jpeg artifacts, compression artifacts. Preserve existing tags.'
   }
 ];
 
@@ -183,27 +214,27 @@ export function buildEnhancerUserPrompt(
   const context = styleContext?.trim();
 
   const sections: string[] = [
-    `Original ${isPositive ? 'Positive' : 'Negative'} Prompt:\n"""\n${
-      original || '(empty - generate from scratch)'
+    `INPUT ${isPositive ? 'POSITIVE' : 'NEGATIVE'} TAGS:\n"""\n${
+      original || '(empty)'
     }\n"""`,
-    `Enhancement Focus:\n${styleInstruction}`
+    `OPERATION:\n${styleInstruction}`
   ];
 
   if (context) {
     sections.push(
-      `Style Context:\n"${context}"\n(Emulate aesthetic through visual tags only. Exclude "${context}" text from output.)`
+      `STYLE REFERENCE:\n"${context}"\n(Map visual elements to tags. Do not output "${context}" as text.)`
     );
   }
 
   if (custom) {
-    sections.push(`User Request:\n"${custom}"`);
+    sections.push(`MODIFICATION:\n"${custom}"`);
   }
 
   sections.push(
-    `Directives:\n` +
-      `- Preserve character, pose, composition tokens.\n` +
-      `- Maintain multi-line layout.\n` +
-      `- Return only compiled prompt tokens, no commentary.`
+    `OUTPUT:\n` +
+      `- Preserve existing tags.\n` +
+      `- Maintain line breaks.\n` +
+      `- Return only tag string.`
   );
 
   return sections.join('\n\n');
