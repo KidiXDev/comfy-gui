@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Sparkles,
   X
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +17,8 @@ import {
   PopoverContent,
   PopoverTrigger
 } from '@/components/ui/popover';
+import type { HTMLAttributes } from 'vue';
+import { cn } from '@/lib/utils';
 import type { OpenRouterModel } from '../../types/ai';
 import { useAiStore } from '../../stores/aiStore';
 
@@ -26,13 +27,15 @@ interface Props {
   compact?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  class?: HTMLAttributes['class'];
 }
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: undefined,
   compact: false,
   disabled: false,
-  placeholder: 'Select model'
+  placeholder: 'Select model',
+  class: undefined
 });
 
 const emit = defineEmits<{
@@ -139,16 +142,19 @@ watch(isOpen, (open) => {
 <template>
   <Popover v-model:open="isOpen">
     <PopoverTrigger as-child>
-      <!-- Compact Trigger (for Dialogs & Drawers) -->
       <button
-        v-if="compact"
         type="button"
         :disabled="disabled"
-        class="border-input hover:bg-accent hover:text-accent-foreground bg-background/50 flex h-7 max-w-full cursor-pointer items-center justify-between gap-1.5 rounded-md border px-2 text-xs transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+        :class="
+          cn(
+            'border-input hover:bg-accent hover:text-accent-foreground bg-background/50 flex cursor-pointer items-center justify-between gap-1.5 rounded-md border text-xs transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
+            compact ? 'h-7 max-w-full px-2' : 'h-8 w-full px-2.5',
+            props.class
+          )
+        "
         :title="currentModelId"
       >
-        <div class="flex min-w-0 items-center gap-1.5">
-          <Sparkles class="text-primary h-3 w-3 shrink-0" />
+        <div class="flex min-w-0 flex-1 items-center gap-1.5">
           <span class="truncate font-mono text-xs">
             {{ currentModelInfo?.name || currentModelId || placeholder }}
           </span>
@@ -165,49 +171,7 @@ watch(isOpen, (open) => {
           </Badge>
         </div>
         <ChevronsUpDown
-          class="text-muted-foreground h-3 w-3 shrink-0 opacity-60"
-        />
-      </button>
-
-      <!-- Full-Sized Trigger (for Settings View) -->
-      <button
-        v-else
-        type="button"
-        :disabled="disabled"
-        class="border-input hover:border-border hover:bg-accent/40 bg-card/60 flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 text-xs transition-all focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
-      >
-        <div class="flex min-w-0 items-center gap-2">
-          <div
-            class="bg-primary/10 text-primary flex h-5 w-5 shrink-0 items-center justify-center rounded"
-          >
-            <Sparkles class="h-3 w-3" />
-          </div>
-          <div class="flex min-w-0 flex-col items-start text-left">
-            <div class="flex items-center gap-1.5">
-              <span class="text-foreground truncate font-medium">
-                {{ currentModelInfo?.name || currentModelId }}
-              </span>
-              <Badge
-                v-if="
-                  currentModelInfo?.architecture?.input_modalities?.includes(
-                    'image'
-                  )
-                "
-                variant="secondary"
-                class="bg-primary/10 text-primary hover:bg-primary/10 h-4 px-1 py-0 text-xs font-medium"
-              >
-                Vision
-              </Badge>
-            </div>
-            <span
-              class="text-muted-foreground truncate font-mono text-xs opacity-75"
-            >
-              {{ currentModelId }}
-            </span>
-          </div>
-        </div>
-        <ChevronsUpDown
-          class="text-muted-foreground h-3.5 w-3.5 shrink-0 opacity-60"
+          class="text-muted-foreground ml-1 h-3.5 w-3.5 shrink-0 opacity-60"
         />
       </button>
     </PopoverTrigger>
@@ -226,7 +190,7 @@ watch(isOpen, (open) => {
           ref="searchInputRef"
           v-model="searchQuery"
           type="text"
-          placeholder="Search models (e.g. gemini, claude, deepseek)..."
+          placeholder="Search models"
           class="border-0 bg-transparent pr-7 pl-7 text-xs shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           @keydown="handleKeydown"
         />

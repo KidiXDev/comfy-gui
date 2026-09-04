@@ -37,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -764,15 +764,9 @@ async function checkForUpdates() {
 
           <div class="flex flex-col gap-4">
             <Field class="gap-1.5">
-              <div class="flex items-center justify-between">
-                <FieldLabel class="text-foreground text-xs font-medium">
-                  ComfyUI Directory
-                </FieldLabel>
-                <span class="text-muted-foreground text-xs">
-                  Root directory containing
-                  <code class="font-mono">main.py</code>
-                </span>
-              </div>
+              <FieldLabel class="text-foreground text-xs font-medium">
+                ComfyUI Directory
+              </FieldLabel>
               <div class="flex items-center gap-2">
                 <div class="relative flex-1">
                   <FolderOpen
@@ -798,14 +792,9 @@ async function checkForUpdates() {
             </Field>
 
             <Field class="gap-1.5">
-              <div class="flex items-center justify-between">
-                <FieldLabel class="text-foreground text-xs font-medium">
-                  Embedded Python Directory
-                </FieldLabel>
-                <span class="text-muted-foreground text-xs">
-                  Folder or binary for embedded Python environment
-                </span>
-              </div>
+              <FieldLabel class="text-foreground text-xs font-medium">
+                Embedded Python Directory
+              </FieldLabel>
               <div class="flex items-center gap-2">
                 <div class="relative flex-1">
                   <Cpu
@@ -831,14 +820,9 @@ async function checkForUpdates() {
             </Field>
 
             <Field class="gap-1.5">
-              <div class="flex items-center justify-between">
-                <FieldLabel class="text-foreground text-xs font-medium">
-                  Launch Command Arguments
-                </FieldLabel>
-                <span class="text-muted-foreground text-xs">
-                  CLI flags passed to Python on process spawn
-                </span>
-              </div>
+              <FieldLabel class="text-foreground text-xs font-medium">
+                Launch Command Arguments
+              </FieldLabel>
               <Textarea
                 v-model="args"
                 rows="3"
@@ -1061,10 +1045,6 @@ async function checkForUpdates() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <FieldDescription class="text-xs">
-                Fuzzy tolerates skipped characters; prefix is strictly
-                start-of-word.
-              </FieldDescription>
             </Field>
 
             <Field class="gap-1.5">
@@ -1079,9 +1059,6 @@ async function checkForUpdates() {
                 :disabled="!autocompleteEnabled || !autocompleteReady"
                 class="font-mono text-xs"
               />
-              <FieldDescription class="text-xs">
-                Number of popup tag results per token search (5–50).
-              </FieldDescription>
             </Field>
           </div>
 
@@ -1091,15 +1068,9 @@ async function checkForUpdates() {
               'opacity-50': !autocompleteEnabled || !autocompleteReady
             }"
           >
-            <div>
-              <Label class="text-foreground text-xs font-medium">
-                Replace Underscores with Spaces
-              </Label>
-              <p class="text-muted-foreground mt-0.5 text-xs">
-                Converts tokens like <code class="font-mono">blue_hair</code> to
-                <code class="font-mono">blue hair</code> on insertion.
-              </p>
-            </div>
+            <Label class="text-foreground text-xs font-medium">
+              Replace Underscores with Spaces
+            </Label>
             <Switch
               v-model="autocompleteReplaceUnderscores"
               :disabled="!autocompleteEnabled || !autocompleteReady"
@@ -1112,16 +1083,9 @@ async function checkForUpdates() {
               'opacity-50': !autocompleteEnabled || !autocompleteReady
             }"
           >
-            <div>
-              <Label class="text-foreground text-xs font-medium">
-                Keep @ on Artist Tags
-              </Label>
-              <p class="text-muted-foreground mt-0.5 text-xs">
-                Insert artist suggestions as
-                <code class="font-mono">@artist_name</code> instead of
-                <code class="font-mono">artist_name</code>.
-              </p>
-            </div>
+            <Label class="text-foreground text-xs font-medium">
+              Keep @ on Artist Tags
+            </Label>
             <Switch
               v-model="autocompleteIncludeArtistPrefix"
               :disabled="!autocompleteEnabled || !autocompleteReady"
@@ -1186,14 +1150,9 @@ async function checkForUpdates() {
             <div
               class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
             >
-              <div>
-                <Label class="text-foreground text-xs font-semibold">
-                  Default Source
-                </Label>
-                <p class="text-muted-foreground text-xs">
-                  Initial provider when opening a new gallery view
-                </p>
-              </div>
+              <Label class="text-foreground text-xs font-semibold">
+                Default Source
+              </Label>
               <Select v-model="booruDefaultSource" :disabled="!booruAvailable">
                 <SelectTrigger class="w-full text-xs">
                   <SelectValue placeholder="Default source">
@@ -1224,14 +1183,9 @@ async function checkForUpdates() {
             <div
               class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
             >
-              <div>
-                <Label class="text-foreground text-xs font-semibold">
-                  Network & Storage Cache
-                </Label>
-                <p class="text-muted-foreground text-xs">
-                  Shared media proxy cache parameters
-                </p>
-              </div>
+              <Label class="text-foreground text-xs font-semibold">
+                Network & Storage Cache
+              </Label>
               <div class="grid grid-cols-2 gap-3">
                 <Field class="gap-1.5">
                   <FieldLabel class="text-xs">Timeout (seconds)</FieldLabel>
@@ -1294,10 +1248,6 @@ async function checkForUpdates() {
                 placeholder="e.g. loli, shota, gore"
                 class="border-border bg-secondary/50 font-mono text-xs"
               />
-              <FieldDescription class="text-xs">
-                Posts containing any of these tags are completely hidden from
-                results.
-              </FieldDescription>
             </Field>
 
             <Field class="gap-1.5">
@@ -1311,10 +1261,6 @@ async function checkForUpdates() {
                 placeholder="e.g. watermark, signature, blurry"
                 class="border-border bg-secondary/50 font-mono text-xs"
               />
-              <FieldDescription class="text-xs">
-                Tags remain searchable but are stripped when copying generated
-                prompts.
-              </FieldDescription>
             </Field>
           </div>
 
@@ -1323,15 +1269,9 @@ async function checkForUpdates() {
             class="border-border/80 bg-muted/20 flex flex-col gap-3.5 rounded-lg border p-4"
             :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
           >
-            <div>
-              <Label class="text-foreground text-xs font-semibold">
-                Prompt Extraction Defaults
-              </Label>
-              <p class="text-muted-foreground text-xs">
-                Select which tag categories are included when copying a post
-                prompt
-              </p>
-            </div>
+            <Label class="text-foreground text-xs font-semibold">
+              Prompt Extraction Defaults
+            </Label>
 
             <div class="flex flex-wrap gap-2">
               <button
@@ -1651,26 +1591,17 @@ async function checkForUpdates() {
                 <Trash2 class="h-3.5 w-3.5" />
               </button>
             </div>
-            <FieldDescription class="text-xs">
-              Stored locally in ComfyGUI settings and sent only to Civitai.
-            </FieldDescription>
           </Field>
 
           <div
             class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
           >
-            <div class="flex flex-col gap-0.5">
-              <Label
-                for="civitai-nsfw-switch"
-                class="text-foreground flex cursor-pointer items-center text-xs font-medium"
-              >
-                Enable NSFW Content
-              </Label>
-              <p class="text-muted-foreground text-xs">
-                Allow mature and adult (18+) models to be included in Civitai
-                search results
-              </p>
-            </div>
+            <Label
+              for="civitai-nsfw-switch"
+              class="text-foreground flex cursor-pointer items-center text-xs font-medium"
+            >
+              Enable NSFW Content
+            </Label>
             <Switch id="civitai-nsfw-switch" v-model="civitaiNsfw" />
           </div>
         </section>
@@ -1756,10 +1687,6 @@ async function checkForUpdates() {
             >
               {{ aiTestResult.message }}
             </div>
-            <FieldDescription class="text-xs">
-              Saved locally to ai_config.dat and sent directly to OpenRouter via
-              encrypted HTTPS.
-            </FieldDescription>
           </Field>
 
           <!-- Default Model Selector with Search -->
@@ -1793,29 +1720,18 @@ async function checkForUpdates() {
                 }
               "
             />
-            <FieldDescription class="text-xs">
-              Specify custom provider slug(s) (comma-separated, in priority
-              order) to route requests via OpenRouter. Leave blank for default
-              OpenRouter routing.
-            </FieldDescription>
           </Field>
 
           <!-- Allow Provider Fallbacks -->
           <div
             class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
           >
-            <div class="flex flex-col gap-0.5">
-              <Label
-                for="ai-provider-fallbacks-switch"
-                class="text-foreground flex cursor-pointer items-center text-xs font-medium"
-              >
-                Allow Provider Fallbacks
-              </Label>
-              <p class="text-muted-foreground text-xs">
-                When enabled, OpenRouter can fall back to other upstream hosts
-                if your specified providers are temporarily unavailable.
-              </p>
-            </div>
+            <Label
+              for="ai-provider-fallbacks-switch"
+              class="text-foreground flex cursor-pointer items-center text-xs font-medium"
+            >
+              Allow Provider Fallbacks
+            </Label>
             <Switch
               id="ai-provider-fallbacks-switch"
               :checked="aiStore.config.allowProviderFallbacks ?? true"
@@ -1833,19 +1749,12 @@ async function checkForUpdates() {
           <div
             class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
           >
-            <div class="flex flex-col gap-0.5">
-              <Label
-                for="ai-auto-apply-switch"
-                class="text-foreground flex cursor-pointer items-center text-xs font-medium"
-              >
-                Auto-Apply Agentic Actions
-              </Label>
-              <p class="text-muted-foreground text-xs">
-                When enabled, the assistant will automatically inject prompts
-                and trigger generation without requiring manual confirmation
-                cards.
-              </p>
-            </div>
+            <Label
+              for="ai-auto-apply-switch"
+              class="text-foreground flex cursor-pointer items-center text-xs font-medium"
+            >
+              Auto-Apply Agentic Actions
+            </Label>
             <Switch
               id="ai-auto-apply-switch"
               :checked="aiStore.config.autoApply"
@@ -1876,10 +1785,6 @@ async function checkForUpdates() {
                 }
               "
             />
-            <FieldDescription class="text-xs">
-              Custom instructions specifically for the AI Chatbot Assistant
-              drawer (conversational tone, agentic actions, tool suggestions).
-            </FieldDescription>
           </Field>
 
           <!-- Prompt Enhancer Custom Instructions -->
@@ -1899,10 +1804,6 @@ async function checkForUpdates() {
                 }
               "
             />
-            <FieldDescription class="text-xs">
-              Custom guidelines exclusively for the inline Prompt Enhancer modal
-              (tag order rules, formatting preferences, vocabulary overrides).
-            </FieldDescription>
           </Field>
         </section>
 
@@ -1992,10 +1893,6 @@ async function checkForUpdates() {
             :disabled="isInstallingCustomNode"
             @keydown.enter="installCustomNode"
           />
-          <FieldDescription>
-            Only install repositories you trust. Python packages can execute
-            code on this device.
-          </FieldDescription>
         </Field>
 
         <div

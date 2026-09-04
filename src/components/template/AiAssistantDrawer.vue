@@ -474,23 +474,14 @@ function renderMarkdown(content: string): string {
           </span>
         </div>
 
-        <!-- Subheader when in Chat View: Model Selector & Auto-Apply Toggle -->
+        <!-- Subheader when in Chat View: Auto-Apply Toggle -->
         <div
           v-else
-          class="border-border/40 mt-2.5 flex items-center justify-between gap-2 border-t pt-1 text-xs"
+          class="border-border/40 mt-2.5 flex items-center justify-between gap-2 border-t pt-1.5 text-xs"
         >
-          <!-- Quick Model Selector with Search -->
-          <div class="flex min-w-0 flex-1 items-center gap-1.5">
-            <span class="text-muted-foreground shrink-0 text-xs font-medium"
-              >Model:</span
-            >
-            <AiModelSelector
-              compact
-              :model-value="aiStore.config.selectedModel"
-              class="w-full flex-1"
-              @change="handleModelChange"
-            />
-          </div>
+          <span class="text-muted-foreground truncate font-mono text-xs">
+            {{ activeSession?.title || 'Current Chat' }}
+          </span>
 
           <!-- Auto-Apply Toggle -->
           <div class="flex shrink-0 items-center gap-1.5 pl-1">
@@ -1420,14 +1411,23 @@ function renderMarkdown(content: string): string {
                 </span>
               </div>
 
-              <div class="flex items-center gap-1.5">
+              <div class="flex min-w-0 items-center gap-1.5">
+                <!-- Model Selector -->
+                <AiModelSelector
+                  compact
+                  :disabled="aiStore.isGenerating"
+                  :model-value="aiStore.config.selectedModel"
+                  class="max-w-36 sm:max-w-48"
+                  @change="handleModelChange"
+                />
+
                 <!-- Stop Button when Generating -->
                 <Button
                   v-if="aiStore.isGenerating"
                   type="button"
                   size="sm"
                   variant="outline"
-                  class="text-destructive hover:bg-destructive/10 h-7 gap-1 text-xs"
+                  class="text-destructive hover:bg-destructive/10 h-7 shrink-0 gap-1 text-xs"
                   @click="aiStore.stopGeneration"
                 >
                   <Square class="fill-destructive h-3 w-3" />
@@ -1440,7 +1440,7 @@ function renderMarkdown(content: string): string {
                   type="button"
                   size="sm"
                   :disabled="!messageInput.trim() && attachments.length === 0"
-                  class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs shadow-xs"
+                  class="bg-primary text-primary-foreground h-7 shrink-0 gap-1.5 text-xs shadow-xs"
                   @click="handleSend"
                 >
                   <span>Send</span>
