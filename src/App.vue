@@ -16,6 +16,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useCivitaiStore } from './stores/civitaiStore';
 import { useComfyStore } from './stores/comfyStore';
 import { useDownloadStore } from './stores/downloadStore';
 import { useLauncherStore } from './stores/launcherStore';
@@ -27,6 +28,7 @@ const downloadStore = useDownloadStore();
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const promptSuggestionStore = usePromptSuggestionStore();
+const civitaiStore = useCivitaiStore();
 const shutdownDialogOpen = ref(false);
 const isShuttingDown = ref(false);
 const shutdownError = ref('');
@@ -73,6 +75,7 @@ onMounted(async () => {
   comfyStore.init();
   void workflowStore.init();
   void promptSuggestionStore.init();
+  void civitaiStore.init();
 });
 
 onUnmounted(() => {

@@ -43,10 +43,10 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import {
   cacheCivitaiModel,
-  fetchCivitaiBaseModels,
   fetchCivitaiModels,
   isVideoMedia,
   normalizeModelFilename,
@@ -55,6 +55,7 @@ import {
 } from '../services/civitai';
 import type { DownloadRecord } from '../services/downloadManager';
 import { loadAppData } from '../services/appStorage';
+import { useCivitaiStore } from '../stores/civitaiStore';
 import { useComfyStore } from '../stores/comfyStore';
 import { useDownloadStore } from '../stores/downloadStore';
 
@@ -91,14 +92,11 @@ const router = useRouter();
 const route = useRoute();
 const comfyStore = useComfyStore();
 const downloadStore = useDownloadStore();
+const civitaiStore = useCivitaiStore();
+const { query, modelType, baseModel, sort, period, baseModels } =
+  storeToRefs(civitaiStore);
 const apiKey = ref('');
 const nsfw = ref(false);
-const query = ref('');
-const modelType = ref('all');
-const baseModel = ref('all');
-const baseModels = ref<string[]>([]);
-const sort = ref('Most Downloaded');
-const period = ref('AllTime');
 const models = ref<CivitaiModel[]>([]);
 const nextCursor = ref<string>();
 const selectedVersions = ref<Record<number, string>>({});
@@ -268,11 +266,7 @@ function clearSearch() {
 }
 
 function resetFilters() {
-  query.value = '';
-  modelType.value = 'all';
-  baseModel.value = 'all';
-  sort.value = 'Most Downloaded';
-  period.value = 'AllTime';
+  civitaiStore.resetFilters();
   void loadModels();
 }
 
@@ -372,6 +366,9 @@ function deactivateView() {
 }
 
 onMounted(async () => {
+  if (!civitaiStore.isLoaded) {
+    await civitaiStore.init();
+  }
   if (route.query.tag) {
     query.value = String(route.query.tag);
   }
@@ -380,9 +377,6 @@ onMounted(async () => {
   );
   apiKey.value = settings?.apiKey ?? '';
   nsfw.value = settings?.nsfw ?? false;
-  void fetchCivitaiBaseModels()
-    .then((values) => (baseModels.value = values))
-    .catch(console.error);
   void comfyStore.fetchDiscovery();
   await loadModels();
   resizeObserver = new ResizeObserver(([entry]) => {

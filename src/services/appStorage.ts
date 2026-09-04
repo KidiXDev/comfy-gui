@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 type AppDataName =
+  | 'civitai_browser_state'
   | 'civitai_settings'
   | 'launcher_config'
   | 'lora_presets'
@@ -14,6 +15,7 @@ type DataFile = 'config' | 'history' | 'state';
 type DataContainer = Partial<Record<AppDataName, unknown>>;
 
 const dataFiles: Record<AppDataName, DataFile> = {
+  civitai_browser_state: 'state',
   civitai_settings: 'config',
   launcher_config: 'config',
   lora_presets: 'state',
