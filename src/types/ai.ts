@@ -51,13 +51,30 @@ export interface ChatMessageAttachment {
   dataUrl: string;
 }
 
+export type AgentStep =
+  | 'thinking'
+  | 'inspecting'
+  | 'injecting'
+  | 'queueing'
+  | 'tool_completed'
+  | 'responding'
+  | 'done';
+
+export type ChatMessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'reasoning'; text: string; isComplete?: boolean }
+  | { type: 'tool'; invocation: ToolInvocation };
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  parts?: ChatMessagePart[];
   createdAt: number;
   attachments?: ChatMessageAttachment[];
   toolInvocations?: ToolInvocation[];
+  reasoning?: string;
+  currentStep?: AgentStep;
 }
 
 export interface ChatSession {

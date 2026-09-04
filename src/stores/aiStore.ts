@@ -1,6 +1,6 @@
-import { streamText, tool } from 'ai';
+import { isStepCount, streamText, tool } from 'ai';
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { z } from 'zod';
 import {
   buildSystemPrompt,
@@ -14,6 +14,7 @@ import type {
   AiConfig,
   ChatMessage,
   ChatMessageAttachment,
+  ChatMessagePart,
   ChatSession,
   OpenRouterModel,
   ToolInvocation,
@@ -21,6 +22,56 @@ import type {
 } from '../types/ai';
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
+
+function sanitizeLegacySessionInvocations(session: ChatSession) {
+  for (const msg of session.messages) {
+    if (msg.toolInvocations) {
+      for (const inv of msg.toolInvocations) {
+        if (inv.name === 'inspect_current_prompt') {
+          inv.state = 'applied';
+        }
+      }
+    }
+    // Synthesize chronological parts for legacy messages if not present
+    if (!msg.parts || msg.parts.length === 0) {
+      const parts: ChatMessagePart[] = [];
+      if (msg.reasoning) {
+        parts.push({
+          type: 'reasoning',
+          text: msg.reasoning,
+          isComplete: true
+        });
+      }
+      if (msg.toolInvocations && msg.toolInvocations.length > 0) {
+        for (const inv of msg.toolInvocations) {
+          parts.push({ type: 'tool', invocation: inv });
+        }
+      }
+      if (msg.content) {
+        parts.push({ type: 'text', text: msg.content });
+      }
+      msg.parts = parts;
+    }
+  }
+}
+
+function appendTextPart(parts: ChatMessagePart[], text: string) {
+  const lastPart = parts.at(-1);
+  if (lastPart && lastPart.type === 'text') {
+    lastPart.text += text;
+  } else {
+    parts.push({ type: 'text', text });
+  }
+}
+
+function appendReasoningPart(parts: ChatMessagePart[], text: string) {
+  const lastPart = parts.at(-1);
+  if (lastPart && lastPart.type === 'reasoning') {
+    lastPart.text += text;
+  } else {
+    parts.push({ type: 'reasoning', text });
+  }
+}
 
 export const useAiStore = defineStore('ai', () => {
   const workflowStore = useWorkflowStore();
@@ -78,6 +129,8 @@ export const useAiStore = defineStore('ai', () => {
     try {
       const saved = await loadAppData<ChatSession[]>('chat_sessions');
       if (Array.isArray(saved) && saved.length > 0) {
+        // Sanitize any legacy inspect_current_prompt that might have been saved as 'pending'
+        saved.forEach((s) => sanitizeLegacySessionInvocations(s));
         sessions.value = saved;
         if (
           !activeSessionId.value ||
@@ -106,13 +159,13 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   function createSession(title = 'New Chat'): ChatSession {
-    const newSession: ChatSession = {
+    const newSession = reactive<ChatSession>({
       id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       messages: []
-    };
+    });
     sessions.value.unshift(newSession);
     activeSessionId.value = newSession.id;
     void saveChatSessions();
@@ -134,6 +187,17 @@ export const useAiStore = defineStore('ai', () => {
       } else if (activeSessionId.value === id) {
         activeSessionId.value = sessions.value[0].id;
       }
+      void saveChatSessions();
+    }
+  }
+
+  function renameSession(id: string, newTitle: string) {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    const session = sessions.value.find((s) => s.id === id);
+    if (session) {
+      session.title = trimmed;
+      session.updatedAt = Date.now();
       void saveChatSessions();
     }
   }
@@ -201,13 +265,16 @@ export const useAiStore = defineStore('ai', () => {
     }
 
     const assistantMessageId = `msg-${Date.now()}-assistant`;
-    const assistantMsg: ChatMessage = {
+    const assistantMsg = reactive<ChatMessage>({
       id: assistantMessageId,
       role: 'assistant',
       content: '',
+      parts: [],
       createdAt: Date.now(),
-      toolInvocations: []
-    };
+      toolInvocations: [],
+      reasoning: '',
+      currentStep: 'thinking'
+    });
     session.messages.push(assistantMsg);
 
     isGenerating.value = true;
@@ -215,7 +282,10 @@ export const useAiStore = defineStore('ai', () => {
 
     try {
       const model = getOpenRouterModel(config.value);
-      const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt);
+      const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt, {
+        positivePrompt: workflowStore.positivePrompt,
+        negativePrompt: workflowStore.negativePrompt
+      });
 
       // Exclude the empty assistant placeholder from history
       const coreMessages = session.messages.slice(0, -1).map((m) => {
@@ -336,14 +406,31 @@ export const useAiStore = defineStore('ai', () => {
         system: systemPrompt,
         messages: coreMessages,
         tools,
+        stopWhen: isStepCount(5),
         abortSignal: currentAbortController.signal
       });
 
       for await (const part of result.fullStream) {
+        if (!assistantMsg.parts) assistantMsg.parts = [];
+
         if (part.type === 'text-delta') {
           assistantMsg.content += part.text;
+          assistantMsg.currentStep = 'responding';
+          appendTextPart(assistantMsg.parts, part.text);
+        } else if (part.type === 'reasoning-delta') {
+          if (part.text) {
+            assistantMsg.reasoning = (assistantMsg.reasoning || '') + part.text;
+            appendReasoningPart(assistantMsg.parts, part.text);
+          }
+          assistantMsg.currentStep = 'thinking';
         } else if (part.type === 'tool-call') {
           const toolName = part.toolName as ToolName;
+          assistantMsg.currentStep =
+            toolName === 'inspect_current_prompt'
+              ? 'inspecting'
+              : toolName === 'queue_generation'
+                ? 'queueing'
+                : 'injecting';
           const invocation: ToolInvocation = {
             id: part.toolCallId,
             name: toolName,
@@ -351,34 +438,60 @@ export const useAiStore = defineStore('ai', () => {
               'input' in part && part.input
                 ? (part.input as Record<string, unknown>)
                 : {},
-            state: config.value.autoApply
-              ? toolName === 'queue_generation'
-                ? 'queued'
-                : 'applied'
-              : 'pending',
+            state:
+              toolName === 'inspect_current_prompt'
+                ? 'applied'
+                : config.value.autoApply
+                  ? toolName === 'queue_generation'
+                    ? 'queued'
+                    : 'applied'
+                  : 'pending',
             timestamp: Date.now()
           };
           if (!assistantMsg.toolInvocations) {
             assistantMsg.toolInvocations = [];
           }
           assistantMsg.toolInvocations.push(invocation);
+          assistantMsg.parts.push({ type: 'tool', invocation });
         } else if (part.type === 'tool-result') {
           const existing = assistantMsg.toolInvocations?.find(
             (t) => t.id === part.toolCallId
           );
           if (existing) {
             existing.result = 'output' in part ? part.output : undefined;
+            existing.state =
+              existing.name === 'inspect_current_prompt'
+                ? 'applied'
+                : existing.state;
           }
+          const partTool = assistantMsg.parts.find(
+            (p) => p.type === 'tool' && p.invocation.id === part.toolCallId
+          );
+          if (partTool && partTool.type === 'tool') {
+            partTool.invocation.result =
+              'output' in part ? part.output : undefined;
+            partTool.invocation.state =
+              partTool.invocation.name === 'inspect_current_prompt'
+                ? 'applied'
+                : partTool.invocation.state;
+          }
+          assistantMsg.currentStep = 'tool_completed';
         }
       }
     } catch (err: unknown) {
+      if (!assistantMsg.parts) assistantMsg.parts = [];
       if (err instanceof Error && err.name === 'AbortError') {
-        assistantMsg.content += '\n\n*(Generation stopped)*';
+        const stopNotice = '\n\n*(Generation stopped)*';
+        assistantMsg.content += stopNotice;
+        appendTextPart(assistantMsg.parts, stopNotice);
       } else {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        assistantMsg.content += `\n\n**Error:** ${errorMsg}`;
+        const errNotice = `\n\n**Error:** ${errorMsg}`;
+        assistantMsg.content += errNotice;
+        appendTextPart(assistantMsg.parts, errNotice);
       }
     } finally {
+      assistantMsg.currentStep = 'done';
       isGenerating.value = false;
       currentAbortController = null;
       session.updatedAt = Date.now();
@@ -405,6 +518,12 @@ export const useAiStore = defineStore('ai', () => {
         workflowStore.negativePrompt = neg;
       }
       inv.state = 'applied';
+      const partTool = msg.parts?.find(
+        (p) => p.type === 'tool' && p.invocation.id === toolId
+      );
+      if (partTool && partTool.type === 'tool') {
+        partTool.invocation.state = 'applied';
+      }
       void saveChatSessions();
     }
   }
@@ -434,6 +553,13 @@ export const useAiStore = defineStore('ai', () => {
       inv.state = 'queued';
     }
 
+    const partTool = msg.parts?.find(
+      (p) => p.type === 'tool' && p.invocation.id === toolId
+    );
+    if (partTool && partTool.type === 'tool') {
+      partTool.invocation.state = 'queued';
+    }
+
     await comfyStore.generateImage(workflowStore.getFullWorkflowState());
     void saveChatSessions();
   }
@@ -447,6 +573,12 @@ export const useAiStore = defineStore('ai', () => {
     if (!inv) return;
 
     inv.state = 'rejected';
+    const partTool = msg.parts?.find(
+      (p) => p.type === 'tool' && p.invocation.id === toolId
+    );
+    if (partTool && partTool.type === 'tool') {
+      partTool.invocation.state = 'rejected';
+    }
     void saveChatSessions();
   }
 
@@ -479,6 +611,7 @@ export const useAiStore = defineStore('ai', () => {
     createSession,
     switchSession,
     deleteSession,
+    renameSession,
     clearAllSessions,
     refreshModels,
     sendMessage,

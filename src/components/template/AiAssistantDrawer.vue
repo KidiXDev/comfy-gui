@@ -5,11 +5,18 @@ import {
   ArrowUpRight,
   Bot,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
   Eye,
+  History,
   ImagePlus,
+  MessageSquare,
+  Pencil,
   Play,
   Plus,
   ScanEye,
+  Search,
   Send,
   Settings,
   Sparkles,
@@ -22,14 +29,6 @@ import {
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
@@ -38,7 +37,11 @@ import {
 } from '@/components/ui/tooltip';
 import { useAiStore } from '../../stores/aiStore';
 import { useComfyStore } from '../../stores/comfyStore';
-import type { ChatMessageAttachment } from '../../types/ai';
+import type {
+  ChatMessage,
+  ChatMessageAttachment,
+  ChatMessagePart
+} from '../../types/ai';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 
 const aiStore = useAiStore();
@@ -54,32 +57,95 @@ const isDraggingOver = ref(false);
 const activeSession = computed(() => aiStore.activeSession);
 const messages = computed(() => aiStore.activeMessages);
 
-// Scroll to bottom when new messages arrive or when generating
-watch(
-  () => [messages.value.length, messages.value.at(-1)?.content],
-  () => {
-    nextTick(() => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop =
-          messagesContainer.value.scrollHeight;
-      }
-    });
-  },
-  { deep: true }
-);
+const showSessionsList = ref(false);
+const sessionSearchQuery = ref('');
+const editingSessionId = ref<string | null>(null);
+const editingTitle = ref('');
+const deletingSessionId = ref<string | null>(null);
+
+const filteredSessions = computed(() => {
+  // eslint-disable-next-line unicorn/no-array-sort
+  const list = [...aiStore.sessions].sort(
+    (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
+  );
+  const q = sessionSearchQuery.value.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((s) => s.title.toLowerCase().includes(q));
+});
+
+function formatRelativeTime(timestamp: number): string {
+  if (!timestamp) return '';
+  const now = Date.now();
+  const diffSec = Math.floor((now - timestamp) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric'
+  });
+}
 
 function handleNewChat() {
   aiStore.createSession('New Chat');
+  showSessionsList.value = false;
 }
 
-function handleSelectSession(sessionId: unknown) {
-  if (typeof sessionId === 'string') {
-    aiStore.switchSession(sessionId);
+function handleSelectSessionAndClose(sessionId: string) {
+  aiStore.switchSession(sessionId);
+  showSessionsList.value = false;
+}
+
+function startRename(s: { id: string; title: string }) {
+  editingSessionId.value = s.id;
+  editingTitle.value = s.title;
+  nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>(
+      `#rename-input-${s.id}`
+    );
+    input?.focus();
+    input?.select();
+  });
+}
+
+function saveRename(sessionId: string) {
+  if (editingTitle.value.trim()) {
+    aiStore.renameSession(sessionId, editingTitle.value.trim());
   }
+  editingSessionId.value = null;
+  editingTitle.value = '';
 }
 
-function handleDeleteSession(sessionId: string) {
+function cancelRename() {
+  editingSessionId.value = null;
+  editingTitle.value = '';
+}
+
+function promptDeleteSession(sessionId: string) {
+  deletingSessionId.value = sessionId;
+}
+
+function confirmDeleteSession(sessionId: string) {
   aiStore.deleteSession(sessionId);
+  deletingSessionId.value = null;
+}
+
+function cancelDeleteSession() {
+  deletingSessionId.value = null;
+}
+
+const expandedThoughts = ref<Record<string, boolean>>({});
+
+function toggleThought(msgId: string) {
+  expandedThoughts.value[msgId] = !expandedThoughts.value[msgId];
+}
+
+function isThoughtExpanded(id: string): boolean {
+  return !!expandedThoughts.value[id];
 }
 
 function handleModelChange(modelId: unknown) {
@@ -186,6 +252,55 @@ function handleDrop(event: DragEvent) {
   }
 }
 
+let shouldAutoScroll = true;
+
+function handleMessagesScroll() {
+  if (!messagesContainer.value) return;
+  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value;
+  shouldAutoScroll = scrollHeight - (scrollTop + clientHeight) < 80;
+}
+
+function scrollToBottom(smooth = false) {
+  if (!messagesContainer.value || !shouldAutoScroll) return;
+  messagesContainer.value.scrollTo({
+    top: messagesContainer.value.scrollHeight,
+    behavior: smooth ? 'smooth' : 'auto'
+  });
+}
+
+function getChronologicalParts(msg: ChatMessage): ChatMessagePart[] {
+  if (msg.parts && msg.parts.length > 0) {
+    return msg.parts;
+  }
+  const parts: ChatMessagePart[] = [];
+  if (msg.reasoning) {
+    parts.push({ type: 'reasoning', text: msg.reasoning, isComplete: true });
+  }
+  if (msg.toolInvocations && msg.toolInvocations.length > 0) {
+    for (const inv of msg.toolInvocations) {
+      parts.push({ type: 'tool', invocation: inv });
+    }
+  }
+  if (msg.content) {
+    parts.push({ type: 'text', text: msg.content });
+  }
+  return parts;
+}
+
+// Keep scrolling in sync with token streaming
+watch(
+  () => {
+    const last = messages.value.at(-1);
+    return [last?.content, last?.parts?.length, last?.currentStep];
+  },
+  () => {
+    nextTick(() => {
+      scrollToBottom();
+    });
+  },
+  { deep: true }
+);
+
 async function handleSend() {
   const text = messageInput.value.trim();
   const currentAtts = [...attachments.value];
@@ -194,6 +309,8 @@ async function handleSend() {
 
   messageInput.value = '';
   attachments.value = [];
+  shouldAutoScroll = true;
+  nextTick(() => scrollToBottom(true));
 
   try {
     await aiStore.sendMessage(text, currentAtts);
@@ -249,7 +366,7 @@ function renderMarkdown(content: string): string {
 
     <!-- Slide-over Drawer -->
     <aside
-      class="border-border bg-sidebar fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg"
+      class="border-border bg-sidebar fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-xl"
       :class="aiStore.isDrawerOpen ? 'translate-x-0' : 'translate-x-full'"
     >
       <!-- Hidden File Input for Image Attachments -->
@@ -266,7 +383,7 @@ function renderMarkdown(content: string): string {
       <div
         class="border-border bg-card/60 flex flex-col border-b px-3.5 py-2.5 backdrop-blur-xs"
       >
-        <!-- Top row: App title, New chat, Session Selector, Close -->
+        <!-- Top row: App title, Session history button, New chat, Close -->
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
             <div
@@ -282,6 +399,28 @@ function renderMarkdown(content: string): string {
           </div>
 
           <div class="flex items-center gap-1.5">
+            <!-- Session History View Toggle Button -->
+            <Button
+              :variant="showSessionsList ? 'secondary' : 'outline'"
+              size="sm"
+              class="h-7 max-w-44 gap-1.5 px-2 text-xs font-medium"
+              :class="{
+                'border-primary/50 text-primary bg-primary/10': showSessionsList
+              }"
+              title="View all chat sessions"
+              @click="showSessionsList = !showSessionsList"
+            >
+              <History class="h-3.5 w-3.5 shrink-0" />
+              <span class="truncate">{{
+                activeSession?.title || 'Conversations'
+              }}</span>
+              <span
+                class="bg-muted text-muted-foreground py-0.2 ml-0.5 rounded-full px-1.5 font-mono text-[10px]"
+              >
+                {{ aiStore.sessions.length }}
+              </span>
+            </Button>
+
             <!-- New Chat Button -->
             <Button
               variant="outline"
@@ -293,43 +432,6 @@ function renderMarkdown(content: string): string {
               <Plus class="h-3 w-3" />
               <span>New</span>
             </Button>
-
-            <!-- Session List Selector -->
-            <Select
-              :model-value="aiStore.activeSessionId"
-              @update:model-value="handleSelectSession"
-            >
-              <SelectTrigger class="h-7 max-w-36 px-2 text-xs font-medium">
-                <SelectValue placeholder="Sessions">
-                  <span class="truncate">{{
-                    activeSession?.title || 'Chat'
-                  }}</span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent align="end" class="w-56">
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem
-                    v-for="s in aiStore.sessions"
-                    :key="s.id"
-                    :value="s.id"
-                    class="text-xs"
-                  >
-                    <div class="flex w-full items-center justify-between gap-2">
-                      <span class="truncate">{{ s.title }}</span>
-                      <button
-                        v-if="aiStore.sessions.length > 1"
-                        type="button"
-                        class="text-muted-foreground hover:text-destructive opacity-50 hover:opacity-100"
-                        title="Delete session"
-                        @click.stop="handleDeleteSession(s.id)"
-                      >
-                        <Trash2 class="h-3 w-3" />
-                      </button>
-                    </div>
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
 
             <!-- Close Drawer Button -->
             <Button
@@ -344,8 +446,31 @@ function renderMarkdown(content: string): string {
           </div>
         </div>
 
-        <!-- Bottom row: Model Selector & Auto-Apply Toggle -->
+        <!-- Subheader when in Sessions View -->
         <div
+          v-if="showSessionsList"
+          class="border-border/40 mt-2.5 flex items-center justify-between gap-2 border-t pt-2 text-xs"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            class="text-muted-foreground hover:text-foreground h-7 gap-1 px-2 text-xs"
+            @click="showSessionsList = false"
+          >
+            <ChevronLeft class="h-3.5 w-3.5" />
+            <span>Back to Chat</span>
+          </Button>
+
+          <span class="text-muted-foreground font-mono text-[11px]">
+            {{ filteredSessions.length }} conversation{{
+              filteredSessions.length === 1 ? '' : 's'
+            }}
+          </span>
+        </div>
+
+        <!-- Subheader when in Chat View: Model Selector & Auto-Apply Toggle -->
+        <div
+          v-else
           class="border-border/40 mt-2.5 flex items-center justify-between gap-2 border-t pt-1 text-xs"
         >
           <!-- Quick Model Selector with Search -->
@@ -385,476 +510,883 @@ function renderMarkdown(content: string): string {
         </div>
       </div>
 
-      <!-- Api Key Banner if not set -->
+      <!-- SESSIONS MANAGEMENT VIEW -->
       <div
-        v-if="!aiStore.hasApiKey"
-        class="m-3 flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
+        v-if="showSessionsList"
+        class="bg-sidebar/50 flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden p-3"
       >
-        <div class="flex items-center gap-2 font-semibold text-amber-500">
-          <Zap class="h-4 w-4" />
-          <span>OpenRouter API Key Required</span>
-        </div>
-        <p class="text-muted-foreground">
-          Configure your OpenRouter API key to enable prompt generation, AI
-          vision analysis, and agentic studio control.
-        </p>
-        <Button
-          size="sm"
-          variant="secondary"
-          class="h-7 w-fit gap-1.5 text-xs"
-          @click="navigateToSettings"
-        >
-          <Settings class="h-3.5 w-3.5" />
-          <span>Open Settings</span>
-        </Button>
-      </div>
-
-      <!-- Messages Thread -->
-      <div
-        ref="messagesContainer"
-        class="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-3.5 select-text"
-      >
-        <!-- Empty State with Starters -->
-        <div
-          v-if="messages.length === 0"
-          class="my-auto flex h-full flex-col items-center justify-center gap-3 p-4 text-center"
-        >
-          <div
-            class="bg-primary/10 border-primary/20 text-primary flex h-12 w-12 items-center justify-center rounded-2xl border shadow-xs"
-          >
-            <Bot class="h-6 w-6" />
-          </div>
-          <div class="flex flex-col gap-1">
-            <h3 class="text-foreground text-sm font-semibold">
-              ComfyUI Studio Assistant
-            </h3>
-            <p class="text-muted-foreground max-w-xs text-xs">
-              Brainstorm Anima prompts, detail anime character outfits, analyze
-              image styles with Vision, or ask the agent to inspect and queue
-              renders.
-            </p>
-          </div>
-
-          <!-- Starter Chips -->
-          <div class="flex w-full max-w-xs flex-col gap-1.5 pt-2">
+        <!-- Search Input -->
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1">
+            <Search
+              class="text-muted-foreground absolute top-2.5 left-2.5 h-3.5 w-3.5"
+            />
+            <input
+              v-model="sessionSearchQuery"
+              type="text"
+              placeholder="Search conversations..."
+              class="bg-background border-border placeholder:text-muted-foreground text-foreground focus:border-primary/60 h-8 w-full rounded-lg border pr-7 pl-8 text-xs transition-colors outline-none"
+            />
             <button
+              v-if="sessionSearchQuery"
               type="button"
-              class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
-              @click="
-                handleStarterClick(
-                  'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
-                )
-              "
+              class="text-muted-foreground hover:text-foreground absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full"
+              @click="sessionSearchQuery = ''"
             >
-              <span>Inspect & optimize for Anima</span>
-              <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
-              @click="
-                handleStarterClick(
-                  'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
-                )
-              "
-            >
-              <span>Fantasy mage with detailed outfit</span>
-              <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
-              @click="
-                handleStarterClick(
-                  'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
-                )
-              "
-            >
-              <span>Create Anima aesthetic prompt</span>
-              <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+              <X class="h-3 w-3" />
             </button>
           </div>
         </div>
 
-        <!-- Messages List -->
-        <template v-for="msg in messages" :key="msg.id">
-          <!-- User Message -->
+        <!-- Sessions Scroll List -->
+        <div class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
           <div
-            v-if="msg.role === 'user'"
-            class="flex flex-col items-end gap-1.5 pl-8"
+            v-if="filteredSessions.length === 0"
+            class="text-muted-foreground flex flex-col items-center justify-center gap-2 py-16 text-center"
           >
-            <!-- Attachments if any -->
-            <div
-              v-if="msg.attachments && msg.attachments.length > 0"
-              class="flex flex-wrap justify-end gap-1.5"
+            <MessageSquare class="h-8 w-8 stroke-1 opacity-40" />
+            <p class="text-xs">No conversations found</p>
+            <Button
+              v-if="sessionSearchQuery"
+              variant="outline"
+              size="sm"
+              class="mt-1 h-7 text-xs"
+              @click="sessionSearchQuery = ''"
             >
-              <div
-                v-for="att in msg.attachments"
-                :key="att.id"
-                class="border-primary/30 relative h-16 w-16 overflow-hidden rounded-lg border shadow-xs"
-              >
-                <img
-                  :src="att.dataUrl"
-                  alt=""
-                  class="h-full w-full object-cover"
-                />
-              </div>
-            </div>
-
-            <!-- Text Content -->
-            <div
-              v-if="msg.content"
-              class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs leading-relaxed shadow-xs"
+              Clear Search
+            </Button>
+            <Button
+              v-else
+              variant="outline"
+              size="sm"
+              class="mt-1 h-7 text-xs"
+              @click="handleNewChat"
             >
-              {{ msg.content }}
-            </div>
+              Create New Chat
+            </Button>
           </div>
 
-          <!-- Assistant Message -->
-          <div v-else class="flex flex-col items-start gap-2 pr-4">
-            <!-- Avatar & Label -->
+          <div
+            v-for="s in filteredSessions"
+            :key="s.id"
+            class="group relative flex cursor-pointer flex-col gap-2 rounded-xl border p-3 text-left transition-all"
+            :class="[
+              s.id === aiStore.activeSessionId
+                ? 'bg-primary/5 border-primary/40 ring-primary/30 shadow-xs ring-1'
+                : 'bg-card/70 border-border/70 hover:bg-card hover:border-border'
+            ]"
+            @click="handleSelectSessionAndClose(s.id)"
+          >
+            <!-- Title Row or Inline Rename Form -->
             <div
-              class="text-muted-foreground flex items-center gap-1.5 text-xs font-medium"
+              v-if="editingSessionId === s.id"
+              class="flex items-center gap-1.5"
+              @click.stop
             >
-              <Sparkles class="text-primary h-3.5 w-3.5" />
-              <span>AI Assistant</span>
-            </div>
-
-            <!-- Text Body -->
-            <div
-              class="bg-card border-border text-foreground/90 w-full overflow-hidden rounded-2xl rounded-tl-xs border p-3.5 text-xs leading-relaxed shadow-2xs"
-            >
-              <!-- Content rendered as markdown -->
-              <!-- eslint-disable-next-line vue/no-v-html -->
-              <div
-                v-if="msg.content"
-                class="prose-chat select-text"
-                v-html="renderMarkdown(msg.content)"
+              <input
+                :id="`rename-input-${s.id}`"
+                v-model="editingTitle"
+                type="text"
+                class="bg-background border-primary text-foreground h-7 flex-1 rounded-md border px-2 text-xs font-medium shadow-xs outline-none"
+                placeholder="Conversation title..."
+                @keydown.enter.prevent="saveRename(s.id)"
+                @keydown.esc.prevent="cancelRename"
               />
-
-              <!-- Pulsating cursor during active text streaming -->
-              <span
-                v-if="
-                  aiStore.isGenerating && msg.content && isLastMessage(msg.id)
-                "
-                class="bg-primary/80 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs align-middle"
-              />
-
-              <!-- Thinking indicator with Shine Effect -->
-              <div
-                v-if="aiStore.isGenerating && !msg.content"
-                class="flex items-center gap-2 py-1"
+              <Button
+                type="button"
+                size="icon-sm"
+                class="h-7 w-7 shrink-0 bg-emerald-600 text-white hover:bg-emerald-500"
+                title="Save title (Enter)"
+                @click="saveRename(s.id)"
               >
-                <Sparkles class="text-primary h-3.5 w-3.5 animate-pulse" />
-                <span
-                  class="animate-text-shimmer font-mono text-xs font-medium tracking-wide"
-                >
-                  Thinking...
-                </span>
-              </div>
-
-              <!-- Interactive Tool Invocation Cards -->
-              <div
-                v-if="msg.toolInvocations && msg.toolInvocations.length > 0"
-                class="border-border/50 mt-3 flex flex-col gap-2.5 border-t pt-2"
-              >
-                <div
-                  v-for="inv in msg.toolInvocations"
-                  :key="inv.id"
-                  class="flex flex-col gap-2 rounded-xl border p-2.5 text-xs"
-                  :class="[
-                    inv.state === 'applied' || inv.state === 'queued'
-                      ? 'border-emerald-500/30 bg-emerald-500/5'
-                      : inv.state === 'rejected'
-                        ? 'border-border/60 bg-muted/20 opacity-60'
-                        : 'border-primary/30 bg-primary/5'
-                  ]"
-                >
-                  <!-- Tool Header -->
-                  <div class="flex items-center justify-between">
-                    <div
-                      class="flex items-center gap-1.5 text-xs font-semibold"
-                    >
-                      <Wand2
-                        v-if="inv.name === 'inject_prompt'"
-                        class="text-primary h-3.5 w-3.5"
-                      />
-                      <Play
-                        v-else-if="inv.name === 'queue_generation'"
-                        class="text-primary h-3.5 w-3.5"
-                      />
-                      <Eye v-else class="text-primary h-3.5 w-3.5" />
-                      <span>
-                        {{
-                          inv.name === 'inject_prompt'
-                            ? 'Prompt Proposal'
-                            : inv.name === 'queue_generation'
-                              ? 'ComfyUI Queue Action'
-                              : 'Inspect Prompts'
-                        }}
-                      </span>
-                    </div>
-
-                    <!-- Status Badge -->
-                    <span
-                      class="rounded-full px-2 py-0.5 font-mono text-xs font-medium"
-                      :class="[
-                        inv.state === 'applied'
-                          ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                          : inv.state === 'queued'
-                            ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
-                            : inv.state === 'rejected'
-                              ? 'bg-muted text-muted-foreground'
-                              : 'bg-primary/10 text-primary border-primary/20 border'
-                      ]"
-                    >
-                      {{
-                        inv.state === 'applied'
-                          ? '✓ Applied to Studio'
-                          : inv.state === 'queued'
-                            ? '✓ Applied & Queued'
-                            : inv.state === 'rejected'
-                              ? '✕ Discarded'
-                              : 'Pending Confirmation'
-                      }}
-                    </span>
-                  </div>
-
-                  <!-- Details / Diff for inject_prompt -->
-                  <template v-if="inv.name === 'inject_prompt'">
-                    <p
-                      v-if="typeof inv.args.reason === 'string'"
-                      class="text-muted-foreground text-xs italic"
-                    >
-                      {{ inv.args.reason }}
-                    </p>
-
-                    <div
-                      v-if="typeof inv.args.positive === 'string'"
-                      class="bg-background/80 border-border flex flex-col gap-1 rounded-lg border p-2"
-                    >
-                      <span
-                        class="text-muted-foreground text-xs font-semibold uppercase"
-                        >Positive Prompt</span
-                      >
-                      <p class="text-foreground font-mono text-xs select-text">
-                        {{ inv.args.positive }}
-                      </p>
-                    </div>
-
-                    <div
-                      v-if="typeof inv.args.negative === 'string'"
-                      class="bg-background/80 border-border flex flex-col gap-1 rounded-lg border p-2"
-                    >
-                      <span
-                        class="text-muted-foreground text-xs font-semibold uppercase"
-                        >Negative Prompt</span
-                      >
-                      <p class="text-foreground font-mono text-xs select-text">
-                        {{ inv.args.negative }}
-                      </p>
-                    </div>
-
-                    <!-- Action Buttons if Pending -->
-                    <div
-                      v-if="inv.state === 'pending'"
-                      class="flex items-center gap-1.5 pt-1"
-                    >
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        class="h-6.5 gap-1 text-xs"
-                        @click="aiStore.applyToolInvocation(msg.id, inv.id)"
-                      >
-                        <Check class="h-3 w-3 text-emerald-500" />
-                        <span>Apply</span>
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        class="bg-primary text-primary-foreground h-6.5 gap-1 text-xs"
-                        @click="
-                          aiStore.applyAndQueueToolInvocation(msg.id, inv.id)
-                        "
-                      >
-                        <Play class="h-3 w-3" />
-                        <span>Apply & Queue</span>
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="text-muted-foreground hover:text-destructive ml-auto h-6.5 text-xs"
-                        @click="aiStore.rejectToolInvocation(msg.id, inv.id)"
-                      >
-                        Discard
-                      </Button>
-                    </div>
-                  </template>
-
-                  <!-- Details for queue_generation -->
-                  <template v-else-if="inv.name === 'queue_generation'">
-                    <p
-                      v-if="typeof inv.args.reason === 'string'"
-                      class="text-muted-foreground text-xs"
-                    >
-                      {{ inv.args.reason }}
-                    </p>
-                    <div
-                      v-if="inv.state === 'pending'"
-                      class="flex items-center gap-1.5 pt-1"
-                    >
-                      <Button
-                        size="sm"
-                        class="bg-primary text-primary-foreground h-6.5 gap-1 text-xs"
-                        @click="
-                          aiStore.applyAndQueueToolInvocation(msg.id, inv.id)
-                        "
-                      >
-                        <Play class="h-3 w-3" />
-                        <span>Run Queue Now</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="text-muted-foreground hover:text-destructive h-6.5 text-xs"
-                        @click="aiStore.rejectToolInvocation(msg.id, inv.id)"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <!-- Bottom Input & Attachment Bar -->
-      <div
-        class="border-border bg-card/60 relative flex flex-col gap-2 border-t p-3 transition-colors"
-        :class="{ 'bg-primary/5 ring-primary/40 ring-2': isDraggingOver }"
-        @dragover.prevent="isDraggingOver = true"
-        @dragleave.prevent="isDraggingOver = false"
-        @drop.prevent="handleDrop"
-      >
-        <!-- Attached Images Preview Strip -->
-        <div
-          v-if="attachments.length > 0"
-          class="flex items-center gap-2 overflow-x-auto pb-1"
-        >
-          <div
-            v-for="att in attachments"
-            :key="att.id"
-            class="border-border group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border shadow-xs"
-          >
-            <img :src="att.dataUrl" alt="" class="h-full w-full object-cover" />
-            <button
-              type="button"
-              class="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
-              title="Remove attachment"
-              @click="removeAttachment(att.id)"
-            >
-              <X class="h-2.5 w-2.5" />
-            </button>
-          </div>
-        </div>
-
-        <!-- Input Textarea & Send Control -->
-        <div
-          class="border-border bg-background focus-within:ring-primary focus-within:border-primary relative flex flex-col rounded-xl border transition-all focus-within:ring-1"
-        >
-          <textarea
-            v-model="messageInput"
-            rows="3"
-            placeholder="Ask AI, enhance prompts, or paste/drop images for vision analysis... (Enter to send, Shift+Enter for newline)"
-            class="placeholder:text-muted-foreground w-full resize-none bg-transparent p-3 text-xs leading-relaxed outline-none"
-            @keydown.enter.exact.prevent="handleSend"
-            @paste="handlePaste"
-          />
-
-          <!-- Action Bar under Textarea -->
-          <div
-            class="border-border/30 flex items-center justify-between border-t px-2.5 pt-1 pb-2 text-xs"
-          >
-            <div class="flex items-center gap-1.5">
-              <!-- Upload Image Button -->
+                <Check class="h-3.5 w-3.5" />
+              </Button>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                class="text-muted-foreground hover:text-foreground h-7 w-7"
-                title="Attach image from file"
-                @click="openFilePicker"
+                class="text-muted-foreground hover:text-foreground h-7 w-7 shrink-0"
+                title="Cancel (Esc)"
+                @click="cancelRename"
               >
-                <ImagePlus class="h-4 w-4" />
+                <X class="h-3.5 w-3.5" />
               </Button>
-
-              <!-- Attach Current Preview Button -->
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    class="text-muted-foreground hover:text-primary h-7 w-7"
-                    :disabled="
-                      !comfyStore.lastGeneratedImage &&
-                      !comfyStore.currentPreviewUrl
-                    "
-                    @click="attachCurrentPreview"
-                  >
-                    <ScanEye class="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p class="text-xs">
-                    Attach active ComfyUI preview image to chat
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-
-              <span
-                v-if="attachments.length > 0"
-                class="text-muted-foreground font-mono text-xs"
-              >
-                {{ attachments.length }} image{{
-                  attachments.length > 1 ? 's' : ''
-                }}
-              </span>
             </div>
 
-            <div class="flex items-center gap-1.5">
-              <!-- Stop Button when Generating -->
-              <Button
-                v-if="aiStore.isGenerating"
-                type="button"
-                size="sm"
-                variant="outline"
-                class="text-destructive hover:bg-destructive/10 h-7 gap-1 text-xs"
-                @click="aiStore.stopGeneration"
-              >
-                <Square class="fill-destructive h-3 w-3" />
-                <span>Stop</span>
-              </Button>
+            <div v-else class="flex items-center justify-between gap-2">
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                <span
+                  class="text-foreground cursor-pointer truncate text-xs font-semibold hover:underline"
+                  :title="s.title"
+                  @dblclick.stop="startRename(s)"
+                >
+                  {{ s.title }}
+                </span>
+                <span
+                  v-if="s.id === aiStore.activeSessionId"
+                  class="border-primary/30 bg-primary/10 text-primary py-0.2 shrink-0 rounded-full border px-1.5 font-mono text-[10px] font-medium"
+                >
+                  Active
+                </span>
+              </div>
 
-              <!-- Send Button -->
-              <Button
-                v-else
-                type="button"
-                size="sm"
-                :disabled="!messageInput.trim() && attachments.length === 0"
-                class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs shadow-xs"
-                @click="handleSend"
+              <!-- Action Buttons -->
+              <div
+                class="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100"
+                @click.stop
               >
-                <span>Send</span>
-                <Send class="h-3 w-3" />
-              </Button>
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground hover:bg-accent flex h-6 w-6 items-center justify-center rounded p-0.5 transition-colors"
+                  title="Rename title (or double click title)"
+                  @click="startRename(s)"
+                >
+                  <Pencil class="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex h-6 w-6 items-center justify-center rounded p-0.5 transition-colors"
+                  title="Delete conversation"
+                  @click="promptDeleteSession(s.id)"
+                >
+                  <Trash2 class="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Delete Confirmation Overlay / Row -->
+            <div
+              v-if="deletingSessionId === s.id"
+              class="border-destructive/30 bg-destructive/10 flex items-center justify-between gap-2 rounded-lg border p-2 text-xs"
+              @click.stop
+            >
+              <span class="text-destructive text-[11px] font-medium">
+                Delete this conversation?
+              </span>
+              <div class="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  class="h-6 px-2 text-[11px]"
+                  @click="cancelDeleteSession"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  class="h-6 px-2 text-[11px]"
+                  @click="confirmDeleteSession(s.id)"
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+
+            <!-- Meta info: Time & Messages -->
+            <div
+              v-if="deletingSessionId !== s.id"
+              class="text-muted-foreground flex items-center justify-between pt-0.5 text-[11px]"
+            >
+              <span class="flex items-center gap-1 font-mono">
+                <Clock class="h-3 w-3" />
+                {{ formatRelativeTime(s.updatedAt || s.createdAt) }}
+              </span>
+              <span class="flex items-center gap-1">
+                <MessageSquare class="h-3 w-3" />
+                {{ s.messages.length }} message{{
+                  s.messages.length === 1 ? '' : 's'
+                }}
+              </span>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- ACTIVE CONVERSATION VIEW -->
+      <template v-else>
+        <!-- Api Key Banner if not set -->
+        <div
+          v-if="!aiStore.hasApiKey"
+          class="m-3 flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
+        >
+          <div class="flex items-center gap-2 font-semibold text-amber-500">
+            <Zap class="h-4 w-4" />
+            <span>OpenRouter API Key Required</span>
+          </div>
+          <p class="text-muted-foreground">
+            Configure your OpenRouter API key to enable prompt generation, AI
+            vision analysis, and agentic studio control.
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            class="h-7 w-fit gap-1.5 text-xs"
+            @click="navigateToSettings"
+          >
+            <Settings class="h-3.5 w-3.5" />
+            <span>Open Settings</span>
+          </Button>
+        </div>
+
+        <!-- Messages Thread -->
+        <div
+          ref="messagesContainer"
+          class="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-3.5 select-text"
+          @scroll="handleMessagesScroll"
+        >
+          <!-- Empty State with Starters -->
+          <div
+            v-if="messages.length === 0"
+            class="my-auto flex h-full flex-col items-center justify-center gap-3 p-4 text-center"
+          >
+            <div
+              class="bg-primary/10 border-primary/20 text-primary flex h-12 w-12 items-center justify-center rounded-2xl border shadow-xs"
+            >
+              <Bot class="h-6 w-6" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <h3 class="text-foreground text-sm font-semibold">
+                ComfyUI Studio Assistant
+              </h3>
+              <p class="text-muted-foreground max-w-xs text-xs">
+                Brainstorm Anima prompts, detail anime character outfits,
+                analyze image styles with Vision, or ask the agent to inspect
+                and queue renders.
+              </p>
+            </div>
+
+            <!-- Starter Chips -->
+            <div class="flex w-full max-w-xs flex-col gap-1.5 pt-2">
+              <button
+                type="button"
+                class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                @click="
+                  handleStarterClick(
+                    'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
+                  )
+                "
+              >
+                <span>Inspect & optimize for Anima</span>
+                <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                @click="
+                  handleStarterClick(
+                    'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
+                  )
+                "
+              >
+                <span>Fantasy mage with detailed outfit</span>
+                <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                @click="
+                  handleStarterClick(
+                    'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
+                  )
+                "
+              >
+                <span>Create Anima aesthetic prompt</span>
+                <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Messages List -->
+          <template v-for="msg in messages" :key="msg.id">
+            <!-- User Message -->
+            <div
+              v-if="msg.role === 'user'"
+              class="flex flex-col items-end gap-1.5 pl-8"
+            >
+              <!-- Attachments if any -->
+              <div
+                v-if="msg.attachments && msg.attachments.length > 0"
+                class="flex flex-wrap justify-end gap-1.5"
+              >
+                <div
+                  v-for="att in msg.attachments"
+                  :key="att.id"
+                  class="border-primary/30 relative h-16 w-16 overflow-hidden rounded-lg border shadow-xs"
+                >
+                  <img
+                    :src="att.dataUrl"
+                    alt=""
+                    class="h-full w-full object-cover"
+                  />
+                </div>
+              </div>
+
+              <!-- Text Content -->
+              <div
+                v-if="msg.content"
+                class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs leading-relaxed shadow-xs"
+              >
+                {{ msg.content }}
+              </div>
+            </div>
+
+            <!-- Assistant Message -->
+            <div v-else class="flex flex-col items-start gap-2 pr-2">
+              <!-- Avatar & Header -->
+              <div class="flex w-full items-center justify-between">
+                <div
+                  class="text-muted-foreground flex items-center gap-1.5 text-xs font-medium"
+                >
+                  <div
+                    class="border-primary/25 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
+                  >
+                    <Sparkles class="h-3 w-3" />
+                  </div>
+                  <span class="text-foreground font-semibold"
+                    >AI Assistant</span
+                  >
+                </div>
+                <span class="text-muted-foreground font-mono text-[10px]">
+                  {{ formatRelativeTime(msg.createdAt) }}
+                </span>
+              </div>
+
+              <!-- Message Body -->
+              <div class="w-full space-y-2.5 text-xs select-text">
+                <!-- Chronological Message Parts -->
+                <template
+                  v-for="(part, pIdx) in getChronologicalParts(msg)"
+                  :key="`${msg.id}-part-${pIdx}`"
+                >
+                  <!-- 1. Text Part -->
+                  <div
+                    v-if="part.type === 'text' && part.text"
+                    class="prose-chat select-text"
+                  >
+                    <!-- eslint-disable-next-line vue/no-v-html -->
+                    <div v-html="renderMarkdown(part.text)" />
+                    <!-- Pulsating cursor during active text streaming on this part -->
+                    <span
+                      v-if="
+                        aiStore.isGenerating &&
+                        isLastMessage(msg.id) &&
+                        pIdx === getChronologicalParts(msg).length - 1
+                      "
+                      class="bg-primary/80 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs align-middle"
+                    />
+                  </div>
+
+                  <!-- 2. Reasoning / Thinking Part -->
+                  <div
+                    v-else-if="part.type === 'reasoning' && part.text"
+                    class="border-border/40 bg-muted/20 my-1 rounded-lg border px-3 py-2 text-xs"
+                  >
+                    <button
+                      type="button"
+                      class="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 transition-colors"
+                      @click="toggleThought(`${msg.id}-${pIdx}`)"
+                    >
+                      <div class="flex items-center gap-1.5 font-medium">
+                        <Sparkles
+                          class="text-primary h-3 w-3"
+                          :class="{
+                            'animate-pulse':
+                              aiStore.isGenerating &&
+                              isLastMessage(msg.id) &&
+                              !part.isComplete
+                          }"
+                        />
+                        <span>Thinking</span>
+                        <span
+                          v-if="
+                            aiStore.isGenerating &&
+                            isLastMessage(msg.id) &&
+                            !part.isComplete
+                          "
+                          class="animate-text-shimmer font-mono text-[10px]"
+                        >
+                          pondering...
+                        </span>
+                      </div>
+                      <div class="flex items-center gap-1 text-[11px]">
+                        <span>{{
+                          isThoughtExpanded(`${msg.id}-${pIdx}`)
+                            ? 'Hide'
+                            : 'Show'
+                        }}</span>
+                        <ChevronRight
+                          class="h-3 w-3 transition-transform"
+                          :class="{
+                            'rotate-90': isThoughtExpanded(`${msg.id}-${pIdx}`)
+                          }"
+                        />
+                      </div>
+                    </button>
+                    <div
+                      v-if="isThoughtExpanded(`${msg.id}-${pIdx}`)"
+                      class="border-border/20 text-muted-foreground mt-2 max-h-48 overflow-y-auto border-t pt-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap select-text"
+                    >
+                      {{ part.text }}
+                    </div>
+                  </div>
+
+                  <!-- 3. Tool Invocations -->
+                  <div v-else-if="part.type === 'tool'" class="my-1.5">
+                    <!-- Tool: inspect_current_prompt -->
+                    <div
+                      v-if="part.invocation.name === 'inspect_current_prompt'"
+                      class="border-border/40 bg-card/60 rounded-xl border p-2.5 text-xs transition-colors"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                          <div
+                            class="flex h-5 w-5 items-center justify-center rounded-md border text-blue-400"
+                            :class="[
+                              part.invocation.result
+                                ? 'border-blue-500/30 bg-blue-500/10'
+                                : 'border-primary/30 bg-primary/10 text-primary animate-spin'
+                            ]"
+                          >
+                            <Sparkles
+                              v-if="!part.invocation.result"
+                              class="h-2.5 w-2.5"
+                            />
+                            <Eye v-else class="h-3 w-3" />
+                          </div>
+                          <span
+                            class="text-foreground font-medium"
+                            :class="{
+                              'animate-text-shimmer': !part.invocation.result
+                            }"
+                          >
+                            {{
+                              part.invocation.result
+                                ? 'Studio Prompts Inspected'
+                                : 'Inspecting active studio prompts...'
+                            }}
+                          </span>
+                        </div>
+
+                        <button
+                          v-if="part.invocation.result"
+                          type="button"
+                          class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-[11px] transition-colors"
+                          @click="
+                            toggleThought(
+                              `${msg.id}-tool-${part.invocation.id}`
+                            )
+                          "
+                        >
+                          <span>{{
+                            isThoughtExpanded(
+                              `${msg.id}-tool-${part.invocation.id}`
+                            )
+                              ? 'Hide details'
+                              : 'View details'
+                          }}</span>
+                          <ChevronRight
+                            class="h-3 w-3 transition-transform"
+                            :class="{
+                              'rotate-90': isThoughtExpanded(
+                                `${msg.id}-tool-${part.invocation.id}`
+                              )
+                            }"
+                          />
+                        </button>
+                      </div>
+
+                      <!-- Expanded prompt details -->
+                      <div
+                        v-if="
+                          isThoughtExpanded(
+                            `${msg.id}-tool-${part.invocation.id}`
+                          ) && part.invocation.result
+                        "
+                        class="border-border/30 mt-2.5 flex flex-col gap-1.5 border-t pt-2 font-mono text-[11px]"
+                      >
+                        <div
+                          v-if="(part.invocation.result as any).positivePrompt"
+                          class="flex flex-col gap-0.5"
+                        >
+                          <span
+                            class="text-primary font-sans text-[10px] font-semibold uppercase"
+                            >Active Positive</span
+                          >
+                          <p
+                            class="text-foreground/90 whitespace-pre-wrap select-text"
+                          >
+                            {{ (part.invocation.result as any).positivePrompt }}
+                          </p>
+                        </div>
+                        <div
+                          v-if="(part.invocation.result as any).negativePrompt"
+                          class="flex flex-col gap-0.5"
+                        >
+                          <span
+                            class="text-muted-foreground font-sans text-[10px] font-semibold uppercase"
+                            >Active Negative</span
+                          >
+                          <p
+                            class="text-muted-foreground whitespace-pre-wrap select-text"
+                          >
+                            {{ (part.invocation.result as any).negativePrompt }}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Tool: inject_prompt -->
+                    <div
+                      v-else-if="part.invocation.name === 'inject_prompt'"
+                      class="border-primary/30 bg-card/90 rounded-xl border p-3 shadow-xs"
+                    >
+                      <div class="mb-2 flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                          <div
+                            class="border-primary/30 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
+                          >
+                            <Wand2 class="h-3 w-3" />
+                          </div>
+                          <span class="text-foreground text-xs font-semibold"
+                            >Proposed Prompt Adjustments</span
+                          >
+                        </div>
+                        <span
+                          class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
+                          :class="[
+                            part.invocation.state === 'applied'
+                              ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                              : part.invocation.state === 'queued'
+                                ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
+                                : part.invocation.state === 'rejected'
+                                  ? 'bg-muted text-muted-foreground'
+                                  : 'border-primary/20 bg-primary/10 text-primary border'
+                          ]"
+                        >
+                          {{
+                            part.invocation.state === 'applied'
+                              ? '✓ Applied to Studio'
+                              : part.invocation.state === 'queued'
+                                ? '✓ Applied & Queued'
+                                : part.invocation.state === 'rejected'
+                                  ? '✕ Discarded'
+                                  : 'Pending Confirmation'
+                          }}
+                        </span>
+                      </div>
+
+                      <p
+                        v-if="typeof part.invocation.args.reason === 'string'"
+                        class="text-muted-foreground mb-2 text-xs italic"
+                      >
+                        {{ part.invocation.args.reason }}
+                      </p>
+
+                      <div
+                        v-if="typeof part.invocation.args.positive === 'string'"
+                        class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
+                      >
+                        <span
+                          class="text-primary font-mono text-[10px] font-semibold uppercase"
+                          >Positive Prompt</span
+                        >
+                        <p
+                          class="text-foreground font-mono whitespace-pre-wrap select-text"
+                        >
+                          {{ part.invocation.args.positive }}
+                        </p>
+                      </div>
+
+                      <div
+                        v-if="typeof part.invocation.args.negative === 'string'"
+                        class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
+                      >
+                        <span
+                          class="text-muted-foreground font-mono text-[10px] font-semibold uppercase"
+                          >Negative Prompt</span
+                        >
+                        <p
+                          class="text-muted-foreground font-mono whitespace-pre-wrap select-text"
+                        >
+                          {{ part.invocation.args.negative }}
+                        </p>
+                      </div>
+
+                      <!-- Action buttons if pending -->
+                      <div
+                        v-if="part.invocation.state === 'pending'"
+                        class="flex items-center gap-2 pt-1"
+                      >
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          class="h-7 gap-1.5 text-xs font-medium"
+                          @click="
+                            aiStore.applyToolInvocation(
+                              msg.id,
+                              part.invocation.id
+                            )
+                          "
+                        >
+                          <Check class="h-3.5 w-3.5 text-emerald-500" />
+                          <span>Apply</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs font-medium"
+                          @click="
+                            aiStore.applyAndQueueToolInvocation(
+                              msg.id,
+                              part.invocation.id
+                            )
+                          "
+                        >
+                          <Play class="h-3.5 w-3.5" />
+                          <span>Apply & Queue</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="text-muted-foreground hover:text-destructive ml-auto h-7 text-xs"
+                          @click="
+                            aiStore.rejectToolInvocation(
+                              msg.id,
+                              part.invocation.id
+                            )
+                          "
+                        >
+                          Discard
+                        </Button>
+                      </div>
+                    </div>
+
+                    <!-- Tool: queue_generation -->
+                    <div
+                      v-else-if="part.invocation.name === 'queue_generation'"
+                      class="bg-card/90 rounded-xl border border-purple-500/30 p-3 shadow-xs"
+                    >
+                      <div
+                        class="mb-1.5 flex items-center justify-between gap-2"
+                      >
+                        <div class="flex items-center gap-2">
+                          <div
+                            class="flex h-5 w-5 items-center justify-center rounded-md border border-purple-500/30 bg-purple-500/10 text-purple-400"
+                          >
+                            <Play class="h-3 w-3" />
+                          </div>
+                          <span class="text-foreground text-xs font-semibold"
+                            >Queue Generation</span
+                          >
+                        </div>
+                        <span
+                          class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
+                          :class="[
+                            part.invocation.state === 'queued'
+                              ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
+                              : 'border-primary/20 bg-primary/10 text-primary border'
+                          ]"
+                        >
+                          {{
+                            part.invocation.state === 'queued'
+                              ? '✓ Queued'
+                              : 'Ready'
+                          }}
+                        </span>
+                      </div>
+
+                      <p
+                        v-if="typeof part.invocation.args.reason === 'string'"
+                        class="text-muted-foreground mb-2 text-xs"
+                      >
+                        {{ part.invocation.args.reason }}
+                      </p>
+
+                      <div
+                        v-if="part.invocation.state === 'pending'"
+                        class="flex items-center gap-2 pt-1"
+                      >
+                        <Button
+                          size="sm"
+                          class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs"
+                          @click="
+                            aiStore.applyAndQueueToolInvocation(
+                              msg.id,
+                              part.invocation.id
+                            )
+                          "
+                        >
+                          <Play class="h-3.5 w-3.5" />
+                          <span>Run Queue Now</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="text-muted-foreground hover:text-destructive h-7 text-xs"
+                          @click="
+                            aiStore.rejectToolInvocation(
+                              msg.id,
+                              part.invocation.id
+                            )
+                          "
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Initial Thinking / Waiting indicator if no parts have arrived yet -->
+                <div
+                  v-if="
+                    aiStore.isGenerating &&
+                    isLastMessage(msg.id) &&
+                    getChronologicalParts(msg).length === 0
+                  "
+                  class="text-muted-foreground flex items-center gap-2 py-1 text-xs"
+                >
+                  <Sparkles class="text-primary h-3.5 w-3.5 animate-pulse" />
+                  <span
+                    class="animate-text-shimmer font-mono font-medium tracking-wide"
+                  >
+                    Thinking & analyzing request...
+                  </span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Bottom Input & Attachment Bar -->
+        <div
+          class="border-border bg-card/60 relative flex flex-col gap-2 border-t p-3 transition-colors"
+          :class="{ 'bg-primary/5 ring-primary/40 ring-2': isDraggingOver }"
+          @dragover.prevent="isDraggingOver = true"
+          @dragleave.prevent="isDraggingOver = false"
+          @drop.prevent="handleDrop"
+        >
+          <!-- Attached Images Preview Strip -->
+          <div
+            v-if="attachments.length > 0"
+            class="flex items-center gap-2 overflow-x-auto pb-1"
+          >
+            <div
+              v-for="att in attachments"
+              :key="att.id"
+              class="border-border group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border shadow-xs"
+            >
+              <img
+                :src="att.dataUrl"
+                alt=""
+                class="h-full w-full object-cover"
+              />
+              <button
+                type="button"
+                class="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                title="Remove attachment"
+                @click="removeAttachment(att.id)"
+              >
+                <X class="h-2.5 w-2.5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Input Textarea & Send Control -->
+          <div
+            class="border-border bg-background focus-within:ring-primary focus-within:border-primary relative flex flex-col rounded-xl border transition-all focus-within:ring-1"
+          >
+            <textarea
+              v-model="messageInput"
+              rows="3"
+              placeholder="Ask AI, enhance prompts, or paste/drop images for vision analysis... (Enter to send, Shift+Enter for newline)"
+              class="placeholder:text-muted-foreground w-full resize-none bg-transparent p-3 text-xs leading-relaxed outline-none"
+              @keydown.enter.exact.prevent="handleSend"
+              @paste="handlePaste"
+            />
+
+            <!-- Action Bar under Textarea -->
+            <div
+              class="border-border/30 flex items-center justify-between border-t px-2.5 pt-1 pb-2 text-xs"
+            >
+              <div class="flex items-center gap-1.5">
+                <!-- Upload Image Button -->
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-muted-foreground hover:text-foreground h-7 w-7"
+                  title="Attach image from file"
+                  @click="openFilePicker"
+                >
+                  <ImagePlus class="h-4 w-4" />
+                </Button>
+
+                <!-- Attach Current Preview Button -->
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      class="text-muted-foreground hover:text-primary h-7 w-7"
+                      :disabled="
+                        !comfyStore.lastGeneratedImage &&
+                        !comfyStore.currentPreviewUrl
+                      "
+                      @click="attachCurrentPreview"
+                    >
+                      <ScanEye class="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p class="text-xs">
+                      Attach active ComfyUI preview image to chat
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <span
+                  v-if="attachments.length > 0"
+                  class="text-muted-foreground font-mono text-xs"
+                >
+                  {{ attachments.length }} image{{
+                    attachments.length > 1 ? 's' : ''
+                  }}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-1.5">
+                <!-- Stop Button when Generating -->
+                <Button
+                  v-if="aiStore.isGenerating"
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  class="text-destructive hover:bg-destructive/10 h-7 gap-1 text-xs"
+                  @click="aiStore.stopGeneration"
+                >
+                  <Square class="fill-destructive h-3 w-3" />
+                  <span>Stop</span>
+                </Button>
+
+                <!-- Send Button -->
+                <Button
+                  v-else
+                  type="button"
+                  size="sm"
+                  :disabled="!messageInput.trim() && attachments.length === 0"
+                  class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs shadow-xs"
+                  @click="handleSend"
+                >
+                  <span>Send</span>
+                  <Send class="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
     </aside>
   </div>
 </template>
@@ -885,26 +1417,42 @@ function renderMarkdown(content: string): string {
 }
 
 /* Typography styles for external marked renderer */
-:deep(.prose-chat p) {
-  margin: 0.375rem 0;
+:deep(.prose-chat) {
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--color-foreground);
+  letter-spacing: 0.01em;
 }
+
+:deep(.prose-chat p) {
+  margin: 0.5rem 0;
+}
+
 :deep(.prose-chat p:first-child) {
   margin-top: 0;
 }
+
 :deep(.prose-chat p:last-child) {
   margin-bottom: 0;
 }
+
+:deep(.prose-chat strong) {
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
 :deep(.prose-chat pre) {
-  background-color: var(--color-background);
+  background-color: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  margin: 0.5rem 0;
+  border-radius: 0.625rem;
+  padding: 0.75rem 0.875rem;
+  margin: 0.625rem 0;
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  line-height: 1.5;
+  line-height: 1.55;
 }
+
 :deep(.prose-chat code:not(pre code)) {
   background-color: var(--color-muted);
   color: var(--color-primary);
@@ -914,67 +1462,80 @@ function renderMarkdown(content: string): string {
   font-size: 0.75rem;
   font-weight: 600;
 }
+
 :deep(.prose-chat h1) {
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 700;
-  margin-top: 0.75rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.875rem;
+  margin-bottom: 0.375rem;
   color: var(--color-foreground);
 }
+
 :deep(.prose-chat h2) {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.375rem;
+  color: var(--color-foreground);
+}
+
+:deep(.prose-chat h3) {
   font-size: 0.875rem;
   font-weight: 600;
   margin-top: 0.625rem;
   margin-bottom: 0.25rem;
   color: var(--color-foreground);
 }
-:deep(.prose-chat h3) {
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
-  color: var(--color-foreground);
-}
+
 :deep(.prose-chat ul) {
   list-style-type: disc;
-  margin-left: 1rem;
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
+  margin-left: 1.125rem;
+  margin-top: 0.375rem;
+  margin-bottom: 0.5rem;
 }
+
 :deep(.prose-chat ol) {
   list-style-type: decimal;
   margin-left: 1.25rem;
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.375rem;
+  margin-bottom: 0.5rem;
 }
+
 :deep(.prose-chat li) {
-  margin: 0.125rem 0;
-  line-height: 1.5;
+  margin: 0.25rem 0;
+  line-height: 1.6;
 }
+
 :deep(.prose-chat blockquote) {
-  border-left: 2px solid rgba(59, 130, 246, 0.5);
-  padding-left: 0.625rem;
-  margin: 0.375rem 0;
+  border-left: 3px solid var(--color-primary);
+  background-color: rgba(59, 130, 246, 0.05);
+  border-radius: 0 0.375rem 0.375rem 0;
+  padding: 0.375rem 0.75rem;
+  margin: 0.5rem 0;
   font-style: italic;
   color: var(--color-muted-foreground);
 }
+
 :deep(.prose-chat a) {
   color: var(--color-primary);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
 :deep(.prose-chat table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 0.5rem 0;
+  margin: 0.625rem 0;
   font-size: 0.75rem;
 }
+
 :deep(.prose-chat th),
 :deep(.prose-chat td) {
   border: 1px solid var(--color-border);
   padding: 0.375rem 0.5rem;
   text-align: left;
 }
+
 :deep(.prose-chat th) {
   background-color: var(--color-muted);
   font-weight: 600;

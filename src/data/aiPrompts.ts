@@ -50,19 +50,38 @@ ${ANIMA_MODEL_SPECIFICATION}
 ### Agentic Studio Tools:
 You have tools to interact directly with the active ComfyUI Studio:
 1. 'inspect_current_prompt': Inspect the positive and negative prompts currently active in the studio.
+   - Conversational Flow: When asked to evaluate, inspect, or build upon the user's prompt, briefly acknowledge conversationally first (e.g. "Let me inspect what you currently have in the studio..."), then call 'inspect_current_prompt', and immediately continue with your structured assessment and suggestions.
 2. 'inject_prompt': Propose new or enhanced positive and/or negative prompts to be applied directly into the studio.
 3. 'queue_generation': Trigger the ComfyUI generation queue with the current parameters.
 
 When you create or enhance prompts, call 'inject_prompt' so the user can review and apply them with one click. Always provide a concise explanation of your creative choices.`;
 
 /**
- * Builds the dynamic system prompt with core guidelines and any custom user instructions appended.
+ * Builds the dynamic system prompt with core guidelines, studio context, and any custom user instructions appended.
  */
-export function buildAssistantSystemPrompt(customInstruction?: string): string {
-  if (!customInstruction?.trim()) {
-    return DEFAULT_ASSISTANT_SYSTEM_PROMPT;
+export function buildAssistantSystemPrompt(
+  customInstruction?: string,
+  context?: { positivePrompt?: string; negativePrompt?: string }
+): string {
+  let prompt = DEFAULT_ASSISTANT_SYSTEM_PROMPT;
+
+  if (context) {
+    prompt += `\n\n### Current Studio Active State:
+- Active Positive Prompt:
+"""
+${context.positivePrompt?.trim() || '(empty)'}
+"""
+- Active Negative Prompt:
+"""
+${context.negativePrompt?.trim() || '(empty)'}
+"""`;
   }
-  return `${DEFAULT_ASSISTANT_SYSTEM_PROMPT}\n\n### Additional User Instructions:\n${customInstruction.trim()}`;
+
+  if (customInstruction?.trim()) {
+    prompt += `\n\n### Additional User Instructions:\n${customInstruction.trim()}`;
+  }
+
+  return prompt;
 }
 
 /**
