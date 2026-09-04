@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import AnimadexExploreView from '../views/AnimadexExploreView.vue';
 import BooruGalleryView from '../views/BooruGalleryView.vue';
 import CivitaiBrowserView from '../views/CivitaiBrowserView.vue';
 import CivitaiModelDetailView from '../views/CivitaiModelDetailView.vue';
@@ -31,6 +32,11 @@ const router = createRouter({
       path: '/booru',
       name: 'booru',
       component: BooruGalleryView
+    },
+    {
+      path: '/animadex',
+      name: 'animadex',
+      component: AnimadexExploreView
     },
     {
       path: '/civitai',

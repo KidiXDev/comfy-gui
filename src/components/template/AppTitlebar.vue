@@ -29,6 +29,7 @@ const activeViewTitle = computed(() => {
   if (route.path.startsWith('/server')) return 'Server Terminal';
   if (route.path.startsWith('/settings')) return 'Preferences';
   if (route.path.startsWith('/booru')) return 'Booru Gallery';
+  if (route.path.startsWith('/animadex')) return 'Animadex Explore';
   if (route.path.startsWith('/civitai/model')) return 'Civitai Model Detail';
   if (route.path.startsWith('/civitai')) return 'Civitai Model Browser';
   if (route.path.startsWith('/viewer')) return 'Image Viewer';

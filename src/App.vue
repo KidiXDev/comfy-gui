@@ -17,6 +17,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Toaster } from '@/components/ui/sonner';
 import { useCivitaiStore } from './stores/civitaiStore';
 import { useComfyStore } from './stores/comfyStore';
 import { useDownloadStore } from './stores/downloadStore';
@@ -102,8 +103,8 @@ onUnmounted(() => {
         <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           <RouterView v-slot="{ Component }">
             <KeepAlive
-              include="BooruGalleryView,CivitaiBrowserView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView"
-              :max="6"
+              include="BooruGalleryView,CivitaiBrowserView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView"
+              :max="10"
             >
               <component :is="Component" />
             </KeepAlive>
@@ -151,6 +152,7 @@ onUnmounted(() => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Toaster position="bottom-right" richColors />
     </div>
   </TooltipProvider>
 </template>

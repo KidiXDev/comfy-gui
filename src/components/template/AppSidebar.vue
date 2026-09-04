@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
+  Compass,
   Eraser,
   GalleryVerticalEnd,
   HardDriveDownload,
@@ -43,6 +44,12 @@ const navItems = [
     label: 'Booru Gallery',
     icon: GalleryVerticalEnd,
     route: '/booru'
+  },
+  {
+    id: 'animadex',
+    label: 'Animadex Explore',
+    icon: Compass,
+    route: '/animadex'
   },
   {
     id: 'civitai',

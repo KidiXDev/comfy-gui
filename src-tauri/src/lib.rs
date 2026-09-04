@@ -1,3 +1,4 @@
+mod animadex;
 mod civitai;
 mod download_manager;
 mod image_gallery;
@@ -337,7 +338,8 @@ pub fn run() {
             preset_manager::delete_preset_file,
             preset_manager::open_presets_folder,
             prompt_suggestions::load_prompt_suggestions,
-            prompt_suggestions::open_prompt_suggestions_folder
+            prompt_suggestions::open_prompt_suggestions_folder,
+            animadex::animadex_request
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
