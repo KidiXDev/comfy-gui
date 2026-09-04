@@ -5,6 +5,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { RouterView } from 'vue-router';
 import AppSidebar from '@/components/template/AppSidebar.vue';
 import AppTitlebar from '@/components/template/AppTitlebar.vue';
+import AiAssistantDrawer from '@/components/template/AiAssistantDrawer.vue';
 import TerminalDrawer from '@/components/template/TerminalDrawer.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -112,6 +113,9 @@ onUnmounted(() => {
 
       <!-- Global Terminal Slide-over Drawer -->
       <TerminalDrawer />
+
+      <!-- Global AI Assistant Slide-over Drawer -->
+      <AiAssistantDrawer />
 
       <Dialog
         :open="shutdownDialogOpen"

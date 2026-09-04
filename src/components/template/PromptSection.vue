@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
 import PromptPresetDialog from '../common/PromptPresetDialog.vue';
+import PromptEnhanceDialog from './PromptEnhanceDialog.vue';
 import WorkflowField from './WorkflowField.vue';
 import { ComfyApi, type AutocompleteItem } from '../../services/comfyApi';
 import {
@@ -115,6 +116,36 @@ function saveTextareaSize(field: PromptField, event: PointerEvent) {
 }
 
 const isPresetDialogOpen = ref(false);
+const isEnhanceDialogOpen = ref(false);
+const enhanceTarget = ref<'positive' | 'negative'>('positive');
+
+function openEnhanceDialog(target: 'positive' | 'negative') {
+  enhanceTarget.value = target;
+  isEnhanceDialogOpen.value = true;
+}
+
+function handleEnhanceApply(payload: {
+  mode: 'replace' | 'append';
+  text: string;
+  target: 'positive' | 'negative';
+}) {
+  if (payload.target === 'positive') {
+    if (payload.mode === 'replace') {
+      workflowStore.positivePrompt = payload.text;
+    } else {
+      workflowStore.positivePrompt = workflowStore.positivePrompt
+        ? `${workflowStore.positivePrompt.replace(/,\s*$/u, '')}, ${payload.text}`
+        : payload.text;
+    }
+  } else if (payload.mode === 'replace') {
+    workflowStore.negativePrompt = payload.text;
+  } else {
+    workflowStore.negativePrompt = workflowStore.negativePrompt
+      ? `${workflowStore.negativePrompt.replace(/,\s*$/u, '')}, ${payload.text}`
+      : payload.text;
+  }
+}
+
 const positiveTextarea = ref<TextareaRef>();
 const negativeTextarea = ref<TextareaRef>();
 const suggestions = ref<AutocompleteItem[]>([]);
@@ -757,6 +788,17 @@ const negativeTokenInfo = computed(() =>
               <span>{{ isPositiveChipsMode ? 'Text' : 'Chips' }}</span>
             </button>
 
+            <!-- AI Enhance Button -->
+            <button
+              type="button"
+              class="text-primary hover:text-primary/80 inline-flex cursor-pointer items-center gap-1 text-xs font-semibold transition-colors"
+              title="Enhance prompt with AI"
+              @click="openEnhanceDialog('positive')"
+            >
+              <Sparkles class="h-3 w-3" />
+              <span>AI Enhance</span>
+            </button>
+
             <span class="text-border">|</span>
 
             <!-- Format Button -->
@@ -1248,6 +1290,17 @@ const negativeTokenInfo = computed(() =>
               <span>{{ isNegativeChipsMode ? 'Text' : 'Chips' }}</span>
             </button>
 
+            <!-- AI Enhance Button -->
+            <button
+              type="button"
+              class="text-primary hover:text-primary/80 inline-flex cursor-pointer items-center gap-1 text-xs font-semibold transition-colors"
+              title="Enhance negative prompt with AI"
+              @click="openEnhanceDialog('negative')"
+            >
+              <Sparkles class="h-3 w-3" />
+              <span>AI Enhance</span>
+            </button>
+
             <span class="text-border">|</span>
 
             <!-- Format Button -->
@@ -1471,6 +1524,18 @@ const negativeTokenInfo = computed(() =>
 
       <!-- Prompt Preset Manager Dialog -->
       <PromptPresetDialog v-model:open="isPresetDialogOpen" />
+
+      <!-- AI Prompt Enhancer Diff Dialog -->
+      <PromptEnhanceDialog
+        v-model:open="isEnhanceDialogOpen"
+        :target="enhanceTarget"
+        :original-prompt="
+          enhanceTarget === 'positive'
+            ? workflowStore.positivePrompt
+            : workflowStore.negativePrompt
+        "
+        @apply="handleEnhanceApply"
+      />
     </div>
   </TooltipProvider>
 </template>

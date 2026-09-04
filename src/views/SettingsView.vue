@@ -68,9 +68,12 @@ import {
   useLauncherStore
 } from '../stores/launcherStore';
 import { APP_VERSION, isNewerVersion } from '../version';
+import { useAiStore } from '../stores/aiStore';
+import AiModelSelector from '@/components/common/AiModelSelector.vue';
 
 const launcherStore = useLauncherStore();
 const comfyStore = useComfyStore();
+const aiStore = useAiStore();
 
 const workingDir = ref(launcherStore.config.workingDir);
 const pythonPath = ref(launcherStore.config.pythonPath);
@@ -171,7 +174,96 @@ async function clearCivitaiApiKey() {
   }
 }
 
-onMounted(loadCivitaiSettings);
+onMounted(() => {
+  void loadCivitaiSettings();
+  loadAiSettings();
+});
+
+const openRouterApiKey = ref('');
+const savedOpenRouterApiKey = ref('');
+const hasOpenRouterApiKey = ref(false);
+const isTestingAi = ref(false);
+const aiTestResult = ref<{ ok: boolean; message: string } | null>(null);
+
+function loadAiSettings() {
+  const key = aiStore.config.apiKey.trim();
+  savedOpenRouterApiKey.value = key;
+  hasOpenRouterApiKey.value = !!key;
+  openRouterApiKey.value = '';
+}
+
+function clearOpenRouterApiKey() {
+  savedOpenRouterApiKey.value = '';
+  openRouterApiKey.value = '';
+  hasOpenRouterApiKey.value = false;
+  aiStore.config.apiKey = '';
+  void aiStore.saveConfig();
+  showSaved();
+}
+
+const autosaveAiSettings = useDebounceFn(() => {
+  const newKey = openRouterApiKey.value.trim();
+  if (newKey) {
+    aiStore.config.apiKey = newKey;
+    savedOpenRouterApiKey.value = newKey;
+    hasOpenRouterApiKey.value = true;
+    openRouterApiKey.value = '';
+  }
+  void aiStore.saveConfig();
+  showSaved();
+}, 300);
+
+async function testOpenRouterConnection() {
+  const key = openRouterApiKey.value.trim() || savedOpenRouterApiKey.value;
+  if (!key) {
+    aiTestResult.value = {
+      ok: false,
+      message: 'Please enter an API key first'
+    };
+    return;
+  }
+  isTestingAi.value = true;
+  aiTestResult.value = null;
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      headers: { Authorization: `Bearer ${key}` }
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        data?: { label?: string; usage?: number; limit?: number };
+      };
+      aiTestResult.value = {
+        ok: true,
+        message: `Connected! ${data?.data?.label ? `(${data.data.label})` : 'Key is valid'}`
+      };
+      if (openRouterApiKey.value.trim()) {
+        aiStore.config.apiKey = openRouterApiKey.value.trim();
+        savedOpenRouterApiKey.value = openRouterApiKey.value.trim();
+        hasOpenRouterApiKey.value = true;
+        openRouterApiKey.value = '';
+        void aiStore.saveConfig();
+      }
+      void aiStore.refreshModels(true);
+    } else {
+      aiTestResult.value = {
+        ok: false,
+        message: `Authentication failed: HTTP ${res.status}`
+      };
+    }
+  } catch (err) {
+    aiTestResult.value = { ok: false, message: String(err) };
+  } finally {
+    isTestingAi.value = false;
+  }
+}
+
+watch(
+  () => aiStore.config.apiKey,
+  (val) => {
+    savedOpenRouterApiKey.value = val;
+    hasOpenRouterApiKey.value = !!val;
+  }
+);
 const danbooruConfigured = computed(
   () =>
     booruSettings.value?.credentialStatus.danbooru?.hasUsername &&
@@ -1581,6 +1673,237 @@ async function checkForUpdates() {
             </div>
             <Switch id="civitai-nsfw-switch" v-model="civitaiNsfw" />
           </div>
+        </section>
+
+        <!-- AI Assistant (OpenRouter) Configuration Section -->
+        <section
+          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
+        >
+          <div
+            class="border-border/80 flex items-center justify-between border-b pb-3"
+          >
+            <div class="flex items-center gap-2.5">
+              <div
+                class="border-border bg-secondary text-primary flex h-7 w-7 items-center justify-center rounded-md border"
+              >
+                <Sparkles class="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span class="text-xs font-bold tracking-wider uppercase">
+                  AI Assistant (OpenRouter)
+                </span>
+                <p class="text-muted-foreground text-xs">
+                  Prompt engineering, vision multimodal analysis, and agentic
+                  studio control
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="text-xs"
+              @click="openUrl('https://openrouter.ai/settings/keys')"
+            >
+              <ExternalLink class="h-3.5 w-3.5" />
+              Get OpenRouter Key
+            </Button>
+          </div>
+
+          <!-- OpenRouter API Key Input -->
+          <Field class="gap-1.5">
+            <div class="flex items-center justify-between">
+              <FieldLabel class="text-xs">OpenRouter API Key</FieldLabel>
+              <button
+                type="button"
+                :disabled="
+                  isTestingAi || (!openRouterApiKey && !hasOpenRouterApiKey)
+                "
+                class="text-primary flex cursor-pointer items-center gap-1 text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                @click="testOpenRouterConnection"
+              >
+                <Loader2 v-if="isTestingAi" class="h-3 w-3 animate-spin" />
+                <Wifi v-else class="h-3 w-3" />
+                <span>Test Connection</span>
+              </button>
+            </div>
+            <div class="relative">
+              <Input
+                v-model="openRouterApiKey"
+                type="password"
+                autocomplete="new-password"
+                :placeholder="
+                  hasOpenRouterApiKey ? 'Saved' : 'Enter OpenRouter API key'
+                "
+                class="pr-10 font-mono text-xs"
+                @keydown.enter="autosaveAiSettings.flush()"
+                @blur="autosaveAiSettings.flush()"
+              />
+              <button
+                v-if="hasOpenRouterApiKey && !openRouterApiKey"
+                type="button"
+                class="text-muted-foreground hover:text-destructive absolute top-1/2 right-2.5 -translate-y-1/2 p-1 transition-colors"
+                title="Remove saved OpenRouter API key"
+                @click="clearOpenRouterApiKey"
+              >
+                <Trash2 class="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div
+              v-if="aiTestResult"
+              class="text-xs"
+              :class="aiTestResult.ok ? 'text-emerald-500' : 'text-destructive'"
+            >
+              {{ aiTestResult.message }}
+            </div>
+            <FieldDescription class="text-xs">
+              Saved locally to ai_config.dat and sent directly to OpenRouter via
+              encrypted HTTPS.
+            </FieldDescription>
+          </Field>
+
+          <!-- Default Model Selector with Search -->
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">Default Model</FieldLabel>
+            <AiModelSelector
+              :model-value="aiStore.config.selectedModel"
+              @change="
+                (val) => {
+                  aiStore.config.selectedModel = val;
+                  void aiStore.saveConfig();
+                  showSaved();
+                }
+              "
+            />
+          </Field>
+
+          <!-- Provider Routing Override (Custom Provider) -->
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">
+              Provider Override (Custom Provider)
+            </FieldLabel>
+            <Input
+              v-model="aiStore.config.providerOverride"
+              placeholder="Enter your provider"
+              class="h-8 font-mono text-xs"
+              @change="
+                () => {
+                  void aiStore.saveConfig();
+                  showSaved();
+                }
+              "
+            />
+            <FieldDescription class="text-xs">
+              Specify custom provider slug(s) (comma-separated, in priority
+              order) to route requests via OpenRouter. Leave blank for default
+              OpenRouter routing.
+            </FieldDescription>
+          </Field>
+
+          <!-- Allow Provider Fallbacks -->
+          <div
+            class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
+          >
+            <div class="flex flex-col gap-0.5">
+              <Label
+                for="ai-provider-fallbacks-switch"
+                class="text-foreground flex cursor-pointer items-center text-xs font-medium"
+              >
+                Allow Provider Fallbacks
+              </Label>
+              <p class="text-muted-foreground text-xs">
+                When enabled, OpenRouter can fall back to other upstream hosts
+                if your specified providers are temporarily unavailable.
+              </p>
+            </div>
+            <Switch
+              id="ai-provider-fallbacks-switch"
+              :checked="aiStore.config.allowProviderFallbacks ?? true"
+              @update:checked="
+                (val: boolean) => {
+                  aiStore.config.allowProviderFallbacks = val;
+                  void aiStore.saveConfig();
+                  showSaved();
+                }
+              "
+            />
+          </div>
+
+          <!-- Auto-Apply Toggle Setting -->
+          <div
+            class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
+          >
+            <div class="flex flex-col gap-0.5">
+              <Label
+                for="ai-auto-apply-switch"
+                class="text-foreground flex cursor-pointer items-center text-xs font-medium"
+              >
+                Auto-Apply Agentic Actions
+              </Label>
+              <p class="text-muted-foreground text-xs">
+                When enabled, the assistant will automatically inject prompts
+                and trigger generation without requiring manual confirmation
+                cards.
+              </p>
+            </div>
+            <Switch
+              id="ai-auto-apply-switch"
+              :checked="aiStore.config.autoApply"
+              @update:checked="
+                (val: boolean) => {
+                  aiStore.config.autoApply = val;
+                  void aiStore.saveConfig();
+                  showSaved();
+                }
+              "
+            />
+          </div>
+
+          <!-- Chatbot Assistant Custom Instructions -->
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">
+              Chatbot Assistant Instructions (Optional)
+            </FieldLabel>
+            <Textarea
+              :model-value="aiStore.config.customSystemPrompt"
+              rows="3"
+              placeholder="Enter custom instructions for the AI Chatbot Assistant..."
+              class="resize-y font-mono text-xs leading-relaxed"
+              @update:model-value="
+                (val) => {
+                  aiStore.config.customSystemPrompt = String(val);
+                  void aiStore.saveConfig();
+                }
+              "
+            />
+            <FieldDescription class="text-xs">
+              Custom instructions specifically for the AI Chatbot Assistant
+              drawer (conversational tone, agentic actions, tool suggestions).
+            </FieldDescription>
+          </Field>
+
+          <!-- Prompt Enhancer Custom Instructions -->
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">
+              Prompt Enhancer Instructions (Optional)
+            </FieldLabel>
+            <Textarea
+              :model-value="aiStore.config.enhancerSystemPrompt"
+              rows="3"
+              placeholder="Enter custom guidelines for the Prompt Enhancer modal..."
+              class="resize-y font-mono text-xs leading-relaxed"
+              @update:model-value="
+                (val) => {
+                  aiStore.config.enhancerSystemPrompt = String(val);
+                  void aiStore.saveConfig();
+                }
+              "
+            />
+            <FieldDescription class="text-xs">
+              Custom guidelines exclusively for the inline Prompt Enhancer modal
+              (tag order rules, formatting preferences, vocabulary overrides).
+            </FieldDescription>
+          </Field>
         </section>
 
         <section

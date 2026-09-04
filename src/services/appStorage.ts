@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 
 type AppDataName =
+  | 'ai_config'
+  | 'chat_sessions'
   | 'civitai_browser_state'
   | 'civitai_settings'
   | 'launcher_config'
@@ -11,10 +13,12 @@ type AppDataName =
   | 'upscaler_preferences'
   | 'workflow_session_state';
 
-type DataFile = 'config' | 'history' | 'state';
+type DataFile = 'config' | 'history' | 'state' | 'chat' | 'ai_config';
 type DataContainer = Partial<Record<AppDataName, unknown>>;
 
 const dataFiles: Record<AppDataName, DataFile> = {
+  ai_config: 'ai_config',
+  chat_sessions: 'chat',
   civitai_browser_state: 'state',
   civitai_settings: 'config',
   launcher_config: 'config',
@@ -29,7 +33,9 @@ const dataFiles: Record<AppDataName, DataFile> = {
 const pendingWrites: Record<DataFile, Promise<void>> = {
   config: Promise.resolve(),
   history: Promise.resolve(),
-  state: Promise.resolve()
+  state: Promise.resolve(),
+  chat: Promise.resolve(),
+  ai_config: Promise.resolve()
 };
 
 async function loadDataFile(file: DataFile): Promise<DataContainer> {

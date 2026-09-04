@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
+  Bot,
   Copy,
   Folder,
   Loader2,
@@ -14,10 +15,12 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import ServerStatusBadge from '../common/ServerStatusBadge.vue';
+import { useAiStore } from '../../stores/aiStore';
 import { useLauncherStore } from '../../stores/launcherStore';
 
 const route = useRoute();
 const launcherStore = useLauncherStore();
+const aiStore = useAiStore();
 
 const isMaximized = ref(false);
 let unlistenResize: (() => void) | null = null;
@@ -205,6 +208,21 @@ onUnmounted(() => {
       >
         <Terminal class="h-3 w-3" />
         <span class="hidden sm:inline">Logs</span>
+      </button>
+
+      <!-- AI Assistant Drawer Toggle Button (Icon only) -->
+      <button
+        type="button"
+        title="Toggle AI Assistant"
+        class="border-border inline-flex h-6.5 w-6.5 cursor-pointer items-center justify-center rounded-md border transition-colors"
+        :class="
+          aiStore.isDrawerOpen
+            ? 'border-primary/50 bg-primary/20 text-primary'
+            : 'bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground'
+        "
+        @click="aiStore.isDrawerOpen = !aiStore.isDrawerOpen"
+      >
+        <Bot class="text-primary h-3.5 w-3.5" />
       </button>
 
       <div class="bg-border mx-1 h-3.5 w-px" />
