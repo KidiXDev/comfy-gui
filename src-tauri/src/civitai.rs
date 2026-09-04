@@ -1,4 +1,5 @@
 use reqwest::blocking::{Client, Response};
+use reqwest::header::RANGE;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -51,6 +52,7 @@ fn models_blocking(
     period: String,
     cursor: Option<String>,
     api_key: String,
+    nsfw: Option<bool>,
 ) -> Result<Value, String> {
     let client = client()?;
     let mut url =
@@ -58,7 +60,7 @@ fn models_blocking(
     {
         let mut params = url.query_pairs_mut();
         params.append_pair("limit", "24");
-        params.append_pair("nsfw", "true");
+        params.append_pair("nsfw", if nsfw.unwrap_or(false) { "true" } else { "false" });
         params.append_pair("primaryFileOnly", "true");
         params.append_pair("sort", &sort);
         params.append_pair("period", &period);
@@ -95,9 +97,12 @@ pub async fn models(
     period: String,
     cursor: Option<String>,
     api_key: String,
+    nsfw: Option<bool>,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        models_blocking(query, model_type, base_model, sort, period, cursor, api_key)
+        models_blocking(
+            query, model_type, base_model, sort, period, cursor, api_key, nsfw,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -279,6 +284,17 @@ fn download_blocking(
     if download_url.domain() != Some("civitai.com") {
         return Err("Civitai returned an unexpected download host.".into());
     }
+    let response = authorized(client.get(download_url), &api_key)
+        .header(RANGE, "bytes=0-0")
+        .send()
+        .map_err(|error| format!("Failed to resolve Civitai download: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Civitai download request failed with {}",
+            response.status()
+        ));
+    }
+    let download_url = response.url().to_string();
 
     let directory = comfy_dir(&working_dir)?
         .join("models")
@@ -350,8 +366,7 @@ fn download_blocking(
             preview_url: preview_image
                 .and_then(|image| image["url"].as_str())
                 .map(str::to_string),
-            url: download_url.to_string(),
-            api_key,
+            url: download_url,
         },
     )
 }

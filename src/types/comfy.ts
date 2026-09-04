@@ -119,6 +119,7 @@ export interface BridgeModelsResponse {
   controlnet?: string[];
   upscale_models?: string[];
   embeddings?: string[];
+  hypernetworks?: string[];
   ipadapter?: string[];
   gligen?: string[];
   samplers?: string[];

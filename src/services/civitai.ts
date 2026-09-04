@@ -64,6 +64,10 @@ export interface CivitaiModelsResponse {
   metadata: { nextCursor?: string };
 }
 
+export function normalizeModelFilename(path: string) {
+  return path.replaceAll('\\', '/').split('/').at(-1)?.toLowerCase() ?? '';
+}
+
 export function fetchCivitaiModels(options: {
   query: string;
   modelType: string;
@@ -72,6 +76,7 @@ export function fetchCivitaiModels(options: {
   period: string;
   cursor?: string;
   apiKey: string;
+  nsfw?: boolean;
 }) {
   return invoke<CivitaiModelsResponse>('models', options);
 }

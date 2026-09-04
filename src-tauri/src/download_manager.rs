@@ -45,7 +45,6 @@ pub struct NewDownload {
     pub model_path: PathBuf,
     pub preview_url: Option<String>,
     pub url: String,
-    pub api_key: String,
 }
 
 struct Aria2Connection {
@@ -339,17 +338,13 @@ impl DownloadManager {
             return Ok(existing.clone());
         }
         let connection = ensure_connection(&mut inner, app)?;
-        let mut options = json!({
+        let options = json!({
             "dir": download.model_path.parent().unwrap_or(Path::new(".")).to_string_lossy(),
             "out": download.file_name,
             "continue": "true",
             "auto-file-renaming": "false",
             "allow-overwrite": "false"
         });
-        if !download.api_key.trim().is_empty() {
-            options["header"] =
-                json!([format!("Authorization: Bearer {}", download.api_key.trim())]);
-        }
         let gid = rpc(
             connection,
             "aria2.addUri",

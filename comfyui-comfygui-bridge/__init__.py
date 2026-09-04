@@ -281,6 +281,7 @@ async def models_handler(request):
             "controlnet": get_filenames("controlnet"),
             "upscale_models": get_filenames("upscale_models"),
             "embeddings": get_filenames("embeddings"),
+            "hypernetworks": get_filenames("hypernetworks"),
             "ipadapter": get_filenames("ipadapter"),
             "gligen": get_filenames("gligen"),
             "samplers": get_samplers_list(),

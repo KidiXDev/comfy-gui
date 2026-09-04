@@ -66,11 +66,13 @@ import {
   fetchCivitaiBaseModels,
   fetchCivitaiModels,
   isVideoMedia,
+  normalizeModelFilename,
   type CivitaiModel,
   type CivitaiVersion
 } from '../services/civitai';
 import type { DownloadRecord } from '../services/downloadManager';
 import { loadAppData } from '../services/appStorage';
+import { useComfyStore } from '../stores/comfyStore';
 import { useDownloadStore } from '../stores/downloadStore';
 import { useLauncherStore } from '../stores/launcherStore';
 
@@ -93,10 +95,21 @@ const GRID_GAP = 14;
 const CARD_ASPECT_RATIO = 4 / 3;
 const CARD_FOOTER_HEIGHT = 53;
 const OVERSCAN_ROWS = 3;
+const EMPTY_MODEL_FILES = new Set<string>();
+
+function modelFileSet(...groups: (string[] | undefined)[]) {
+  return new Set(
+    groups
+      .flatMap((group) => group ?? [])
+      .map((name) => normalizeModelFilename(name))
+  );
+}
 
 const launcherStore = useLauncherStore();
+const comfyStore = useComfyStore();
 const downloadStore = useDownloadStore();
 const apiKey = ref('');
+const nsfw = ref(false);
 const query = ref('');
 const modelType = ref('all');
 const baseModel = ref('all');
@@ -108,7 +121,7 @@ const nextCursor = ref<string>();
 const selectedVersions = ref<Record<number, string>>({});
 const activeImageIndices = ref<Record<number, number>>({});
 const queueingVersions = ref(new Set<number>());
-const loading = ref(false);
+const loading = ref(true);
 const loadingMore = ref(false);
 const errorMessage = ref('');
 const scrollViewport = ref<HTMLElement | null>(null);
@@ -138,17 +151,6 @@ function selectDetailImage(index: number) {
   detailCarouselApi.value?.scrollTo(index);
 }
 
-function onCardCarouselInit(modelId: number, api: CarouselApi) {
-  if (!api) return;
-  api.on('select', () => {
-    activeImageIndices.value[modelId] = api.selectedScrollSnap();
-  });
-  const savedIndex = activeImageIndices.value[modelId];
-  if (savedIndex && savedIndex !== api.selectedScrollSnap()) {
-    api.scrollTo(savedIndex, true);
-  }
-}
-
 // Copy feedback states
 const copiedTrigger = ref<number | null>(null);
 let copyTriggerTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -171,6 +173,18 @@ const downloaded = computed<Record<number, DownloadRecord>>(() =>
       .map((item) => [item.versionId, item])
   )
 );
+const discoveredModelFiles = computed(() => {
+  const bridge = comfyStore.bridgeModels;
+  return {
+    checkpoints: modelFileSet(bridge?.checkpoints, bridge?.unets),
+    loras: modelFileSet(bridge?.loras),
+    vaes: modelFileSet(bridge?.vaes),
+    embeddings: modelFileSet(bridge?.embeddings),
+    controlnet: modelFileSet(bridge?.controlnet),
+    upscalers: modelFileSet(bridge?.upscale_models),
+    hypernetworks: modelFileSet(bridge?.hypernetworks)
+  };
+});
 const columns = computed(() => {
   if (gridWidth.value < 600) return 1;
   if (gridWidth.value < 760) return 2;
@@ -299,8 +313,62 @@ function currentImage(model: CivitaiModel) {
   return images[idx] ?? images[0];
 }
 
+function changeCardImage(model: CivitaiModel, offset: number) {
+  const images = selectedVersion(model)?.images ?? [];
+  if (images.length < 2) return;
+  activeImageIndices.value[model.id] =
+    (getActiveImageIndex(model.id) + offset + images.length) % images.length;
+}
+
+function discoveredFilesForType(type: string) {
+  const files = discoveredModelFiles.value;
+  switch (type.toLowerCase()) {
+    case 'checkpoint':
+      return files.checkpoints;
+    case 'lora':
+    case 'locon':
+    case 'dora':
+      return files.loras;
+    case 'vae':
+      return files.vaes;
+    case 'textualinversion':
+      return files.embeddings;
+    case 'controlnet':
+      return files.controlnet;
+    case 'upscaler':
+      return files.upscalers;
+    case 'hypernetwork':
+      return files.hypernetworks;
+    default:
+      return EMPTY_MODEL_FILES;
+  }
+}
+
+function isVersionInstalled(
+  model?: CivitaiModel | null,
+  version?: CivitaiVersion
+) {
+  return (
+    !!model &&
+    !!version &&
+    (!!downloaded.value[version.id] ||
+      version.files.some((file) =>
+        discoveredFilesForType(model.type).has(
+          normalizeModelFilename(file.name)
+        )
+      ))
+  );
+}
+
 function isModelDownloaded(model: CivitaiModel): boolean {
-  return model.modelVersions.some((version) => !!downloaded.value[version.id]);
+  return model.modelVersions.some((version) =>
+    isVersionInstalled(model, version)
+  );
+}
+
+function refreshModels() {
+  void comfyStore.refreshModels();
+  void loadModels(false);
 }
 
 function openDetail(model: CivitaiModel) {
@@ -404,7 +472,8 @@ async function loadModels(append = false) {
       sort: sort.value,
       period: period.value,
       cursor: append ? nextCursor.value : undefined,
-      apiKey: apiKey.value
+      apiKey: apiKey.value,
+      nsfw: nsfw.value
     });
     if (append) {
       const existingIds = new Set(models.value.map((m) => m.id));
@@ -511,13 +580,15 @@ function deactivateView() {
 }
 
 onMounted(async () => {
-  apiKey.value =
-    (await loadAppData<{ apiKey?: string }>('civitai_settings'))?.apiKey ?? '';
-  try {
-    baseModels.value = await fetchCivitaiBaseModels();
-  } catch (error) {
-    console.error(error);
-  }
+  const settings = await loadAppData<{ apiKey?: string; nsfw?: boolean }>(
+    'civitai_settings'
+  );
+  apiKey.value = settings?.apiKey ?? '';
+  nsfw.value = settings?.nsfw ?? false;
+  void fetchCivitaiBaseModels()
+    .then((values) => (baseModels.value = values))
+    .catch(console.error);
+  void comfyStore.fetchDiscovery();
   await loadModels();
   resizeObserver = new ResizeObserver(([entry]) => {
     if (entry) gridWidth.value = entry.contentRect.width;
@@ -525,7 +596,22 @@ onMounted(async () => {
   await restoreBrowseScroll();
 });
 
-onActivated(restoreBrowseScroll);
+async function syncSettingsAndRestore() {
+  const settings = await loadAppData<{ apiKey?: string; nsfw?: boolean }>(
+    'civitai_settings'
+  );
+  const newApiKey = settings?.apiKey ?? '';
+  const newNsfw = settings?.nsfw ?? false;
+  const changed = newApiKey !== apiKey.value || newNsfw !== nsfw.value;
+  apiKey.value = newApiKey;
+  nsfw.value = newNsfw;
+  await restoreBrowseScroll();
+  if (changed) {
+    void loadModels();
+  }
+}
+
+onActivated(syncSettingsAndRestore);
 onDeactivated(deactivateView);
 
 onUnmounted(() => {
@@ -571,7 +657,7 @@ onUnmounted(() => {
                   size="sm"
                   class="h-8 text-xs"
                   :disabled="loading"
-                  @click="loadModels(false)"
+                  @click="refreshModels"
                 >
                   <RefreshCw
                     class="h-3.5 w-3.5"
@@ -824,61 +910,52 @@ onUnmounted(() => {
               <div
                 class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
               >
-                <!-- Multi-image Carousel with Smooth Sliding Animation -->
-                <Carousel
-                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
-                  v-slot="{ scrollPrev, scrollNext, carouselApi }"
-                  class="h-full w-full select-none"
-                  :opts="{ loop: true, watchDrag: false }"
-                  @init-api="(api) => onCardCarouselInit(model.id, api)"
-                >
-                  <CarouselContent class="ml-0 h-full">
-                    <CarouselItem
-                      v-for="(img, imgIdx) in selectedVersion(model)?.images ||
-                      []"
-                      :key="imgIdx"
-                      class="relative h-full pl-0"
-                    >
-                      <video
-                        v-if="isVideoMedia(img)"
-                        :src="previewUrl(img.url, 450)"
-                        autoplay
-                        loop
-                        muted
-                        playsinline
-                        class="pointer-events-none h-full w-full object-cover"
-                      />
-                      <img
-                        v-else
-                        :src="previewUrl(img.url, 450)"
-                        :alt="`${model.name} preview ${imgIdx + 1}`"
-                        class="h-full w-full object-cover"
-                        loading="lazy"
-                        draggable="false"
-                      />
-                    </CarouselItem>
-                  </CarouselContent>
+                <!-- Render only the active preview to keep scrolling lightweight. -->
+                <template v-if="currentImage(model)?.url">
+                  <video
+                    v-if="isVideoMedia(currentImage(model))"
+                    :key="`video-${currentImage(model)!.url}`"
+                    :src="previewUrl(currentImage(model)!.url, 450)"
+                    autoplay
+                    loop
+                    muted
+                    playsinline
+                    class="pointer-events-none h-full w-full object-cover"
+                  />
+                  <img
+                    v-else
+                    :key="`img-${currentImage(model)!.url}`"
+                    :src="previewUrl(currentImage(model)!.url, 450)"
+                    :alt="`${model.name} preview`"
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    draggable="false"
+                  />
 
                   <!-- Multi-Image Hover Carousel Controls -->
                   <button
+                    v-if="(selectedVersion(model)?.images?.length || 0) > 1"
                     type="button"
                     aria-label="Previous preview image"
-                    class="absolute top-1/2 left-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                    @click.stop="scrollPrev"
+                    class="absolute top-1/2 left-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                    @click.stop="changeCardImage(model, -1)"
                   >
                     <ChevronLeft class="h-3.5 w-3.5" />
                   </button>
                   <button
+                    v-if="(selectedVersion(model)?.images?.length || 0) > 1"
                     type="button"
                     aria-label="Next preview image"
-                    class="absolute top-1/2 right-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                    @click.stop="scrollNext"
+                    class="absolute top-1/2 right-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                    @click.stop="changeCardImage(model, 1)"
                   >
                     <ChevronRight class="h-3.5 w-3.5" />
                   </button>
 
                   <!-- Carousel Indicators (Dots) -->
                   <div
+                    v-if="(selectedVersion(model)?.images?.length || 0) > 1"
                     class="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-1"
                   >
                     <button
@@ -894,30 +971,9 @@ onUnmounted(() => {
                           ? 'w-3 bg-white shadow-xs'
                           : 'w-1 bg-white/50 hover:bg-white/80'
                       "
-                      @click.stop="carouselApi?.scrollTo(imgIdx)"
+                      @click.stop="activeImageIndices[model.id] = imgIdx"
                     />
                   </div>
-                </Carousel>
-
-                <!-- Single Media Preview (When only 1 image exists) -->
-                <template v-else-if="currentImage(model)?.url">
-                  <video
-                    v-if="isVideoMedia(currentImage(model))"
-                    :src="previewUrl(currentImage(model)!.url, 450)"
-                    autoplay
-                    loop
-                    muted
-                    playsinline
-                    class="pointer-events-none h-full w-full object-cover"
-                  />
-                  <img
-                    v-else
-                    :src="previewUrl(currentImage(model)?.url || '', 450)"
-                    :alt="`${model.name} preview`"
-                    class="h-full w-full object-cover"
-                    loading="lazy"
-                    draggable="false"
-                  />
                 </template>
 
                 <!-- Fallback empty -->
@@ -1495,11 +1551,14 @@ onUnmounted(() => {
                   class="h-10 w-full cursor-pointer text-xs font-semibold shadow-sm"
                   size="default"
                   :variant="
-                    downloaded[activeVersion?.id || 0] ? 'secondary' : 'default'
+                    isVersionInstalled(activeModel, activeVersion)
+                      ? 'secondary'
+                      : 'default'
                   "
                   :disabled="
                     !primaryFile(activeVersion) ||
-                    isDownloadBusy(activeVersion?.id || 0)
+                    isDownloadBusy(activeVersion?.id || 0) ||
+                    isVersionInstalled(activeModel, activeVersion)
                   "
                   @click="downloadModel(activeModel)"
                 >
@@ -1507,7 +1566,9 @@ onUnmounted(() => {
                     <Loader2 class="mr-2 h-4 w-4 animate-spin" />
                     <span>Preparing aria2...</span>
                   </template>
-                  <template v-else-if="downloaded[activeVersion?.id || 0]">
+                  <template
+                    v-else-if="isVersionInstalled(activeModel, activeVersion)"
+                  >
                     <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
                     <span>Installed in ComfyUI</span>
                   </template>

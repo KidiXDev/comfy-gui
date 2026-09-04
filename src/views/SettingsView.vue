@@ -95,6 +95,7 @@ const booruCredentials = ref<BooruCredentials>({
 const showDanbooruKey = ref(false);
 const showGelbooruKey = ref(false);
 const civitaiApiKey = ref('');
+const civitaiNsfw = ref(false);
 const showCivitaiKey = ref(false);
 let applyingCivitaiSettings = true;
 
@@ -137,9 +138,11 @@ const autocompleteReady = computed(
 
 async function loadCivitaiSettings() {
   try {
-    civitaiApiKey.value =
-      (await loadAppData<{ apiKey?: string }>('civitai_settings'))?.apiKey ??
-      '';
+    const settings = await loadAppData<{ apiKey?: string; nsfw?: boolean }>(
+      'civitai_settings'
+    );
+    civitaiApiKey.value = settings?.apiKey ?? '';
+    civitaiNsfw.value = settings?.nsfw ?? false;
   } catch (error) {
     console.error(error);
   } finally {
@@ -353,7 +356,8 @@ const autosaveGalleryPreferences = useDebounceFn(
 const autosaveCivitaiSettings = useDebounceFn(
   () =>
     void saveAppData('civitai_settings', {
-      apiKey: civitaiApiKey.value.trim()
+      apiKey: civitaiApiKey.value.trim(),
+      nsfw: civitaiNsfw.value
     })
       .then(showSaved)
       .catch(console.error),
@@ -395,7 +399,7 @@ watch(
   { deep: true, flush: 'sync' }
 );
 
-watch(civitaiApiKey, () => {
+watch([civitaiApiKey, civitaiNsfw], () => {
   if (!applyingCivitaiSettings) autosaveCivitaiSettings();
 });
 
@@ -469,6 +473,7 @@ function handleResetDefaults() {
   autocompleteIncludeArtistPrefix.value =
     DEFAULT_LAUNCHER_CONFIG.autocompleteIncludeArtistPrefix;
   civitaiApiKey.value = '';
+  civitaiNsfw.value = false;
 }
 
 async function testConnection() {
@@ -1520,6 +1525,24 @@ async function checkForUpdates() {
               Stored locally in ComfyGUI settings and sent only to Civitai.
             </FieldDescription>
           </Field>
+
+          <div
+            class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
+          >
+            <div class="flex flex-col gap-0.5">
+              <Label
+                for="civitai-nsfw-switch"
+                class="text-foreground flex cursor-pointer items-center text-xs font-medium"
+              >
+                Enable NSFW Content
+              </Label>
+              <p class="text-muted-foreground text-xs">
+                Allow mature and adult (18+) models to be included in Civitai
+                search results
+              </p>
+            </div>
+            <Switch id="civitai-nsfw-switch" v-model="civitaiNsfw" />
+          </div>
         </section>
 
         <section
