@@ -13,41 +13,22 @@ import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
-  ArrowLeft,
-  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Copy,
   Download,
   ExternalLink,
-  FolderOpen,
-  HardDriveDownload,
   ImageOff,
   Loader2,
-  Pause,
-  Play,
   RefreshCw,
   Search,
-  Sparkles,
-  Tag,
   ThumbsUp,
   Video,
   X
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-  type CarouselApi
-} from '@/components/ui/carousel';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -62,6 +43,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import CivitaiModelDetail from '@/components/civitai/CivitaiModelDetail.vue';
 import {
   fetchCivitaiBaseModels,
   fetchCivitaiModels,
@@ -132,31 +114,6 @@ let savedScrollTop = 0;
 
 // Dedicated Detail View State
 const activeModel = ref<CivitaiModel | null>(null);
-const detailImageIndex = ref(0);
-const detailCarouselApi = ref<CarouselApi>();
-
-function onDetailCarouselInit(api: CarouselApi) {
-  if (!api) return;
-  detailCarouselApi.value = api;
-  api.on('select', () => {
-    detailImageIndex.value = api.selectedScrollSnap();
-  });
-  if (detailImageIndex.value !== api.selectedScrollSnap()) {
-    api.scrollTo(detailImageIndex.value, true);
-  }
-}
-
-function selectDetailImage(index: number) {
-  detailImageIndex.value = index;
-  detailCarouselApi.value?.scrollTo(index);
-}
-
-// Copy feedback states
-const copiedTrigger = ref<number | null>(null);
-let copyTriggerTimeout: ReturnType<typeof setTimeout> | null = null;
-
-const copiedMetaKey = ref<string | null>(null);
-let copyMetaTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hasModels = computed(() => models.value.length > 0);
 const progress = computed<Record<number, DownloadRecord>>(() =>
@@ -228,26 +185,8 @@ const activeVersion = computed(() => {
   return selectedVersion(activeModel.value);
 });
 
-const detailImages = computed(() => {
-  return activeVersion.value?.images ?? [];
-});
-
-const currentDetailImage = computed(() => {
-  return detailImages.value[detailImageIndex.value] ?? detailImages.value[0];
-});
-
-function primaryFile(version?: CivitaiVersion) {
-  return version?.files.find((file) => file.primary) ?? version?.files[0];
-}
-
 function formatCount(value = 0) {
   return new Intl.NumberFormat('en', { notation: 'compact' }).format(value);
-}
-
-function formatSize(sizeKB = 0) {
-  return sizeKB >= 1024 * 1024
-    ? `${(sizeKB / 1024 / 1024).toFixed(1)} GB`
-    : `${(sizeKB / 1024).toFixed(0)} MB`;
 }
 
 function previewUrl(url: string, width = 600) {
@@ -258,25 +197,8 @@ function previewUrl(url: string, width = 600) {
   return url;
 }
 
-function downloadPercent(versionId: number) {
-  const current = progress.value[versionId];
-  return current?.totalLength
-    ? Math.min(
-        100,
-        Math.round((current.completedLength / current.totalLength) * 100)
-      )
-    : null;
-}
-
 function isDownloadBusy(versionId: number) {
   return !!progress.value[versionId] || queueingVersions.value.has(versionId);
-}
-
-function downloadStatusLabel(versionId: number) {
-  const status = progress.value[versionId]?.status;
-  if (status === 'paused') return 'Download Paused';
-  if (status === 'waiting') return 'Download Queued';
-  return 'Downloading Model';
 }
 
 async function toggleDownload(versionId: number) {
@@ -373,11 +295,6 @@ function refreshModels() {
 
 function openDetail(model: CivitaiModel) {
   activeModel.value = model;
-  const initialIndex = activeImageIndices.value[model.id] ?? 0;
-  detailImageIndex.value = initialIndex;
-  nextTick(() => {
-    detailCarouselApi.value?.scrollTo(initialIndex, true);
-  });
 }
 
 async function closeDetail() {
@@ -388,52 +305,12 @@ async function closeDetail() {
 function onDetailVersionChange(versionId: string) {
   if (!activeModel.value) return;
   selectedVersions.value[activeModel.value.id] = versionId;
-  activeImageIndices.value[activeModel.value.id] = 0;
-  detailImageIndex.value = 0;
-  nextTick(() => {
-    detailCarouselApi.value?.scrollTo(0, true);
-  });
 }
 
-async function copyTrainedWords(model: CivitaiModel, event?: Event) {
-  event?.stopPropagation();
-  const words = selectedVersion(model)?.trainedWords;
-  if (!words || words.length === 0) return;
-  const text = words.join(', ');
-  try {
-    await navigator.clipboard.writeText(text);
-    copiedTrigger.value = model.id;
-    if (copyTriggerTimeout) clearTimeout(copyTriggerTimeout);
-    copyTriggerTimeout = setTimeout(() => {
-      copiedTrigger.value = null;
-    }, 1500);
-  } catch (error) {
-    console.error('Failed to copy to clipboard', error);
-  }
-}
-
-async function copyMetaText(text: string, key: string) {
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    copiedMetaKey.value = key;
-    if (copyMetaTimeout) clearTimeout(copyMetaTimeout);
-    copyMetaTimeout = setTimeout(() => {
-      copiedMetaKey.value = null;
-    }, 1500);
-  } catch (error) {
-    console.error('Failed to copy prompt', error);
-  }
-}
-
-function formatDescription(html?: string): string {
-  if (!html) return 'No description provided.';
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    return doc.body.textContent || 'No description provided.';
-  } catch {
-    return html.replaceAll(/<[^>]*>/gu, '');
-  }
+function onDetailTagClick(tag: string) {
+  query.value = tag;
+  void closeDetail();
+  void loadModels();
 }
 
 function selectModelType(type: string) {
@@ -496,8 +373,11 @@ async function loadModels(append = false) {
   }
 }
 
-async function downloadModel(model: CivitaiModel) {
-  const version = selectedVersion(model);
+async function downloadModel(
+  model: CivitaiModel,
+  versionParam?: CivitaiVersion
+) {
+  const version = versionParam ?? selectedVersion(model);
   if (!version || isDownloadBusy(version.id)) return;
   errorMessage.value = '';
   queueingVersions.value.add(version.id);
@@ -617,8 +497,6 @@ onDeactivated(deactivateView);
 onUnmounted(() => {
   deactivateView();
   window.removeEventListener('keydown', onKeyDown);
-  if (copyTriggerTimeout) clearTimeout(copyTriggerTimeout);
-  if (copyMetaTimeout) clearTimeout(copyMetaTimeout);
 });
 </script>
 
@@ -1091,592 +969,23 @@ onUnmounted(() => {
     </template>
 
     <!-- VIEW MODE 2: DEDICATED DETAIL PAGE -->
-    <template v-else>
-      <!-- Dedicated Detail Header -->
-      <header
-        class="border-border/80 bg-card/85 flex shrink-0 items-center justify-between border-b px-6 py-3.5 backdrop-blur-md"
-      >
-        <div class="flex min-w-0 items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-8 cursor-pointer gap-1.5 text-xs font-medium"
-            @click="closeDetail"
-          >
-            <ArrowLeft class="h-3.5 w-3.5" />
-            <span>Back to Browser</span>
-          </Button>
-
-          <div class="bg-border/80 h-4 w-px shrink-0" />
-
-          <div class="flex items-center gap-2 truncate text-xs">
-            <span class="text-muted-foreground shrink-0">Civitai</span>
-            <span class="text-muted-foreground">/</span>
-            <Badge variant="outline" class="shrink-0 py-0 text-xs">
-              {{ activeModel.type }}
-            </Badge>
-            <span class="text-muted-foreground">/</span>
-            <span class="text-foreground truncate font-semibold">
-              {{ activeModel.name }}
-            </span>
-          </div>
-        </div>
-
-        <div class="flex shrink-0 items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-8 gap-1.5 text-xs"
-            @click="openUrl(`https://civitai.com/models/${activeModel.id}`)"
-          >
-            <ExternalLink class="h-3.5 w-3.5" />
-            <span>View on Civitai</span>
-          </Button>
-        </div>
-      </header>
-
-      <!-- Dedicated Detail Viewport -->
-      <div class="flex-1 overflow-y-auto p-6 lg:p-8">
-        <div class="mx-auto grid w-full grid-cols-1 gap-8 lg:grid-cols-12">
-          <!-- Left Column: Visual Showcase & Generation Parameters -->
-          <div class="flex flex-col gap-4 lg:col-span-7">
-            <!-- Large Image / Video Preview Stage with Carousel -->
-            <div
-              class="border-border/60 relative aspect-3/4 max-h-145 w-full overflow-hidden rounded-2xl border bg-black/40 shadow-md"
-            >
-              <Carousel
-                class="h-full w-full select-none"
-                :opts="{ loop: detailImages.length > 1 }"
-                @init-api="onDetailCarouselInit"
-              >
-                <CarouselContent class="ml-0 h-full">
-                  <CarouselItem
-                    v-for="(img, idx) in detailImages"
-                    :key="idx"
-                    class="relative flex h-full items-center justify-center pl-0"
-                  >
-                    <video
-                      v-if="isVideoMedia(img)"
-                      :key="img.url"
-                      :src="previewUrl(img.url, 1024)"
-                      autoplay
-                      loop
-                      muted
-                      controls
-                      playsinline
-                      class="h-full w-full object-contain"
-                    />
-                    <img
-                      v-else
-                      :src="previewUrl(img.url, 1024)"
-                      :alt="`${activeModel.name} preview ${idx + 1}`"
-                      class="h-full w-full object-contain select-none"
-                      draggable="false"
-                    />
-                  </CarouselItem>
-
-                  <div
-                    v-if="detailImages.length === 0"
-                    class="text-muted-foreground flex h-full w-full items-center justify-center"
-                  >
-                    <ImageOff class="h-12 w-12" />
-                  </div>
-                </CarouselContent>
-
-                <!-- Carousel Controls inside Stage -->
-                <template v-if="detailImages.length > 1">
-                  <CarouselPrevious
-                    class="top-1/2 left-3 -translate-y-1/2 border-white/20 bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90 hover:text-white"
-                  >
-                    <ChevronLeft class="h-4 w-4" />
-                  </CarouselPrevious>
-                  <CarouselNext
-                    class="top-1/2 right-3 -translate-y-1/2 border-white/20 bg-black/70 text-white shadow-md backdrop-blur-xs transition-colors hover:bg-black/90 hover:text-white"
-                  >
-                    <ChevronRight class="h-4 w-4" />
-                  </CarouselNext>
-
-                  <!-- Image Position Counter -->
-                  <div
-                    class="pointer-events-none absolute right-3 bottom-3 rounded-full bg-black/70 px-2.5 py-0.5 font-mono text-xs text-white backdrop-blur-xs"
-                  >
-                    {{ detailImageIndex + 1 }} / {{ detailImages.length }}
-                  </div>
-                </template>
-              </Carousel>
-            </div>
-
-            <!-- Thumbnail Strip -->
-            <div
-              v-if="detailImages.length > 1"
-              class="flex items-center gap-2.5 overflow-x-auto pb-1"
-            >
-              <button
-                v-for="(img, idx) in detailImages"
-                :key="idx"
-                type="button"
-                class="relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-lg border-2 transition-all"
-                :class="
-                  detailImageIndex === idx
-                    ? 'border-primary ring-primary/30 shadow-xs ring-2'
-                    : 'border-transparent opacity-60 hover:opacity-100'
-                "
-                @click="selectDetailImage(idx)"
-              >
-                <video
-                  v-if="isVideoMedia(img)"
-                  :src="previewUrl(img.url, 150)"
-                  muted
-                  loop
-                  autoplay
-                  playsinline
-                  class="pointer-events-none h-full w-full object-cover"
-                />
-                <img
-                  v-else
-                  :src="previewUrl(img.url, 150)"
-                  alt="thumbnail"
-                  class="h-full w-full object-cover"
-                />
-                <div
-                  v-if="isVideoMedia(img)"
-                  class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30"
-                >
-                  <Video class="h-3.5 w-3.5 text-white drop-shadow-xs" />
-                </div>
-              </button>
-            </div>
-
-            <!-- Generation Parameters Metadata Card (Prompt & Settings) -->
-            <div
-              v-if="
-                currentDetailImage?.meta &&
-                Object.keys(currentDetailImage.meta).length > 0
-              "
-              class="border-border/70 bg-card/70 flex flex-col gap-3 rounded-xl border p-4 shadow-xs"
-            >
-              <div class="flex items-center gap-1.5 text-xs font-semibold">
-                <Sparkles class="text-primary h-3.5 w-3.5" />
-                <span>Sample Generation Parameters</span>
-              </div>
-
-              <!-- Positive Prompt -->
-              <div
-                v-if="currentDetailImage.meta.prompt"
-                class="flex flex-col gap-1.5"
-              >
-                <div
-                  class="text-muted-foreground flex items-center justify-between text-xs"
-                >
-                  <span class="font-medium">Positive Prompt</span>
-                  <button
-                    type="button"
-                    class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium"
-                    @click="
-                      copyMetaText(
-                        String(currentDetailImage.meta.prompt),
-                        'prompt'
-                      )
-                    "
-                  >
-                    <Check
-                      v-if="copiedMetaKey === 'prompt'"
-                      class="h-3 w-3 text-emerald-500"
-                    />
-                    <Copy v-else class="h-3 w-3" />
-                    <span>{{
-                      copiedMetaKey === 'prompt' ? 'Copied' : 'Copy Prompt'
-                    }}</span>
-                  </button>
-                </div>
-                <p
-                  class="bg-muted/60 border-border/40 max-h-28 overflow-y-auto rounded-lg border p-2.5 font-mono text-xs leading-relaxed select-text"
-                >
-                  {{ currentDetailImage.meta.prompt }}
-                </p>
-              </div>
-
-              <!-- Negative Prompt -->
-              <div
-                v-if="currentDetailImage.meta.negativePrompt"
-                class="flex flex-col gap-1.5"
-              >
-                <div
-                  class="text-muted-foreground flex items-center justify-between text-xs"
-                >
-                  <span class="font-medium">Negative Prompt</span>
-                  <button
-                    type="button"
-                    class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium"
-                    @click="
-                      copyMetaText(
-                        String(currentDetailImage.meta.negativePrompt),
-                        'negPrompt'
-                      )
-                    "
-                  >
-                    <Check
-                      v-if="copiedMetaKey === 'negPrompt'"
-                      class="h-3 w-3 text-emerald-500"
-                    />
-                    <Copy v-else class="h-3 w-3" />
-                    <span>{{
-                      copiedMetaKey === 'negPrompt' ? 'Copied' : 'Copy Negative'
-                    }}</span>
-                  </button>
-                </div>
-                <p
-                  class="bg-muted/60 border-border/40 max-h-24 overflow-y-auto rounded-lg border p-2.5 font-mono text-xs leading-relaxed select-text"
-                >
-                  {{ currentDetailImage.meta.negativePrompt }}
-                </p>
-              </div>
-
-              <!-- Extra Meta Tags -->
-              <div class="flex flex-wrap gap-1.5 pt-1">
-                <span
-                  v-if="currentDetailImage.meta.sampler"
-                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-                >
-                  Sampler: {{ currentDetailImage.meta.sampler }}
-                </span>
-                <span
-                  v-if="currentDetailImage.meta.steps"
-                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-                >
-                  Steps: {{ currentDetailImage.meta.steps }}
-                </span>
-                <span
-                  v-if="currentDetailImage.meta.cfgScale"
-                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-                >
-                  CFG: {{ currentDetailImage.meta.cfgScale }}
-                </span>
-                <span
-                  v-if="currentDetailImage.meta.seed"
-                  class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-                >
-                  Seed: {{ currentDetailImage.meta.seed }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Column: Model Information, Version Picker, Download & Description -->
-          <div class="flex flex-col gap-5 lg:col-span-5">
-            <!-- Main Title & Creator Header Card -->
-            <div class="flex flex-col gap-2.5">
-              <div class="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" class="text-xs">
-                  {{ activeModel.type }}
-                </Badge>
-                <Badge
-                  v-if="activeVersion?.baseModel"
-                  variant="secondary"
-                  class="text-xs"
-                >
-                  {{ activeVersion.baseModel }}
-                </Badge>
-                <Badge
-                  v-if="activeModel.nsfw"
-                  variant="destructive"
-                  class="text-xs"
-                >
-                  NSFW
-                </Badge>
-              </div>
-
-              <h1 class="text-foreground text-xl font-bold tracking-tight">
-                {{ activeModel.name }}
-              </h1>
-
-              <div
-                class="text-muted-foreground flex flex-wrap items-center gap-3 text-xs"
-              >
-                <span
-                  >Created by
-                  <strong class="text-foreground">{{
-                    activeModel.creator?.username || 'Unknown'
-                  }}</strong></span
-                >
-                <span>·</span>
-                <span class="flex items-center gap-1">
-                  <Download class="h-3 w-3" />
-                  {{ formatCount(activeModel.stats?.downloadCount) }} downloads
-                </span>
-                <span>·</span>
-                <span class="flex items-center gap-1">
-                  <ThumbsUp class="h-3 w-3" />
-                  {{ formatCount(activeModel.stats?.thumbsUpCount) }} likes
-                </span>
-              </div>
-            </div>
-
-            <!-- Version Selector Card -->
-            <div
-              class="border-border/70 bg-card/70 flex flex-col gap-3 rounded-xl border p-4 shadow-xs"
-            >
-              <div>
-                <label
-                  class="text-muted-foreground mb-1.5 block text-xs font-medium"
-                >
-                  Model Version
-                </label>
-                <Select
-                  :model-value="selectedVersions[activeModel.id]"
-                  @update:model-value="
-                    (val) => onDetailVersionChange(String(val))
-                  "
-                >
-                  <SelectTrigger class="w-full text-xs">
-                    <SelectValue placeholder="Select version" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup class="max-h-40 overflow-y-auto">
-                      <SelectItem
-                        v-for="version in activeModel.modelVersions"
-                        :key="version.id"
-                        :value="String(version.id)"
-                      >
-                        {{ version.name }} ({{
-                          version.baseModel || 'Unknown base'
-                        }})
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <!-- Technical File Specs -->
-              <div class="grid grid-cols-2 gap-2.5 pt-1 text-xs">
-                <div
-                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
-                >
-                  <span class="text-muted-foreground block text-xs"
-                    >Base Architecture</span
-                  >
-                  <span class="text-xs font-semibold">{{
-                    activeVersion?.baseModel || '—'
-                  }}</span>
-                </div>
-                <div
-                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
-                >
-                  <span class="text-muted-foreground block text-xs"
-                    >File Size</span
-                  >
-                  <span class="text-xs font-semibold">{{
-                    formatSize(primaryFile(activeVersion)?.sizeKB)
-                  }}</span>
-                </div>
-                <div
-                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
-                >
-                  <span class="text-muted-foreground block text-xs"
-                    >Format</span
-                  >
-                  <span class="text-xs font-semibold">{{
-                    primaryFile(activeVersion)?.metadata?.format || 'SafeTensor'
-                  }}</span>
-                </div>
-                <div
-                  class="bg-muted/40 border-border/40 rounded-lg border p-2.5"
-                >
-                  <span class="text-muted-foreground block text-xs"
-                    >Virus Scan</span
-                  >
-                  <span class="text-xs font-semibold text-emerald-500">{{
-                    primaryFile(activeVersion)?.virusScanResult || 'Clean'
-                  }}</span>
-                </div>
-              </div>
-
-              <!-- Primary Download Action Section -->
-              <div class="flex flex-col gap-2.5 pt-2">
-                <!-- Download Progress Bar (If Downloading) -->
-                <div
-                  v-if="progress[activeVersion?.id || 0]"
-                  class="flex flex-col gap-1.5"
-                >
-                  <div class="flex items-center justify-between text-xs">
-                    <span class="text-muted-foreground">
-                      {{ downloadStatusLabel(activeVersion?.id || 0) }}
-                    </span>
-                    <span class="font-mono font-medium">
-                      {{
-                        downloadPercent(activeVersion?.id || 0) !== null
-                          ? `${downloadPercent(activeVersion?.id || 0)}%`
-                          : '...'
-                      }}
-                    </span>
-                  </div>
-                  <Progress
-                    :model-value="downloadPercent(activeVersion?.id || 0) ?? 0"
-                    class="h-2"
-                  />
-                  <div class="mt-1 flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      class="h-8 flex-1 cursor-pointer text-xs"
-                      @click="toggleDownload(activeVersion?.id || 0)"
-                    >
-                      <Play
-                        v-if="
-                          progress[activeVersion?.id || 0]?.status === 'paused'
-                        "
-                        class="mr-1.5 h-3.5 w-3.5"
-                      />
-                      <Pause v-else class="mr-1.5 h-3.5 w-3.5" />
-                      {{
-                        progress[activeVersion?.id || 0]?.status === 'paused'
-                          ? 'Resume'
-                          : 'Pause'
-                      }}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      class="h-8 flex-1 cursor-pointer text-xs"
-                      @click="cancelDownload(activeVersion?.id || 0)"
-                    >
-                      <X class="mr-1.5 h-3.5 w-3.5" />
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-
-                <Button
-                  v-if="!progress[activeVersion?.id || 0]"
-                  class="h-10 w-full cursor-pointer text-xs font-semibold shadow-sm"
-                  size="default"
-                  :variant="
-                    isVersionInstalled(activeModel, activeVersion)
-                      ? 'secondary'
-                      : 'default'
-                  "
-                  :disabled="
-                    !primaryFile(activeVersion) ||
-                    isDownloadBusy(activeVersion?.id || 0) ||
-                    isVersionInstalled(activeModel, activeVersion)
-                  "
-                  @click="downloadModel(activeModel)"
-                >
-                  <template v-if="queueingVersions.has(activeVersion?.id || 0)">
-                    <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-                    <span>Preparing aria2...</span>
-                  </template>
-                  <template
-                    v-else-if="isVersionInstalled(activeModel, activeVersion)"
-                  >
-                    <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
-                    <span>Installed in ComfyUI</span>
-                  </template>
-                  <template v-else>
-                    <Download class="mr-2 h-4 w-4" />
-                    <span
-                      >Download to ComfyUI ({{
-                        formatSize(primaryFile(activeVersion)?.sizeKB)
-                      }})</span
-                    >
-                  </template>
-                </Button>
-
-                <!-- Show in folder button if downloaded -->
-                <Button
-                  v-if="downloaded[activeVersion?.id || 0]"
-                  variant="outline"
-                  size="sm"
-                  class="h-9 w-full cursor-pointer gap-1.5 text-xs"
-                  @click="
-                    invoke('show_in_folder', {
-                      path: downloaded[activeVersion?.id || 0].modelPath
-                    })
-                  "
-                >
-                  <FolderOpen class="h-3.5 w-3.5" />
-                  <span>Show File in Folder</span>
-                </Button>
-              </div>
-            </div>
-
-            <!-- Trigger Words / Trained Words Card -->
-            <div
-              v-if="activeVersion?.trainedWords?.length"
-              class="border-border/70 bg-card/70 flex flex-col gap-2.5 rounded-xl border p-4 shadow-xs"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-1.5 text-xs font-semibold">
-                  <Sparkles class="text-primary h-3.5 w-3.5" />
-                  <span>Trigger Words</span>
-                </div>
-                <button
-                  type="button"
-                  class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium"
-                  @click="copyTrainedWords(activeModel)"
-                >
-                  <Check
-                    v-if="copiedTrigger === activeModel.id"
-                    class="h-3 w-3 text-emerald-500"
-                  />
-                  <Copy v-else class="h-3 w-3" />
-                  <span>{{
-                    copiedTrigger === activeModel.id ? 'Copied!' : 'Copy All'
-                  }}</span>
-                </button>
-              </div>
-
-              <div class="flex flex-wrap gap-1.5">
-                <span
-                  v-for="(word, wIdx) in activeVersion.trainedWords"
-                  :key="wIdx"
-                  class="bg-muted/70 border-border/70 rounded-md border px-2.5 py-1 font-mono text-xs select-text"
-                >
-                  {{ word }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Model Tags -->
-            <div
-              v-if="activeModel.tags?.length"
-              class="flex flex-wrap items-center gap-1.5"
-            >
-              <span
-                class="text-muted-foreground flex items-center gap-1 text-xs"
-              >
-                <Tag class="h-3 w-3" />
-                Tags:
-              </span>
-              <span
-                v-for="tag in activeModel.tags.slice(0, 10)"
-                :key="tag"
-                class="bg-muted/60 text-muted-foreground rounded px-2 py-0.5 text-xs"
-              >
-                {{ tag }}
-              </span>
-            </div>
-
-            <!-- Description Card -->
-            <div
-              class="border-border/70 bg-card/70 flex flex-col gap-2 rounded-xl border p-4 shadow-xs"
-            >
-              <label class="text-foreground text-xs font-semibold">
-                About this Model
-              </label>
-              <ScrollArea
-                class="border-border/40 bg-muted/20 h-60 rounded-lg border p-3 text-xs"
-              >
-                <p
-                  class="text-muted-foreground leading-relaxed whitespace-pre-line select-text"
-                >
-                  {{ formatDescription(activeModel.description) }}
-                </p>
-              </ScrollArea>
-            </div>
-          </div>
-        </div>
-      </div>
-    </template>
+    <CivitaiModelDetail
+      v-else-if="activeModel"
+      :model="activeModel"
+      :selected-version-id="selectedVersions[activeModel.id]"
+      :is-installed="isVersionInstalled(activeModel, activeVersion)"
+      :is-downloading="!!progress[activeVersion?.id || 0]"
+      :is-queueing="queueingVersions.has(activeVersion?.id || 0)"
+      :progress-record="progress[activeVersion?.id || 0]"
+      :downloaded-record="downloaded[activeVersion?.id || 0]"
+      @update:selected-version-id="onDetailVersionChange"
+      @close="closeDetail"
+      @download="downloadModel"
+      @pause="(vId) => toggleDownload(vId)"
+      @resume="(vId) => toggleDownload(vId)"
+      @cancel="(vId) => cancelDownload(vId)"
+      @show-in-folder="(path) => invoke('show_in_folder', { path })"
+      @tag-click="onDetailTagClick"
+    />
   </div>
 </template>

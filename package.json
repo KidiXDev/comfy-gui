@@ -28,6 +28,7 @@
     "ai": "^7.0.84",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.14",
     "embla-carousel-vue": "^8.6.0",
     "pinia": "^4.0.3",
     "reka-ui": "^2.10.4",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "^26.4.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "oxlint": "^1.80.0",
