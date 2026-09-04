@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import {
   ArrowDown,
   Code,
@@ -15,6 +15,11 @@ import {
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  MessageScrollerContent,
+  MessageScrollerViewport
+} from '@/components/ui/message-scroller';
+import { provideMessageScroller } from '@/components/ui/message-scroller/useMessageScroller';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useComfyStore } from '../stores/comfyStore';
 import { useLauncherStore } from '../stores/launcherStore';
@@ -26,7 +31,14 @@ const comfyStore = useComfyStore();
 const filterText = ref('');
 const streamFilter = ref<'all' | 'stdout' | 'stderr' | 'system'>('all');
 const autoScroll = ref(true);
-const terminalContainer = ref<HTMLElement | null>(null);
+const { context: terminalScroll } = provideMessageScroller({
+  get autoScroll() {
+    return autoScroll.value;
+  }
+});
+const isFollowing = computed(
+  () => autoScroll.value && !terminalScroll.scrollable.value.end
+);
 const MAX_VISIBLE_LOGS = 500;
 
 const filteredLogs = computed(() => {
@@ -45,23 +57,10 @@ const filteredLogs = computed(() => {
   });
 });
 
-onMounted(scrollToBottom);
-
-function scrollToBottom() {
-  if (!autoScroll.value || !terminalContainer.value) return;
-  nextTick(() => {
-    if (terminalContainer.value) {
-      terminalContainer.value.scrollTop = terminalContainer.value.scrollHeight;
-    }
-  });
+function toggleAutoScroll() {
+  autoScroll.value = !isFollowing.value;
+  if (autoScroll.value) terminalScroll.scrollToEnd();
 }
-
-watch(
-  () => launcherStore.logs.length,
-  () => {
-    scrollToBottom();
-  }
-);
 
 function copyAllLogs() {
   const text = launcherStore.logs
@@ -226,13 +225,15 @@ function copyAllLogs() {
         <Button
           size="sm"
           variant="ghost"
-          :class="autoScroll ? 'text-primary' : 'text-muted-foreground'"
+          :class="isFollowing ? 'text-primary' : 'text-muted-foreground'"
           class="text-xs"
-          @click="autoScroll = !autoScroll"
+          @click="toggleAutoScroll"
         >
-          <ArrowDown v-if="autoScroll" class="h-3.5 w-3.5" />
+          <ArrowDown v-if="isFollowing" class="h-3.5 w-3.5" />
           <Pause v-else class="h-3.5 w-3.5" />
-          <span>{{ autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF' }}</span>
+          <span>{{
+            isFollowing ? 'Auto-scroll ON' : 'Follow latest logs'
+          }}</span>
         </Button>
 
         <Button
@@ -258,63 +259,66 @@ function copyAllLogs() {
     </div>
 
     <!-- Terminal Output Stream -->
-    <div
-      ref="terminalContainer"
-      class="bg-background flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed select-text"
+    <MessageScrollerViewport
+      aria-label="Terminal logs"
+      class="bg-background h-auto flex-1 p-4 font-mono text-xs leading-relaxed select-text"
     >
-      <div
-        v-if="filteredLogs.length === 0"
-        class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 italic"
-      >
-        <Code class="text-muted-foreground/40 h-8 w-8" />
-        <p>
-          No terminal output. Click "Start ComfyUI" above to launch the server.
-        </p>
-      </div>
-
-      <div
-        v-for="log in filteredLogs"
-        :key="log.id"
-        class="border-border/20 hover:bg-muted/40 flex items-start gap-2.5 border-b py-0.5"
-      >
-        <span class="text-muted-foreground shrink-0 pt-0.5 font-mono text-xs">
-          {{ new Date(log.timestamp).toLocaleTimeString() }}
-        </span>
-        <span
-          class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase"
-          :class="{
-            'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400':
-              getLogLevel(log.stream, log.message) === 'stdout',
-            'border border-sky-500/30 bg-sky-500/10 text-sky-400':
-              getLogLevel(log.stream, log.message) === 'info',
-            'border border-amber-500/30 bg-amber-500/10 text-amber-400':
-              getLogLevel(log.stream, log.message) === 'warn',
-            'border border-rose-500/30 bg-rose-500/10 text-rose-400':
-              getLogLevel(log.stream, log.message) === 'error',
-            'border-primary/30 bg-primary/10 text-primary border':
-              getLogLevel(log.stream, log.message) === 'system'
-          }"
+      <MessageScrollerContent class="gap-0">
+        <div
+          v-if="filteredLogs.length === 0"
+          class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 italic"
         >
-          {{ getLogLevel(log.stream, log.message).toUpperCase() }}
-        </span>
-        <span class="text-foreground flex-1 break-all whitespace-pre-wrap">
+          <Code class="text-muted-foreground/40 h-8 w-8" />
+          <p>
+            No terminal output. Click "Start ComfyUI" above to launch the
+            server.
+          </p>
+        </div>
+
+        <div
+          v-for="log in filteredLogs"
+          :key="log.id"
+          class="border-border/20 hover:bg-muted/40 flex items-start gap-2.5 border-b py-0.5"
+        >
+          <span class="text-muted-foreground shrink-0 pt-0.5 font-mono text-xs">
+            {{ new Date(log.timestamp).toLocaleTimeString() }}
+          </span>
           <span
-            v-for="(span, spanIndex) in parseAnsiToSpans(log.message)"
-            :key="spanIndex"
-            :class="
-              span.className ||
-              (getLogLevel(log.stream, log.message) === 'error'
-                ? 'text-destructive font-semibold'
-                : getLogLevel(log.stream, log.message) === 'warn'
-                  ? 'text-amber-300'
-                  : getLogLevel(log.stream, log.message) === 'system'
-                    ? 'text-primary font-semibold'
-                    : '')
-            "
-            >{{ span.text }}</span
+            class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase"
+            :class="{
+              'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400':
+                getLogLevel(log.stream, log.message) === 'stdout',
+              'border border-sky-500/30 bg-sky-500/10 text-sky-400':
+                getLogLevel(log.stream, log.message) === 'info',
+              'border border-amber-500/30 bg-amber-500/10 text-amber-400':
+                getLogLevel(log.stream, log.message) === 'warn',
+              'border border-rose-500/30 bg-rose-500/10 text-rose-400':
+                getLogLevel(log.stream, log.message) === 'error',
+              'border-primary/30 bg-primary/10 text-primary border':
+                getLogLevel(log.stream, log.message) === 'system'
+            }"
           >
-        </span>
-      </div>
-    </div>
+            {{ getLogLevel(log.stream, log.message).toUpperCase() }}
+          </span>
+          <span class="text-foreground flex-1 break-all whitespace-pre-wrap">
+            <span
+              v-for="(span, spanIndex) in parseAnsiToSpans(log.message)"
+              :key="spanIndex"
+              :class="
+                span.className ||
+                (getLogLevel(log.stream, log.message) === 'error'
+                  ? 'text-destructive font-semibold'
+                  : getLogLevel(log.stream, log.message) === 'warn'
+                    ? 'text-amber-300'
+                    : getLogLevel(log.stream, log.message) === 'system'
+                      ? 'text-primary font-semibold'
+                      : '')
+              "
+              >{{ span.text }}</span
+            >
+          </span>
+        </div>
+      </MessageScrollerContent>
+    </MessageScrollerViewport>
   </div>
 </template>

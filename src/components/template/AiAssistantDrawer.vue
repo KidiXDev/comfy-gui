@@ -29,6 +29,14 @@ import {
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { Button } from '@/components/ui/button';
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport
+} from '@/components/ui/message-scroller';
+import { provideMessageScroller } from '@/components/ui/message-scroller/useMessageScroller';
 import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
@@ -50,7 +58,7 @@ const router = useRouter();
 
 const messageInput = ref('');
 const attachments = ref<ChatMessageAttachment[]>([]);
-const messagesContainer = ref<HTMLElement | null>(null);
+const { context: messageScroll } = provideMessageScroller({ autoScroll: true });
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDraggingOver = ref(false);
 
@@ -252,22 +260,6 @@ function handleDrop(event: DragEvent) {
   }
 }
 
-let shouldAutoScroll = true;
-
-function handleMessagesScroll() {
-  if (!messagesContainer.value) return;
-  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value;
-  shouldAutoScroll = scrollHeight - (scrollTop + clientHeight) < 80;
-}
-
-function scrollToBottom(smooth = false) {
-  if (!messagesContainer.value || !shouldAutoScroll) return;
-  messagesContainer.value.scrollTo({
-    top: messagesContainer.value.scrollHeight,
-    behavior: smooth ? 'smooth' : 'auto'
-  });
-}
-
 function getChronologicalParts(msg: ChatMessage): ChatMessagePart[] {
   if (msg.parts && msg.parts.length > 0) {
     return msg.parts;
@@ -287,18 +279,13 @@ function getChronologicalParts(msg: ChatMessage): ChatMessagePart[] {
   return parts;
 }
 
-// Keep scrolling in sync with token streaming
 watch(
+  [() => aiStore.activeSessionId, () => aiStore.isDrawerOpen, showSessionsList],
   () => {
-    const last = messages.value.at(-1);
-    return [last?.content, last?.parts?.length, last?.currentStep];
+    if (aiStore.isDrawerOpen && !showSessionsList.value)
+      messageScroll.scrollToEnd();
   },
-  () => {
-    nextTick(() => {
-      scrollToBottom();
-    });
-  },
-  { deep: true }
+  { flush: 'post' }
 );
 
 async function handleSend() {
@@ -309,8 +296,7 @@ async function handleSend() {
 
   messageInput.value = '';
   attachments.value = [];
-  shouldAutoScroll = true;
-  nextTick(() => scrollToBottom(true));
+  nextTick(() => messageScroll.scrollToEnd());
 
   try {
     await aiStore.sendMessage(text, currentAtts);
@@ -750,548 +736,591 @@ function renderMarkdown(content: string): string {
         </div>
 
         <!-- Messages Thread -->
-        <div
-          ref="messagesContainer"
-          class="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-3.5 select-text"
-          @scroll="handleMessagesScroll"
-        >
-          <!-- Empty State with Starters -->
-          <div
-            v-if="messages.length === 0"
-            class="my-auto flex h-full flex-col items-center justify-center gap-3 p-4 text-center"
-          >
-            <div
-              class="bg-primary/10 border-primary/20 text-primary flex h-12 w-12 items-center justify-center rounded-2xl border shadow-xs"
-            >
-              <Bot class="h-6 w-6" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <h3 class="text-foreground text-sm font-semibold">
-                ComfyUI Studio Assistant
-              </h3>
-              <p class="text-muted-foreground max-w-xs text-xs">
-                Brainstorm Anima prompts, detail anime character outfits,
-                analyze image styles with Vision, or ask the agent to inspect
-                and queue renders.
-              </p>
-            </div>
-
-            <!-- Starter Chips -->
-            <div class="flex w-full max-w-xs flex-col gap-1.5 pt-2">
-              <button
-                type="button"
-                class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
-                @click="
-                  handleStarterClick(
-                    'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
-                  )
-                "
-              >
-                <span>Inspect & optimize for Anima</span>
-                <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
-                @click="
-                  handleStarterClick(
-                    'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
-                  )
-                "
-              >
-                <span>Fantasy mage with detailed outfit</span>
-                <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
-                @click="
-                  handleStarterClick(
-                    'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
-                  )
-                "
-              >
-                <span>Create Anima aesthetic prompt</span>
-                <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <!-- Messages List -->
-          <template v-for="msg in messages" :key="msg.id">
-            <!-- User Message -->
-            <div
-              v-if="msg.role === 'user'"
-              class="flex flex-col items-end gap-1.5 pl-8"
-            >
-              <!-- Attachments if any -->
+        <MessageScroller class="h-auto flex-1">
+          <MessageScrollerViewport class="p-3.5 select-text">
+            <MessageScrollerContent class="gap-3.5">
+              <!-- Empty State with Starters -->
               <div
-                v-if="msg.attachments && msg.attachments.length > 0"
-                class="flex flex-wrap justify-end gap-1.5"
+                v-if="messages.length === 0"
+                class="my-auto flex h-full flex-col items-center justify-center gap-3 p-4 text-center"
               >
                 <div
-                  v-for="att in msg.attachments"
-                  :key="att.id"
-                  class="border-primary/30 relative h-16 w-16 overflow-hidden rounded-lg border shadow-xs"
+                  class="bg-primary/10 border-primary/20 text-primary flex h-12 w-12 items-center justify-center rounded-2xl border shadow-xs"
                 >
-                  <img
-                    :src="att.dataUrl"
-                    alt=""
-                    class="h-full w-full object-cover"
-                  />
+                  <Bot class="h-6 w-6" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <h3 class="text-foreground text-sm font-semibold">
+                    ComfyUI Studio Assistant
+                  </h3>
+                  <p class="text-muted-foreground max-w-xs text-xs">
+                    Brainstorm Anima prompts, detail anime character outfits,
+                    analyze image styles with Vision, or ask the agent to
+                    inspect and queue renders.
+                  </p>
+                </div>
+
+                <!-- Starter Chips -->
+                <div class="flex w-full max-w-xs flex-col gap-1.5 pt-2">
+                  <button
+                    type="button"
+                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                    @click="
+                      handleStarterClick(
+                        'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
+                      )
+                    "
+                  >
+                    <span>Inspect & optimize for Anima</span>
+                    <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                    @click="
+                      handleStarterClick(
+                        'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
+                      )
+                    "
+                  >
+                    <span>Fantasy mage with detailed outfit</span>
+                    <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                    @click="
+                      handleStarterClick(
+                        'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
+                      )
+                    "
+                  >
+                    <span>Create Anima aesthetic prompt</span>
+                    <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
 
-              <!-- Text Content -->
-              <div
-                v-if="msg.content"
-                class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs leading-relaxed shadow-xs"
-              >
-                {{ msg.content }}
-              </div>
-            </div>
-
-            <!-- Assistant Message -->
-            <div v-else class="flex flex-col items-start gap-2 pr-2">
-              <!-- Avatar & Header -->
-              <div class="flex w-full items-center justify-between">
+              <!-- Messages List -->
+              <template v-for="msg in messages" :key="msg.id">
+                <!-- User Message -->
                 <div
-                  class="text-muted-foreground flex items-center gap-1.5 text-xs font-medium"
+                  v-if="msg.role === 'user'"
+                  class="flex flex-col items-end gap-1.5 pl-8"
                 >
+                  <!-- Attachments if any -->
                   <div
-                    class="border-primary/25 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
+                    v-if="msg.attachments && msg.attachments.length > 0"
+                    class="flex flex-wrap justify-end gap-1.5"
                   >
-                    <Sparkles class="h-3 w-3" />
-                  </div>
-                  <span class="text-foreground font-semibold"
-                    >AI Assistant</span
-                  >
-                </div>
-                <span class="text-muted-foreground font-mono text-[10px]">
-                  {{ formatRelativeTime(msg.createdAt) }}
-                </span>
-              </div>
-
-              <!-- Message Body -->
-              <div class="w-full text-xs select-text">
-                <!-- Chronological Message Parts -->
-                <div
-                  v-for="(part, pIdx) in getChronologicalParts(msg)"
-                  :key="`${msg.id}-part-${pIdx}`"
-                  class="border-border/60 relative ml-2 border-l pb-3 pl-5 last:border-transparent last:pb-0"
-                >
-                  <span
-                    class="bg-sidebar absolute top-0 -left-2 flex h-4 w-4 items-center justify-center"
-                  >
-                    <span
-                      v-if="isPartActive(msg, pIdx)"
-                      class="bg-primary h-2 w-2 animate-pulse rounded-full"
-                    />
-                    <Check
-                      v-else-if="
-                        part.type === 'reasoning' ||
-                        (part.type === 'tool' &&
-                          part.invocation.result !== undefined)
-                      "
-                      class="text-muted-foreground h-3 w-3"
-                    />
-                    <span
-                      v-else
-                      class="bg-muted-foreground h-1.5 w-1.5 rounded-full"
-                    />
-                  </span>
-                  <!-- 1. Text Part -->
-                  <div
-                    v-if="part.type === 'text' && part.text"
-                    class="prose-chat select-text"
-                  >
-                    <!-- eslint-disable-next-line vue/no-v-html -->
-                    <div v-html="renderMarkdown(part.text)" />
-                    <!-- Pulsating cursor during active text streaming on this part -->
-                    <span
-                      v-if="isPartActive(msg, pIdx)"
-                      class="bg-primary/80 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs align-middle"
-                    />
-                  </div>
-
-                  <!-- 2. Reasoning / Thinking Part -->
-                  <div
-                    v-else-if="part.type === 'reasoning' && part.text"
-                    class="text-xs"
-                  >
-                    <button
-                      type="button"
-                      class="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 transition-colors"
-                      @click="toggleThought(`${msg.id}-${pIdx}`)"
-                      :aria-expanded="isThoughtExpanded(`${msg.id}-${pIdx}`)"
+                    <div
+                      v-for="att in msg.attachments"
+                      :key="att.id"
+                      class="border-primary/30 relative h-16 w-16 overflow-hidden rounded-lg border shadow-xs"
                     >
-                      <div class="flex items-center gap-1.5 font-medium">
-                        <Sparkles
-                          class="text-primary h-3 w-3"
-                          :class="{
-                            'animate-pulse': isPartActive(msg, pIdx)
-                          }"
-                        />
-                        <span>{{
-                          isPartActive(msg, pIdx) ? 'Thinking' : 'Thought'
-                        }}</span>
+                      <img
+                        :src="att.dataUrl"
+                        alt=""
+                        class="h-full w-full object-cover"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Text Content -->
+                  <div
+                    v-if="msg.content"
+                    class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs leading-relaxed shadow-xs"
+                  >
+                    {{ msg.content }}
+                  </div>
+                </div>
+
+                <!-- Assistant Message -->
+                <div v-else class="flex flex-col items-start gap-2 pr-2">
+                  <!-- Avatar & Header -->
+                  <div class="flex w-full items-center justify-between">
+                    <div
+                      class="text-muted-foreground flex items-center gap-1.5 text-xs font-medium"
+                    >
+                      <div
+                        class="border-primary/25 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
+                      >
+                        <Sparkles class="h-3 w-3" />
+                      </div>
+                      <span class="text-foreground font-semibold"
+                        >AI Assistant</span
+                      >
+                    </div>
+                    <span class="text-muted-foreground font-mono text-[10px]">
+                      {{ formatRelativeTime(msg.createdAt) }}
+                    </span>
+                  </div>
+
+                  <!-- Message Body -->
+                  <div class="w-full text-xs select-text">
+                    <!-- Chronological Message Parts -->
+                    <div
+                      v-for="(part, pIdx) in getChronologicalParts(msg)"
+                      :key="`${msg.id}-part-${pIdx}`"
+                      class="border-border/60 relative ml-2 border-l pb-3 pl-5 last:border-transparent last:pb-0"
+                    >
+                      <span
+                        class="bg-sidebar absolute top-0 -left-2 flex h-4 w-4 items-center justify-center"
+                      >
                         <span
                           v-if="isPartActive(msg, pIdx)"
-                          class="animate-text-shimmer font-mono text-[10px]"
-                        >
-                          pondering...
-                        </span>
-                      </div>
-                      <div class="flex items-center gap-1 text-[11px]">
-                        <span>{{
-                          isThoughtExpanded(`${msg.id}-${pIdx}`)
-                            ? 'Hide'
-                            : 'Show'
-                        }}</span>
-                        <ChevronRight
-                          class="h-3 w-3 transition-transform"
-                          :class="{
-                            'rotate-90': isThoughtExpanded(`${msg.id}-${pIdx}`)
-                          }"
+                          class="bg-primary h-2 w-2 animate-pulse rounded-full"
+                        />
+                        <Check
+                          v-else-if="
+                            part.type === 'reasoning' ||
+                            (part.type === 'tool' &&
+                              part.invocation.result !== undefined)
+                          "
+                          class="text-muted-foreground h-3 w-3"
+                        />
+                        <span
+                          v-else
+                          class="bg-muted-foreground h-1.5 w-1.5 rounded-full"
+                        />
+                      </span>
+                      <!-- 1. Text Part -->
+                      <div
+                        v-if="part.type === 'text' && part.text"
+                        class="prose-chat select-text"
+                      >
+                        <!-- eslint-disable-next-line vue/no-v-html -->
+                        <div v-html="renderMarkdown(part.text)" />
+                        <!-- Pulsating cursor during active text streaming on this part -->
+                        <span
+                          v-if="isPartActive(msg, pIdx)"
+                          class="bg-primary/80 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs align-middle"
                         />
                       </div>
-                    </button>
-                    <div
-                      v-if="isThoughtExpanded(`${msg.id}-${pIdx}`)"
-                      class="border-border/20 text-muted-foreground mt-2 max-h-48 overflow-y-auto border-t pt-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap select-text"
-                    >
-                      {{ part.text }}
-                    </div>
-                  </div>
 
-                  <!-- 3. Tool Invocations -->
-                  <div v-else-if="part.type === 'tool'">
-                    <!-- Tool: inspect_current_prompt -->
-                    <div
-                      v-if="part.invocation.name === 'inspect_current_prompt'"
-                      class="text-xs"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                          <div
-                            class="flex h-5 w-5 items-center justify-center rounded-md border text-blue-400"
-                            :class="[
-                              isPartActive(msg, pIdx)
-                                ? 'border-primary/30 bg-primary/10 text-primary animate-spin'
-                                : 'border-blue-500/30 bg-blue-500/10'
-                            ]"
-                          >
-                            <Sparkles
-                              v-if="isPartActive(msg, pIdx)"
-                              class="h-2.5 w-2.5"
-                            />
-                            <Eye v-else class="h-3 w-3" />
-                          </div>
-                          <span
-                            class="text-foreground font-medium"
-                            :class="{
-                              'animate-text-shimmer': isPartActive(msg, pIdx)
-                            }"
-                          >
-                            {{
-                              part.invocation.result
-                                ? 'Studio Prompts Inspected'
-                                : isPartActive(msg, pIdx)
-                                  ? 'Inspecting active studio prompts...'
-                                  : 'Prompt inspection stopped'
-                            }}
-                          </span>
-                        </div>
-
+                      <!-- 2. Reasoning / Thinking Part -->
+                      <div
+                        v-else-if="part.type === 'reasoning' && part.text"
+                        class="text-xs"
+                      >
                         <button
-                          v-if="part.invocation.result"
                           type="button"
-                          class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-[11px] transition-colors"
-                          @click="
-                            toggleThought(
-                              `${msg.id}-tool-${part.invocation.id}`
-                            )
+                          class="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 transition-colors"
+                          @click="toggleThought(`${msg.id}-${pIdx}`)"
+                          :aria-expanded="
+                            isThoughtExpanded(`${msg.id}-${pIdx}`)
                           "
                         >
-                          <span>{{
-                            isThoughtExpanded(
-                              `${msg.id}-tool-${part.invocation.id}`
-                            )
-                              ? 'Hide details'
-                              : 'View details'
-                          }}</span>
-                          <ChevronRight
-                            class="h-3 w-3 transition-transform"
-                            :class="{
-                              'rotate-90': isThoughtExpanded(
-                                `${msg.id}-tool-${part.invocation.id}`
-                              )
-                            }"
-                          />
+                          <div class="flex items-center gap-1.5 font-medium">
+                            <Sparkles
+                              class="text-primary h-3 w-3"
+                              :class="{
+                                'animate-pulse': isPartActive(msg, pIdx)
+                              }"
+                            />
+                            <span>{{
+                              isPartActive(msg, pIdx) ? 'Thinking' : 'Thought'
+                            }}</span>
+                            <span
+                              v-if="isPartActive(msg, pIdx)"
+                              class="animate-text-shimmer font-mono text-[10px]"
+                            >
+                              pondering...
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-1 text-[11px]">
+                            <span>{{
+                              isThoughtExpanded(`${msg.id}-${pIdx}`)
+                                ? 'Hide'
+                                : 'Show'
+                            }}</span>
+                            <ChevronRight
+                              class="h-3 w-3 transition-transform"
+                              :class="{
+                                'rotate-90': isThoughtExpanded(
+                                  `${msg.id}-${pIdx}`
+                                )
+                              }"
+                            />
+                          </div>
                         </button>
+                        <MessageScrollerProvider
+                          v-if="isThoughtExpanded(`${msg.id}-${pIdx}`)"
+                          :auto-scroll="true"
+                        >
+                          <MessageScrollerViewport
+                            aria-label="Thinking details"
+                            class="border-border/20 text-muted-foreground mt-2 h-auto max-h-48 border-t pt-2 font-mono text-xs leading-relaxed select-text"
+                          >
+                            <MessageScrollerContent class="min-h-0 gap-0">
+                              <div class="whitespace-pre-wrap">
+                                {{ part.text }}
+                              </div>
+                            </MessageScrollerContent>
+                          </MessageScrollerViewport>
+                        </MessageScrollerProvider>
                       </div>
 
-                      <!-- Expanded prompt details -->
-                      <div
-                        v-if="
-                          isThoughtExpanded(
-                            `${msg.id}-tool-${part.invocation.id}`
-                          ) && part.invocation.result
-                        "
-                        class="border-border/30 mt-2.5 flex flex-col gap-1.5 border-t pt-2 font-mono text-[11px]"
-                      >
+                      <!-- 3. Tool Invocations -->
+                      <div v-else-if="part.type === 'tool'">
+                        <!-- Tool: inspect_current_prompt -->
                         <div
-                          v-if="(part.invocation.result as any).positivePrompt"
-                          class="flex flex-col gap-0.5"
+                          v-if="
+                            part.invocation.name === 'inspect_current_prompt'
+                          "
+                          class="text-xs"
                         >
-                          <span
-                            class="text-primary font-sans text-[10px] font-semibold uppercase"
-                            >Active Positive</span
-                          >
-                          <p
-                            class="text-foreground/90 whitespace-pre-wrap select-text"
-                          >
-                            {{ (part.invocation.result as any).positivePrompt }}
-                          </p>
-                        </div>
-                        <div
-                          v-if="(part.invocation.result as any).negativePrompt"
-                          class="flex flex-col gap-0.5"
-                        >
-                          <span
-                            class="text-muted-foreground font-sans text-[10px] font-semibold uppercase"
-                            >Active Negative</span
-                          >
-                          <p
-                            class="text-muted-foreground whitespace-pre-wrap select-text"
-                          >
-                            {{ (part.invocation.result as any).negativePrompt }}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                          <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                              <div
+                                class="flex h-5 w-5 items-center justify-center rounded-md border text-blue-400"
+                                :class="[
+                                  isPartActive(msg, pIdx)
+                                    ? 'border-primary/30 bg-primary/10 text-primary animate-spin'
+                                    : 'border-blue-500/30 bg-blue-500/10'
+                                ]"
+                              >
+                                <Sparkles
+                                  v-if="isPartActive(msg, pIdx)"
+                                  class="h-2.5 w-2.5"
+                                />
+                                <Eye v-else class="h-3 w-3" />
+                              </div>
+                              <span
+                                class="text-foreground font-medium"
+                                :class="{
+                                  'animate-text-shimmer': isPartActive(
+                                    msg,
+                                    pIdx
+                                  )
+                                }"
+                              >
+                                {{
+                                  part.invocation.result
+                                    ? 'Studio Prompts Inspected'
+                                    : isPartActive(msg, pIdx)
+                                      ? 'Inspecting active studio prompts...'
+                                      : 'Prompt inspection stopped'
+                                }}
+                              </span>
+                            </div>
 
-                    <!-- Tool: inject_prompt -->
-                    <div
-                      v-else-if="part.invocation.name === 'inject_prompt'"
-                      class="text-xs"
-                    >
-                      <div class="mb-2 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                          <div
-                            class="border-primary/30 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
-                          >
-                            <Wand2 class="h-3 w-3" />
+                            <button
+                              v-if="part.invocation.result"
+                              type="button"
+                              class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-[11px] transition-colors"
+                              @click="
+                                toggleThought(
+                                  `${msg.id}-tool-${part.invocation.id}`
+                                )
+                              "
+                            >
+                              <span>{{
+                                isThoughtExpanded(
+                                  `${msg.id}-tool-${part.invocation.id}`
+                                )
+                                  ? 'Hide details'
+                                  : 'View details'
+                              }}</span>
+                              <ChevronRight
+                                class="h-3 w-3 transition-transform"
+                                :class="{
+                                  'rotate-90': isThoughtExpanded(
+                                    `${msg.id}-tool-${part.invocation.id}`
+                                  )
+                                }"
+                              />
+                            </button>
                           </div>
-                          <span class="text-foreground text-xs font-semibold"
-                            >Proposed Prompt Adjustments</span
+
+                          <!-- Expanded prompt details -->
+                          <div
+                            v-if="
+                              isThoughtExpanded(
+                                `${msg.id}-tool-${part.invocation.id}`
+                              ) && part.invocation.result
+                            "
+                            class="border-border/30 mt-2.5 flex flex-col gap-1.5 border-t pt-2 font-mono text-[11px]"
                           >
+                            <div
+                              v-if="
+                                (part.invocation.result as any).positivePrompt
+                              "
+                              class="flex flex-col gap-0.5"
+                            >
+                              <span
+                                class="text-primary font-sans text-[10px] font-semibold uppercase"
+                                >Active Positive</span
+                              >
+                              <p
+                                class="text-foreground/90 whitespace-pre-wrap select-text"
+                              >
+                                {{
+                                  (part.invocation.result as any).positivePrompt
+                                }}
+                              </p>
+                            </div>
+                            <div
+                              v-if="
+                                (part.invocation.result as any).negativePrompt
+                              "
+                              class="flex flex-col gap-0.5"
+                            >
+                              <span
+                                class="text-muted-foreground font-sans text-[10px] font-semibold uppercase"
+                                >Active Negative</span
+                              >
+                              <p
+                                class="text-muted-foreground whitespace-pre-wrap select-text"
+                              >
+                                {{
+                                  (part.invocation.result as any).negativePrompt
+                                }}
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <span
-                          class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
-                          :class="[
-                            part.invocation.state === 'applied'
-                              ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                              : part.invocation.state === 'queued'
-                                ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
-                                : part.invocation.state === 'rejected'
-                                  ? 'bg-muted text-muted-foreground'
+
+                        <!-- Tool: inject_prompt -->
+                        <div
+                          v-else-if="part.invocation.name === 'inject_prompt'"
+                          class="text-xs"
+                        >
+                          <div
+                            class="mb-2 flex items-center justify-between gap-2"
+                          >
+                            <div class="flex items-center gap-2">
+                              <div
+                                class="border-primary/30 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
+                              >
+                                <Wand2 class="h-3 w-3" />
+                              </div>
+                              <span
+                                class="text-foreground text-xs font-semibold"
+                                >Proposed Prompt Adjustments</span
+                              >
+                            </div>
+                            <span
+                              class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
+                              :class="[
+                                part.invocation.state === 'applied'
+                                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                                  : part.invocation.state === 'queued'
+                                    ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
+                                    : part.invocation.state === 'rejected'
+                                      ? 'bg-muted text-muted-foreground'
+                                      : 'border-primary/20 bg-primary/10 text-primary border'
+                              ]"
+                            >
+                              {{
+                                part.invocation.state === 'applied'
+                                  ? '✓ Applied to Studio'
+                                  : part.invocation.state === 'queued'
+                                    ? '✓ Applied & Queued'
+                                    : part.invocation.state === 'rejected'
+                                      ? '✕ Discarded'
+                                      : 'Pending Confirmation'
+                              }}
+                            </span>
+                          </div>
+
+                          <p
+                            v-if="
+                              typeof part.invocation.args.reason === 'string'
+                            "
+                            class="text-muted-foreground mb-2 text-xs italic"
+                          >
+                            {{ part.invocation.args.reason }}
+                          </p>
+
+                          <div
+                            v-if="
+                              typeof part.invocation.args.positive === 'string'
+                            "
+                            class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
+                          >
+                            <span
+                              class="text-primary font-mono text-[10px] font-semibold uppercase"
+                              >Positive Prompt</span
+                            >
+                            <p
+                              class="text-foreground font-mono whitespace-pre-wrap select-text"
+                            >
+                              {{ part.invocation.args.positive }}
+                            </p>
+                          </div>
+
+                          <div
+                            v-if="
+                              typeof part.invocation.args.negative === 'string'
+                            "
+                            class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
+                          >
+                            <span
+                              class="text-muted-foreground font-mono text-[10px] font-semibold uppercase"
+                              >Negative Prompt</span
+                            >
+                            <p
+                              class="text-muted-foreground font-mono whitespace-pre-wrap select-text"
+                            >
+                              {{ part.invocation.args.negative }}
+                            </p>
+                          </div>
+
+                          <!-- Action buttons if pending -->
+                          <div
+                            v-if="part.invocation.state === 'pending'"
+                            class="flex items-center gap-2 pt-1"
+                          >
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              class="h-7 gap-1.5 text-xs font-medium"
+                              @click="
+                                aiStore.applyToolInvocation(
+                                  msg.id,
+                                  part.invocation.id
+                                )
+                              "
+                            >
+                              <Check class="h-3.5 w-3.5 text-emerald-500" />
+                              <span>Apply</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs font-medium"
+                              @click="
+                                aiStore.applyAndQueueToolInvocation(
+                                  msg.id,
+                                  part.invocation.id
+                                )
+                              "
+                            >
+                              <Play class="h-3.5 w-3.5" />
+                              <span>Apply & Queue</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              class="text-muted-foreground hover:text-destructive ml-auto h-7 text-xs"
+                              @click="
+                                aiStore.rejectToolInvocation(
+                                  msg.id,
+                                  part.invocation.id
+                                )
+                              "
+                            >
+                              Discard
+                            </Button>
+                          </div>
+                        </div>
+
+                        <!-- Tool: queue_generation -->
+                        <div
+                          v-else-if="
+                            part.invocation.name === 'queue_generation'
+                          "
+                          class="text-xs"
+                        >
+                          <div
+                            class="mb-1.5 flex items-center justify-between gap-2"
+                          >
+                            <div class="flex items-center gap-2">
+                              <div
+                                class="flex h-5 w-5 items-center justify-center rounded-md border border-purple-500/30 bg-purple-500/10 text-purple-400"
+                              >
+                                <Play class="h-3 w-3" />
+                              </div>
+                              <span
+                                class="text-foreground text-xs font-semibold"
+                                >Queue Generation</span
+                              >
+                            </div>
+                            <span
+                              class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
+                              :class="[
+                                part.invocation.state === 'queued'
+                                  ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
                                   : 'border-primary/20 bg-primary/10 text-primary border'
-                          ]"
-                        >
-                          {{
-                            part.invocation.state === 'applied'
-                              ? '✓ Applied to Studio'
-                              : part.invocation.state === 'queued'
-                                ? '✓ Applied & Queued'
-                                : part.invocation.state === 'rejected'
-                                  ? '✕ Discarded'
-                                  : 'Pending Confirmation'
-                          }}
-                        </span>
-                      </div>
+                              ]"
+                            >
+                              {{
+                                part.invocation.state === 'queued'
+                                  ? '✓ Queued'
+                                  : 'Ready'
+                              }}
+                            </span>
+                          </div>
 
-                      <p
-                        v-if="typeof part.invocation.args.reason === 'string'"
-                        class="text-muted-foreground mb-2 text-xs italic"
-                      >
-                        {{ part.invocation.args.reason }}
-                      </p>
+                          <p
+                            v-if="
+                              typeof part.invocation.args.reason === 'string'
+                            "
+                            class="text-muted-foreground mb-2 text-xs"
+                          >
+                            {{ part.invocation.args.reason }}
+                          </p>
 
-                      <div
-                        v-if="typeof part.invocation.args.positive === 'string'"
-                        class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
-                      >
-                        <span
-                          class="text-primary font-mono text-[10px] font-semibold uppercase"
-                          >Positive Prompt</span
-                        >
-                        <p
-                          class="text-foreground font-mono whitespace-pre-wrap select-text"
-                        >
-                          {{ part.invocation.args.positive }}
-                        </p>
-                      </div>
-
-                      <div
-                        v-if="typeof part.invocation.args.negative === 'string'"
-                        class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
-                      >
-                        <span
-                          class="text-muted-foreground font-mono text-[10px] font-semibold uppercase"
-                          >Negative Prompt</span
-                        >
-                        <p
-                          class="text-muted-foreground font-mono whitespace-pre-wrap select-text"
-                        >
-                          {{ part.invocation.args.negative }}
-                        </p>
-                      </div>
-
-                      <!-- Action buttons if pending -->
-                      <div
-                        v-if="part.invocation.state === 'pending'"
-                        class="flex items-center gap-2 pt-1"
-                      >
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          class="h-7 gap-1.5 text-xs font-medium"
-                          @click="
-                            aiStore.applyToolInvocation(
-                              msg.id,
-                              part.invocation.id
-                            )
-                          "
-                        >
-                          <Check class="h-3.5 w-3.5 text-emerald-500" />
-                          <span>Apply</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs font-medium"
-                          @click="
-                            aiStore.applyAndQueueToolInvocation(
-                              msg.id,
-                              part.invocation.id
-                            )
-                          "
-                        >
-                          <Play class="h-3.5 w-3.5" />
-                          <span>Apply & Queue</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          class="text-muted-foreground hover:text-destructive ml-auto h-7 text-xs"
-                          @click="
-                            aiStore.rejectToolInvocation(
-                              msg.id,
-                              part.invocation.id
-                            )
-                          "
-                        >
-                          Discard
-                        </Button>
+                          <div
+                            v-if="part.invocation.state === 'pending'"
+                            class="flex items-center gap-2 pt-1"
+                          >
+                            <Button
+                              size="sm"
+                              class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs"
+                              @click="
+                                aiStore.applyAndQueueToolInvocation(
+                                  msg.id,
+                                  part.invocation.id
+                                )
+                              "
+                            >
+                              <Play class="h-3.5 w-3.5" />
+                              <span>Run Queue Now</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              class="text-muted-foreground hover:text-destructive h-7 text-xs"
+                              @click="
+                                aiStore.rejectToolInvocation(
+                                  msg.id,
+                                  part.invocation.id
+                                )
+                              "
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <!-- Tool: queue_generation -->
+                    <!-- Initial Thinking / Waiting indicator if no parts have arrived yet -->
                     <div
-                      v-else-if="part.invocation.name === 'queue_generation'"
-                      class="text-xs"
+                      v-if="
+                        aiStore.isGenerating &&
+                        isLastMessage(msg.id) &&
+                        getChronologicalParts(msg).length === 0
+                      "
+                      class="text-muted-foreground flex items-center gap-2 py-1 text-xs"
                     >
-                      <div
-                        class="mb-1.5 flex items-center justify-between gap-2"
+                      <Sparkles
+                        class="text-primary h-3.5 w-3.5 animate-pulse"
+                      />
+                      <span
+                        class="animate-text-shimmer font-mono font-medium tracking-wide"
                       >
-                        <div class="flex items-center gap-2">
-                          <div
-                            class="flex h-5 w-5 items-center justify-center rounded-md border border-purple-500/30 bg-purple-500/10 text-purple-400"
-                          >
-                            <Play class="h-3 w-3" />
-                          </div>
-                          <span class="text-foreground text-xs font-semibold"
-                            >Queue Generation</span
-                          >
-                        </div>
-                        <span
-                          class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
-                          :class="[
-                            part.invocation.state === 'queued'
-                              ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
-                              : 'border-primary/20 bg-primary/10 text-primary border'
-                          ]"
-                        >
-                          {{
-                            part.invocation.state === 'queued'
-                              ? '✓ Queued'
-                              : 'Ready'
-                          }}
-                        </span>
-                      </div>
-
-                      <p
-                        v-if="typeof part.invocation.args.reason === 'string'"
-                        class="text-muted-foreground mb-2 text-xs"
-                      >
-                        {{ part.invocation.args.reason }}
-                      </p>
-
-                      <div
-                        v-if="part.invocation.state === 'pending'"
-                        class="flex items-center gap-2 pt-1"
-                      >
-                        <Button
-                          size="sm"
-                          class="bg-primary text-primary-foreground h-7 gap-1.5 text-xs"
-                          @click="
-                            aiStore.applyAndQueueToolInvocation(
-                              msg.id,
-                              part.invocation.id
-                            )
-                          "
-                        >
-                          <Play class="h-3.5 w-3.5" />
-                          <span>Run Queue Now</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          class="text-muted-foreground hover:text-destructive h-7 text-xs"
-                          @click="
-                            aiStore.rejectToolInvocation(
-                              msg.id,
-                              part.invocation.id
-                            )
-                          "
-                        >
-                          Cancel
-                        </Button>
-                      </div>
+                        Thinking...
+                      </span>
                     </div>
                   </div>
                 </div>
-
-                <!-- Initial Thinking / Waiting indicator if no parts have arrived yet -->
-                <div
-                  v-if="
-                    aiStore.isGenerating &&
-                    isLastMessage(msg.id) &&
-                    getChronologicalParts(msg).length === 0
-                  "
-                  class="text-muted-foreground flex items-center gap-2 py-1 text-xs"
-                >
-                  <Sparkles class="text-primary h-3.5 w-3.5 animate-pulse" />
-                  <span
-                    class="animate-text-shimmer font-mono font-medium tracking-wide"
-                  >
-                    Thinking & analyzing request...
-                  </span>
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
+              </template>
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton behavior="auto" />
+        </MessageScroller>
 
         <!-- Bottom Input & Attachment Bar -->
         <div

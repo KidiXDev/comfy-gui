@@ -480,12 +480,7 @@ function createEngine(props: MessageScrollerProviderProps) {
       mode !== 'anchored-to-message'
     ) {
       mode = 'following-bottom';
-    } else if (
-      mode === 'following-bottom' &&
-      next.end &&
-      scrolledUp &&
-      !autoscrolling.value
-    ) {
+    } else if (mode === 'following-bottom' && next.end && scrolledUp) {
       mode = 'free-scrolling';
     }
   }

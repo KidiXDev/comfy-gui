@@ -74,6 +74,7 @@ onBeforeUnmount(() => {
     @scroll="syncAfterScroll()"
     @wheel="userScrollIntent()"
     @touchmove="userScrollIntent()"
+    @pointerdown.self="userScrollIntent()"
     @keydown="onKeyDown"
   >
     <slot />
