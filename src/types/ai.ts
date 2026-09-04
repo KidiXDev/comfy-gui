@@ -33,7 +33,11 @@ export interface OpenRouterModel {
 }
 
 export type ToolName =
-  'inspect_current_prompt' | 'inject_prompt' | 'queue_generation';
+  | 'inspect_current_prompt'
+  | 'inject_prompt'
+  | 'inject_positive_prompt'
+  | 'inject_negative_prompt'
+  | 'queue_generation';
 
 export interface ToolInvocation {
   id: string;

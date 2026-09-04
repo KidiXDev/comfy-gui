@@ -327,45 +327,55 @@ export const useAiStore = defineStore('ai', () => {
           }
         }),
 
-        inject_prompt: tool({
+        inject_positive_prompt: tool({
           description:
-            'Propose or inject new or enhanced positive and/or negative prompts into the studio.',
+            'Propose or inject a new or enhanced positive prompt into the studio.',
           inputSchema: z.object({
-            positive: z
-              .string()
-              .optional()
-              .describe('New or enhanced positive prompt'),
-            negative: z
-              .string()
-              .optional()
-              .describe('New or enhanced negative prompt'),
+            prompt: z.string().describe('New or enhanced positive prompt text'),
             reason: z
               .string()
               .optional()
-              .describe('Stylistic enhancements or rationale')
+              .describe('Stylistic enhancements or creative rationale')
           }),
-          execute: async (input: {
-            positive?: string;
-            negative?: string;
-            reason?: string;
-          }) => {
+          execute: async (input: { prompt: string; reason?: string }) => {
             if (config.value.autoApply) {
-              if (typeof input.positive === 'string') {
-                workflowStore.positivePrompt = input.positive;
-              }
-              if (typeof input.negative === 'string') {
-                workflowStore.negativePrompt = input.negative;
-              }
+              workflowStore.positivePrompt = input.prompt;
               return {
                 status: 'applied_automatically',
-                positive: input.positive,
-                negative: input.negative
+                prompt: input.prompt,
+                reason: input.reason
               };
             }
             return {
               status: 'pending_user_approval',
-              positive: input.positive,
-              negative: input.negative,
+              prompt: input.prompt,
+              reason: input.reason
+            };
+          }
+        }),
+
+        inject_negative_prompt: tool({
+          description:
+            'Propose or inject a new or enhanced negative prompt into the studio.',
+          inputSchema: z.object({
+            prompt: z.string().describe('New or enhanced negative prompt text'),
+            reason: z
+              .string()
+              .optional()
+              .describe('Negative blocker adjustments or rationale')
+          }),
+          execute: async (input: { prompt: string; reason?: string }) => {
+            if (config.value.autoApply) {
+              workflowStore.negativePrompt = input.prompt;
+              return {
+                status: 'applied_automatically',
+                prompt: input.prompt,
+                reason: input.reason
+              };
+            }
+            return {
+              status: 'pending_user_approval',
+              prompt: input.prompt,
               reason: input.reason
             };
           }
@@ -522,7 +532,37 @@ export const useAiStore = defineStore('ai', () => {
     const inv = msg.toolInvocations.find((t) => t.id === toolId);
     if (!inv) return;
 
-    if (inv.name === 'inject_prompt') {
+    if (inv.name === 'inject_positive_prompt') {
+      const pos =
+        (inv.args.prompt as string | undefined) ??
+        (inv.args.positive as string | undefined);
+      if (typeof pos === 'string') {
+        workflowStore.positivePrompt = pos;
+      }
+      inv.state = 'applied';
+      const partTool = msg.parts?.find(
+        (p) => p.type === 'tool' && p.invocation.id === toolId
+      );
+      if (partTool && partTool.type === 'tool') {
+        partTool.invocation.state = 'applied';
+      }
+      void saveChatSessions();
+    } else if (inv.name === 'inject_negative_prompt') {
+      const neg =
+        (inv.args.prompt as string | undefined) ??
+        (inv.args.negative as string | undefined);
+      if (typeof neg === 'string') {
+        workflowStore.negativePrompt = neg;
+      }
+      inv.state = 'applied';
+      const partTool = msg.parts?.find(
+        (p) => p.type === 'tool' && p.invocation.id === toolId
+      );
+      if (partTool && partTool.type === 'tool') {
+        partTool.invocation.state = 'applied';
+      }
+      void saveChatSessions();
+    } else if (inv.name === 'inject_prompt') {
       const pos = inv.args.positive as string | undefined;
       const neg = inv.args.negative as string | undefined;
       if (typeof pos === 'string') {
@@ -553,7 +593,23 @@ export const useAiStore = defineStore('ai', () => {
     const inv = msg.toolInvocations.find((t) => t.id === toolId);
     if (!inv) return;
 
-    if (inv.name === 'inject_prompt') {
+    if (inv.name === 'inject_positive_prompt') {
+      const pos =
+        (inv.args.prompt as string | undefined) ??
+        (inv.args.positive as string | undefined);
+      if (typeof pos === 'string') {
+        workflowStore.positivePrompt = pos;
+      }
+      inv.state = 'queued';
+    } else if (inv.name === 'inject_negative_prompt') {
+      const neg =
+        (inv.args.prompt as string | undefined) ??
+        (inv.args.negative as string | undefined);
+      if (typeof neg === 'string') {
+        workflowStore.negativePrompt = neg;
+      }
+      inv.state = 'queued';
+    } else if (inv.name === 'inject_prompt') {
       const pos = inv.args.positive as string | undefined;
       const neg = inv.args.negative as string | undefined;
       if (typeof pos === 'string') {

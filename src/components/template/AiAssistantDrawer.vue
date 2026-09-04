@@ -1072,9 +1072,13 @@ function renderMarkdown(content: string): string {
                           </div>
                         </div>
 
-                        <!-- Tool: inject_prompt -->
+                        <!-- Tool: inject_prompt / inject_positive_prompt / inject_negative_prompt -->
                         <div
-                          v-else-if="part.invocation.name === 'inject_prompt'"
+                          v-else-if="
+                            part.invocation.name === 'inject_prompt' ||
+                            part.invocation.name === 'inject_positive_prompt' ||
+                            part.invocation.name === 'inject_negative_prompt'
+                          "
                           class="text-xs"
                         >
                           <div
@@ -1088,8 +1092,17 @@ function renderMarkdown(content: string): string {
                               </div>
                               <span
                                 class="text-foreground text-xs font-semibold"
-                                >Proposed Prompt Adjustments</span
                               >
+                                {{
+                                  part.invocation.name ===
+                                  'inject_positive_prompt'
+                                    ? 'Proposed Positive Prompt'
+                                    : part.invocation.name ===
+                                        'inject_negative_prompt'
+                                      ? 'Proposed Negative Prompt'
+                                      : 'Proposed Prompt Adjustments'
+                                }}
+                              </span>
                             </div>
                             <span
                               class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
@@ -1124,37 +1137,51 @@ function renderMarkdown(content: string): string {
                             {{ part.invocation.args.reason }}
                           </p>
 
+                          <!-- Positive Prompt Block -->
                           <div
                             v-if="
-                              typeof part.invocation.args.positive === 'string'
+                              part.invocation.name === 'inject_positive_prompt'
+                                ? typeof (part.invocation.args.prompt ?? part.invocation.args.positive) === 'string'
+                                : typeof part.invocation.args.positive === 'string'
                             "
                             class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
                           >
                             <span
-                              class="text-primary font-mono text-[10px] font-semibold uppercase"
+                              class="text-primary font-mono text-xs font-semibold uppercase"
                               >Positive Prompt</span
                             >
                             <p
                               class="text-foreground font-mono whitespace-pre-wrap select-text"
                             >
-                              {{ part.invocation.args.positive }}
+                              {{
+                                part.invocation.name === 'inject_positive_prompt'
+                                  ? (part.invocation.args.prompt ?? part.invocation.args.positive)
+                                  : part.invocation.args.positive
+                              }}
                             </p>
                           </div>
 
+                          <!-- Negative Prompt Block -->
                           <div
                             v-if="
-                              typeof part.invocation.args.negative === 'string'
+                              part.invocation.name === 'inject_negative_prompt'
+                                ? typeof (part.invocation.args.prompt ?? part.invocation.args.negative) === 'string'
+                                : typeof part.invocation.args.negative === 'string'
                             "
                             class="border-border/40 bg-muted/20 mb-2 flex flex-col gap-1 rounded-lg border p-2 text-xs"
                           >
                             <span
-                              class="text-muted-foreground font-mono text-[10px] font-semibold uppercase"
+                              class="text-muted-foreground font-mono text-xs font-semibold uppercase"
                               >Negative Prompt</span
                             >
                             <p
                               class="text-muted-foreground font-mono whitespace-pre-wrap select-text"
                             >
-                              {{ part.invocation.args.negative }}
+                              {{
+                                part.invocation.name === 'inject_negative_prompt'
+                                  ? (part.invocation.args.prompt ?? part.invocation.args.negative)
+                                  : part.invocation.args.negative
+                              }}
                             </p>
                           </div>
 
