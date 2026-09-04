@@ -140,6 +140,22 @@ export function fetchCivitaiModels(options: {
   return invoke<CivitaiModelsResponse>('models', options);
 }
 
+export function fetchCivitaiModelById(id: number | string, apiKey = '') {
+  return invoke<CivitaiModel>('model_by_id', { id: Number(id), apiKey });
+}
+
+const modelMemoryCache = new Map<number, CivitaiModel>();
+
+export function cacheCivitaiModel(model: CivitaiModel) {
+  modelMemoryCache.set(model.id, model);
+}
+
+export function getCachedCivitaiModel(
+  id: number | string
+): CivitaiModel | undefined {
+  return modelMemoryCache.get(Number(id));
+}
+
 export async function fetchCivitaiBaseModels() {
   const enums = await invoke<{ BaseModel: string[] }>('enums');
   return enums.BaseModel;

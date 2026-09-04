@@ -121,6 +121,22 @@ pub async fn enums() -> Result<Value, String> {
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+pub async fn model_by_id(id: u64, api_key: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = client()?;
+        let url = reqwest::Url::parse(&format!("{API_BASE}/models/{id}"))
+            .map_err(|error| error.to_string())?;
+        response_json(
+            authorized(client.get(url), &api_key)
+                .send()
+                .map_err(|error| error.to_string())?,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
     if path.join("main.py").is_file() {

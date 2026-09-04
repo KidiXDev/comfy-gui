@@ -318,6 +318,7 @@ pub fn run() {
             install_custom_node,
             show_in_folder,
             civitai::models,
+            civitai::model_by_id,
             civitai::enums,
             civitai::download,
             download_manager::list,
