@@ -257,7 +257,7 @@ const durationText = computed(() => {
         <Button
           variant="outline"
           size="sm"
-          class="h-7 cursor-pointer gap-1.5 px-2.5 text-xs font-medium"
+          class="h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
           title="Open Generation Session History"
           @click="historyStore.isDrawerOpen = true"
         >
@@ -265,48 +265,52 @@ const durationText = computed(() => {
           <span>History</span>
           <span
             v-if="historyStore.items.length > 0"
-            class="bg-primary/20 text-primary rounded px-1 font-mono text-xs font-bold"
+            class="bg-primary/20 text-primary rounded px-1.5 py-0.5 font-mono text-xs font-bold"
           >
             {{ historyStore.items.length }}
           </span>
         </Button>
 
-        <Button
-          size="sm"
-          :disabled="!comfyStore.isConnected || comfyStore.isQueueing"
-          class="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer px-4 py-1.5 text-xs font-semibold shadow-[0_0_16px_rgba(37,99,235,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-          :title="
-            comfyStore.isConnected
-              ? 'Queue image with the current settings (Ctrl+Enter)'
-              : 'Connect ComfyUI server to generate'
-          "
-          @click="handleGenerate"
-        >
-          <Loader2
-            v-if="comfyStore.isQueueing"
-            class="h-3.5 w-3.5 animate-spin"
-          />
-          <Sparkles v-else class="h-3.5 w-3.5" />
-          <span>{{ comfyStore.isGenerating ? 'Queue Next' : 'Generate' }}</span>
-          <span
-            v-if="comfyStore.queuedGenerationCount > 0"
-            class="bg-primary-foreground/15 rounded px-1 font-mono"
+        <!-- Unified Generate & Interrupt Button Group -->
+        <div class="inline-flex items-center">
+          <Button
+            size="sm"
+            :disabled="!comfyStore.isConnected || comfyStore.isQueueing"
+            class="bg-primary text-primary-foreground hover:bg-primary/90 h-8 cursor-pointer px-4 text-xs font-semibold shadow-[0_0_16px_rgba(37,99,235,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+            :class="comfyStore.isGenerating ? 'rounded-r-none' : ''"
+            :title="
+              comfyStore.isConnected
+                ? 'Queue image with the current settings (Ctrl+Enter)'
+                : 'Connect ComfyUI server to generate'
+            "
+            @click="handleGenerate"
           >
-            {{ comfyStore.queuedGenerationCount }}
-          </span>
-        </Button>
+            <Loader2
+              v-if="comfyStore.isQueueing"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Sparkles v-else class="h-3.5 w-3.5" />
+            <span>Generate</span>
+            <span
+              v-if="comfyStore.queuedGenerationCount > 0"
+              class="bg-primary-foreground/20 rounded px-1.5 py-0.5 font-mono text-xs font-bold"
+            >
+              {{ comfyStore.queuedGenerationCount }}
+            </span>
+          </Button>
 
-        <Button
-          v-if="comfyStore.isGenerating"
-          size="iconSm"
-          variant="destructive"
-          title="Interrupt current generation"
-          class="text-destructive-foreground cursor-pointer shadow-xs"
-          @click="comfyStore.interrupt"
-        >
-          <Square class="h-3.5 w-3.5" />
-          <span class="sr-only">Interrupt current generation</span>
-        </Button>
+          <Button
+            v-if="comfyStore.isGenerating"
+            size="sm"
+            variant="destructive"
+            title="Interrupt current generation"
+            class="text-destructive-foreground h-8 cursor-pointer rounded-l-none border-l border-white/20 px-2.5 shadow-xs"
+            @click="comfyStore.interrupt"
+          >
+            <Square class="h-3.5 w-3.5 fill-current" />
+            <span class="sr-only">Interrupt current generation</span>
+          </Button>
+        </div>
       </div>
     </div>
 
