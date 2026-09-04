@@ -334,6 +334,26 @@ function isLastMessage(id: string): boolean {
   return last?.id === id;
 }
 
+function isPartActive(msg: ChatMessage, index: number): boolean {
+  if (
+    !aiStore.isGenerating ||
+    !isLastMessage(msg.id) ||
+    msg.currentStep === 'done'
+  )
+    return false;
+  const parts = getChronologicalParts(msg);
+  if (index !== parts.length - 1) return false;
+  const part = parts[index];
+  if (part.type === 'reasoning')
+    return msg.currentStep === 'thinking' && !part.isComplete;
+  if (part.type === 'tool')
+    return (
+      part.invocation.result === undefined &&
+      msg.currentStep !== 'tool_completed'
+    );
+  return msg.currentStep === 'responding';
+}
+
 marked.use({
   gfm: true,
   breaks: true
@@ -853,12 +873,33 @@ function renderMarkdown(content: string): string {
               </div>
 
               <!-- Message Body -->
-              <div class="w-full space-y-2.5 text-xs select-text">
+              <div class="w-full text-xs select-text">
                 <!-- Chronological Message Parts -->
-                <template
+                <div
                   v-for="(part, pIdx) in getChronologicalParts(msg)"
                   :key="`${msg.id}-part-${pIdx}`"
+                  class="border-border/60 relative ml-2 border-l pb-3 pl-5 last:border-transparent last:pb-0"
                 >
+                  <span
+                    class="bg-sidebar absolute top-0 -left-2 flex h-4 w-4 items-center justify-center"
+                  >
+                    <span
+                      v-if="isPartActive(msg, pIdx)"
+                      class="bg-primary h-2 w-2 animate-pulse rounded-full"
+                    />
+                    <Check
+                      v-else-if="
+                        part.type === 'reasoning' ||
+                        (part.type === 'tool' &&
+                          part.invocation.result !== undefined)
+                      "
+                      class="text-muted-foreground h-3 w-3"
+                    />
+                    <span
+                      v-else
+                      class="bg-muted-foreground h-1.5 w-1.5 rounded-full"
+                    />
+                  </span>
                   <!-- 1. Text Part -->
                   <div
                     v-if="part.type === 'text' && part.text"
@@ -868,11 +909,7 @@ function renderMarkdown(content: string): string {
                     <div v-html="renderMarkdown(part.text)" />
                     <!-- Pulsating cursor during active text streaming on this part -->
                     <span
-                      v-if="
-                        aiStore.isGenerating &&
-                        isLastMessage(msg.id) &&
-                        pIdx === getChronologicalParts(msg).length - 1
-                      "
+                      v-if="isPartActive(msg, pIdx)"
                       class="bg-primary/80 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs align-middle"
                     />
                   </div>
@@ -880,30 +917,26 @@ function renderMarkdown(content: string): string {
                   <!-- 2. Reasoning / Thinking Part -->
                   <div
                     v-else-if="part.type === 'reasoning' && part.text"
-                    class="border-border/40 bg-muted/20 my-1 rounded-lg border px-3 py-2 text-xs"
+                    class="text-xs"
                   >
                     <button
                       type="button"
                       class="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-between gap-2 transition-colors"
                       @click="toggleThought(`${msg.id}-${pIdx}`)"
+                      :aria-expanded="isThoughtExpanded(`${msg.id}-${pIdx}`)"
                     >
                       <div class="flex items-center gap-1.5 font-medium">
                         <Sparkles
                           class="text-primary h-3 w-3"
                           :class="{
-                            'animate-pulse':
-                              aiStore.isGenerating &&
-                              isLastMessage(msg.id) &&
-                              !part.isComplete
+                            'animate-pulse': isPartActive(msg, pIdx)
                           }"
                         />
-                        <span>Thinking</span>
+                        <span>{{
+                          isPartActive(msg, pIdx) ? 'Thinking' : 'Thought'
+                        }}</span>
                         <span
-                          v-if="
-                            aiStore.isGenerating &&
-                            isLastMessage(msg.id) &&
-                            !part.isComplete
-                          "
+                          v-if="isPartActive(msg, pIdx)"
                           class="animate-text-shimmer font-mono text-[10px]"
                         >
                           pondering...
@@ -932,24 +965,24 @@ function renderMarkdown(content: string): string {
                   </div>
 
                   <!-- 3. Tool Invocations -->
-                  <div v-else-if="part.type === 'tool'" class="my-1.5">
+                  <div v-else-if="part.type === 'tool'">
                     <!-- Tool: inspect_current_prompt -->
                     <div
                       v-if="part.invocation.name === 'inspect_current_prompt'"
-                      class="border-border/40 bg-card/60 rounded-xl border p-2.5 text-xs transition-colors"
+                      class="text-xs"
                     >
                       <div class="flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                           <div
                             class="flex h-5 w-5 items-center justify-center rounded-md border text-blue-400"
                             :class="[
-                              part.invocation.result
-                                ? 'border-blue-500/30 bg-blue-500/10'
-                                : 'border-primary/30 bg-primary/10 text-primary animate-spin'
+                              isPartActive(msg, pIdx)
+                                ? 'border-primary/30 bg-primary/10 text-primary animate-spin'
+                                : 'border-blue-500/30 bg-blue-500/10'
                             ]"
                           >
                             <Sparkles
-                              v-if="!part.invocation.result"
+                              v-if="isPartActive(msg, pIdx)"
                               class="h-2.5 w-2.5"
                             />
                             <Eye v-else class="h-3 w-3" />
@@ -957,13 +990,15 @@ function renderMarkdown(content: string): string {
                           <span
                             class="text-foreground font-medium"
                             :class="{
-                              'animate-text-shimmer': !part.invocation.result
+                              'animate-text-shimmer': isPartActive(msg, pIdx)
                             }"
                           >
                             {{
                               part.invocation.result
                                 ? 'Studio Prompts Inspected'
-                                : 'Inspecting active studio prompts...'
+                                : isPartActive(msg, pIdx)
+                                  ? 'Inspecting active studio prompts...'
+                                  : 'Prompt inspection stopped'
                             }}
                           </span>
                         </div>
@@ -1039,7 +1074,7 @@ function renderMarkdown(content: string): string {
                     <!-- Tool: inject_prompt -->
                     <div
                       v-else-if="part.invocation.name === 'inject_prompt'"
-                      class="border-primary/30 bg-card/90 rounded-xl border p-3 shadow-xs"
+                      class="text-xs"
                     >
                       <div class="mb-2 flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
@@ -1164,7 +1199,7 @@ function renderMarkdown(content: string): string {
                     <!-- Tool: queue_generation -->
                     <div
                       v-else-if="part.invocation.name === 'queue_generation'"
-                      class="bg-card/90 rounded-xl border border-purple-500/30 p-3 shadow-xs"
+                      class="text-xs"
                     >
                       <div
                         class="mb-1.5 flex items-center justify-between gap-2"
@@ -1235,7 +1270,7 @@ function renderMarkdown(content: string): string {
                       </div>
                     </div>
                   </div>
-                </template>
+                </div>
 
                 <!-- Initial Thinking / Waiting indicator if no parts have arrived yet -->
                 <div

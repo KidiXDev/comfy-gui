@@ -26,12 +26,29 @@ mock.module('ai', () => ({
       yield { type: 'reasoning-delta', text: 'Thinking' };
       await nextTick();
       assert.equal(renderedReasoning, 'Thinking');
+      yield { type: 'reasoning-end' };
+      assert.equal(store.activeMessages.at(-1).parts.at(-1).isComplete, true);
+      yield {
+        type: 'tool-call',
+        toolName: 'inspect_current_prompt',
+        toolCallId: 'inspect',
+        input: {}
+      };
+      yield { type: 'tool-result', toolCallId: 'inspect', output: {} };
+      yield { type: 'reasoning-delta', text: 'Again' };
+      assert.equal(store.activeMessages.at(-1).parts[0].isComplete, true);
+      assert.equal(
+        store.activeMessages.at(-1).parts.at(-1).isComplete,
+        undefined
+      );
       for (const text of ['Hello', ' world']) {
         yield { type: 'text-delta', text };
         await nextTick();
         assert.equal(store.isGenerating, true);
         assert.equal(renderedText, text === 'Hello' ? 'Hello' : 'Hello world');
+        assert.equal(store.activeMessages.at(-1).parts.at(-2).isComplete, true);
       }
+      yield { type: 'reasoning-delta', text: 'Final thought' };
     })()
   })
 }));
@@ -61,6 +78,7 @@ try {
     await store.sendMessage('Hello');
     assert.equal(store.activeMessages.at(-1).content, 'Hello world');
     assert.equal(store.isGenerating, false);
+    assert.equal(store.activeMessages.at(-1).parts.at(-1).isComplete, true);
   }
 } finally {
   stop();

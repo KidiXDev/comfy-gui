@@ -66,7 +66,7 @@ function appendTextPart(parts: ChatMessagePart[], text: string) {
 
 function appendReasoningPart(parts: ChatMessagePart[], text: string) {
   const lastPart = parts.at(-1);
-  if (lastPart && lastPart.type === 'reasoning') {
+  if (lastPart && lastPart.type === 'reasoning' && !lastPart.isComplete) {
     lastPart.text += text;
   } else {
     parts.push({ type: 'reasoning', text });
@@ -412,6 +412,20 @@ export const useAiStore = defineStore('ai', () => {
 
       for await (const part of result.fullStream) {
         if (!assistantMsg.parts) assistantMsg.parts = [];
+        const lastPart = assistantMsg.parts.at(-1);
+        if (
+          lastPart?.type === 'reasoning' &&
+          [
+            'reasoning-end',
+            'text-start',
+            'text-delta',
+            'tool-input-start',
+            'tool-call',
+            'finish-step'
+          ].includes(part.type)
+        ) {
+          lastPart.isComplete = true;
+        }
 
         if (part.type === 'text-delta') {
           assistantMsg.content += part.text;
@@ -491,6 +505,9 @@ export const useAiStore = defineStore('ai', () => {
         appendTextPart(assistantMsg.parts, errNotice);
       }
     } finally {
+      for (const part of assistantMsg.parts ?? []) {
+        if (part.type === 'reasoning') part.isComplete = true;
+      }
       assistantMsg.currentStep = 'done';
       isGenerating.value = false;
       currentAbortController = null;
