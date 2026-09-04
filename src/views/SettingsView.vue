@@ -95,9 +95,11 @@ const booruCredentials = ref<BooruCredentials>({
 const showDanbooruKey = ref(false);
 const showGelbooruKey = ref(false);
 const civitaiApiKey = ref('');
+const savedCivitaiApiKey = ref('');
+const hasCivitaiApiKey = ref(false);
 const civitaiNsfw = ref(false);
-const showCivitaiKey = ref(false);
 let applyingCivitaiSettings = true;
+let lastSavedCivitaiNsfw = false;
 
 const booruDefaultSource = ref('danbooru');
 const booruBlacklist = ref('');
@@ -141,12 +143,31 @@ async function loadCivitaiSettings() {
     const settings = await loadAppData<{ apiKey?: string; nsfw?: boolean }>(
       'civitai_settings'
     );
-    civitaiApiKey.value = settings?.apiKey ?? '';
+    const storedKey = settings?.apiKey?.trim() ?? '';
+    savedCivitaiApiKey.value = storedKey;
+    hasCivitaiApiKey.value = !!storedKey;
+    civitaiApiKey.value = '';
     civitaiNsfw.value = settings?.nsfw ?? false;
+    lastSavedCivitaiNsfw = civitaiNsfw.value;
   } catch (error) {
     console.error(error);
   } finally {
     applyingCivitaiSettings = false;
+  }
+}
+
+async function clearCivitaiApiKey() {
+  savedCivitaiApiKey.value = '';
+  civitaiApiKey.value = '';
+  hasCivitaiApiKey.value = false;
+  try {
+    await saveAppData('civitai_settings', {
+      apiKey: '',
+      nsfw: civitaiNsfw.value
+    });
+    showSaved();
+  } catch (error) {
+    console.error(error);
   }
 }
 
@@ -353,16 +374,27 @@ const autosaveGalleryPreferences = useDebounceFn(
   () => void saveGalleryPreferences().catch(console.error),
   600
 );
-const autosaveCivitaiSettings = useDebounceFn(
-  () =>
-    void saveAppData('civitai_settings', {
-      apiKey: civitaiApiKey.value.trim(),
-      nsfw: civitaiNsfw.value
+const autosaveCivitaiSettings = useDebounceFn(() => {
+  const newKey = civitaiApiKey.value.trim();
+  const nsfwChanged = civitaiNsfw.value !== lastSavedCivitaiNsfw;
+  if (!newKey && !nsfwChanged) return;
+
+  const keyToSave = newKey ? newKey : savedCivitaiApiKey.value;
+  void saveAppData('civitai_settings', {
+    apiKey: keyToSave,
+    nsfw: civitaiNsfw.value
+  })
+    .then(() => {
+      lastSavedCivitaiNsfw = civitaiNsfw.value;
+      if (newKey) {
+        savedCivitaiApiKey.value = newKey;
+        hasCivitaiApiKey.value = true;
+        civitaiApiKey.value = '';
+      }
+      showSaved();
     })
-      .then(showSaved)
-      .catch(console.error),
-  600
-);
+    .catch(console.error);
+}, 600);
 
 watch(
   [
@@ -1506,19 +1538,25 @@ async function checkForUpdates() {
             <div class="relative">
               <Input
                 v-model="civitaiApiKey"
-                :type="showCivitaiKey ? 'text' : 'password'"
+                type="password"
                 autocomplete="new-password"
-                placeholder="Optional for browsing, required by gated models"
+                :placeholder="
+                  hasCivitaiApiKey
+                    ? 'Saved'
+                    : 'Optional for browsing, required by gated models'
+                "
                 class="pr-10 font-mono text-xs"
+                @keydown.enter="autosaveCivitaiSettings.flush()"
+                @blur="autosaveCivitaiSettings.flush()"
               />
               <button
+                v-if="hasCivitaiApiKey && !civitaiApiKey"
                 type="button"
-                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
-                title="Show or hide Civitai API key"
-                @click="showCivitaiKey = !showCivitaiKey"
+                class="text-muted-foreground hover:text-destructive absolute top-1/2 right-2.5 -translate-y-1/2 p-1 transition-colors"
+                title="Remove saved Civitai API key"
+                @click="clearCivitaiApiKey"
               >
-                <EyeOff v-if="showCivitaiKey" class="h-3.5 w-3.5" />
-                <Eye v-else class="h-3.5 w-3.5" />
+                <Trash2 class="h-3.5 w-3.5" />
               </button>
             </div>
             <FieldDescription class="text-xs">

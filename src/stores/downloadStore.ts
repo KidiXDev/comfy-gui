@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
   cancelDownload,
+  clearDownloadHistory,
   listDownloads,
   pauseDownload,
   queueCivitaiDownload,
@@ -64,6 +65,18 @@ export const useDownloadStore = defineStore('downloads', () => {
     items.value = items.value.filter((item) => item.gid !== gid);
   }
 
+  async function clearHistory() {
+    try {
+      await clearDownloadHistory();
+      items.value = items.value.filter((item) =>
+        ['active', 'waiting', 'paused'].includes(item.status)
+      );
+    } catch (error) {
+      errorMessage.value =
+        error instanceof Error ? error.message : String(error);
+    }
+  }
+
   function byVersion(versionId: number) {
     return items.value.find((item) => item.versionId === versionId);
   }
@@ -84,6 +97,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     pause,
     resume,
     cancel,
+    clearHistory,
     byVersion
   };
 });

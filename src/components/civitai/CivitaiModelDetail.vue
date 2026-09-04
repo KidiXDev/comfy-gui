@@ -1007,7 +1007,7 @@ onUnmounted(() => {
               >
                 <template v-if="props.isQueueing">
                   <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-                  <span>Preparing aria2...</span>
+                  <span>Processing...</span>
                 </template>
                 <template v-else-if="props.isInstalled">
                   <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />

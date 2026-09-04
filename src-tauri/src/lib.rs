@@ -325,6 +325,7 @@ pub fn run() {
             download_manager::pause,
             download_manager::resume,
             download_manager::cancel,
+            download_manager::clear_history,
             image_gallery::list_output_images,
             image_gallery::prepare_output_gallery,
             image_gallery::clear_gallery_cache,

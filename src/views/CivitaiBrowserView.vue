@@ -114,7 +114,7 @@ const hasModels = computed(() => models.value.length > 0);
 const downloaded = computed<Record<number, DownloadRecord>>(() =>
   Object.fromEntries(
     downloadStore.items
-      .filter((item) => item.status === 'complete')
+      .filter((item) => item.status === 'complete' && item.fileExists !== false)
       .map((item) => [item.versionId, item])
   )
 );

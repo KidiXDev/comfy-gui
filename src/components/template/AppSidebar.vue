@@ -19,12 +19,10 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
-import { useComfyStore } from '../../stores/comfyStore';
 import { useLauncherStore } from '../../stores/launcherStore';
 
 const route = useRoute();
 const router = useRouter();
-const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 
 const navItems = [
@@ -78,12 +76,6 @@ const navItems = [
     badge: computed(() =>
       launcherStore.processStatus === 'running' ? 'ON' : undefined
     )
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    icon: Settings,
-    route: '/settings'
   }
 ];
 
@@ -145,35 +137,28 @@ function navigate(path: string) {
 
     <!-- Bottom: Secondary Actions -->
     <div class="flex w-full flex-col items-center gap-2.5 px-2">
-      <DownloadManagerPopover />
-
-      <!-- Server Status Dot Indicator with Tooltip -->
+      <!-- Settings Button -->
       <Tooltip>
         <TooltipTrigger as-child>
-          <div
-            class="hover:bg-accent flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-colors"
-            @click="navigate('/server')"
+          <button
+            type="button"
+            class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg transition-all duration-150"
+            :class="[
+              route.path.startsWith('/settings')
+                ? 'border-primary/30 bg-accent text-primary border shadow-xs'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            ]"
+            @click="navigate('/settings')"
           >
-            <span
-              class="h-2 w-2 rounded-full transition-all duration-300"
-              :class="[
-                comfyStore.isConnected
-                  ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
-                  : 'bg-muted-foreground/40'
-              ]"
-            />
-          </div>
+            <Settings class="h-4 w-4" />
+          </button>
         </TooltipTrigger>
         <TooltipContent side="right" :side-offset="10">
-          <p class="font-medium">
-            {{
-              comfyStore.isConnected
-                ? 'ComfyUI Server: Online'
-                : 'ComfyUI Server: Offline'
-            }}
-          </p>
+          <p class="font-medium">Settings</p>
         </TooltipContent>
       </Tooltip>
+
+      <DownloadManagerPopover />
     </div>
   </aside>
 </template>

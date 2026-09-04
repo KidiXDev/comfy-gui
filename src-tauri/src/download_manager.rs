@@ -34,6 +34,12 @@ pub struct DownloadRecord {
     pub download_speed: u64,
     pub error_message: Option<String>,
     pub created_at: u64,
+    #[serde(default = "default_file_exists")]
+    pub file_exists: bool,
+}
+
+fn default_file_exists() -> bool {
+    true
 }
 
 pub struct NewDownload {
@@ -331,11 +337,16 @@ impl DownloadManager {
     pub fn add(&self, app: &AppHandle, download: NewDownload) -> Result<DownloadRecord, String> {
         let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
         load_history(&mut inner, app)?;
-        if let Some(existing) = inner.records.iter().find(|record| {
+        if let Some(pos) = inner.records.iter().position(|record| {
             record.version_id == download.version_id
                 && !matches!(record.status.as_str(), "error" | "removed")
         }) {
-            return Ok(existing.clone());
+            let existing = &inner.records[pos];
+            if existing.status == "complete" && !Path::new(&existing.model_path).is_file() {
+                inner.records.remove(pos);
+            } else {
+                return Ok(existing.clone());
+            }
         }
         let connection = ensure_connection(&mut inner, app)?;
         let options = json!({
@@ -371,6 +382,7 @@ impl DownloadManager {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
+            file_exists: false,
         };
         inner.records.insert(0, record.clone());
         save_history(&inner, app)?;
@@ -429,6 +441,10 @@ impl DownloadManager {
             }
             save_history(&inner, app)?;
         }
+        for record in &mut inner.records {
+            record.file_exists =
+                record.status == "complete" && Path::new(&record.model_path).is_file();
+        }
         Ok(inner.records.clone())
     }
 
@@ -459,6 +475,15 @@ impl DownloadManager {
         }
         cleanup_files(Path::new(&record.model_path));
         inner.records.remove(index);
+        save_history(&inner, app)
+    }
+
+    fn clear_history(&self, app: &AppHandle) -> Result<(), String> {
+        let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
+        load_history(&mut inner, app)?;
+        inner.records.retain(|record| {
+            !matches!(record.status.as_str(), "complete" | "error" | "removed")
+        });
         save_history(&inner, app)
     }
 }
@@ -510,6 +535,17 @@ pub async fn cancel(
 ) -> Result<(), String> {
     let manager = (*manager).clone();
     tauri::async_runtime::spawn_blocking(move || manager.cancel(&app_handle, &gid))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn clear_history(
+    app_handle: AppHandle,
+    manager: State<'_, DownloadManager>,
+) -> Result<(), String> {
+    let manager = (*manager).clone();
+    tauri::async_runtime::spawn_blocking(move || manager.clear_history(&app_handle))
         .await
         .map_err(|error| error.to_string())?
 }

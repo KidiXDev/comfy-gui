@@ -46,7 +46,7 @@ const progress = computed<Record<number, DownloadRecord>>(() =>
 const downloaded = computed<Record<number, DownloadRecord>>(() =>
   Object.fromEntries(
     downloadStore.items
-      .filter((item) => item.status === 'complete')
+      .filter((item) => item.status === 'complete' && item.fileExists !== false)
       .map((item) => [item.versionId, item])
   )
 );

@@ -15,6 +15,7 @@ export interface DownloadRecord {
   downloadSpeed: number;
   errorMessage?: string;
   createdAt: number;
+  fileExists?: boolean;
 }
 
 export function listDownloads() {
@@ -31,6 +32,10 @@ export function resumeDownload(gid: string) {
 
 export function cancelDownload(gid: string) {
   return invoke('cancel', { gid });
+}
+
+export function clearDownloadHistory() {
+  return invoke('clear_history');
 }
 
 export function queueCivitaiDownload(options: {
