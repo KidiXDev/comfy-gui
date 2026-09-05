@@ -15,6 +15,11 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/danbooru-wiki/:title?',
+      name: 'danbooru-wiki',
+      component: () => import('../views/DanbooruWikiView.vue')
+    },
+    {
       path: '/',
       redirect: '/workflow'
     },

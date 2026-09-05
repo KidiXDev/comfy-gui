@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
+  BookOpen,
   Compass,
   Eraser,
   GalleryVerticalEnd,
@@ -27,6 +28,12 @@ const router = useRouter();
 const launcherStore = useLauncherStore();
 
 const navItems = [
+  {
+    id: 'danbooru-wiki',
+    label: 'Danbooru Tag Wiki',
+    icon: BookOpen,
+    route: '/danbooru-wiki'
+  },
   {
     id: 'workflow',
     label: 'Workflow Generator',

@@ -1,5 +1,6 @@
 mod animadex;
 mod civitai;
+mod danbooru_wiki;
 mod download_manager;
 mod image_gallery;
 mod preset_manager;
@@ -290,6 +291,53 @@ pub fn run() {
                 });
             },
         )
+        .register_asynchronous_uri_scheme_protocol(
+            "danbooru-image",
+            move |_context, request, responder| {
+                let path = request.uri().path().trim_matches('/').to_string();
+                std::thread::spawn(move || {
+                    let client = match reqwest::blocking::Client::builder()
+                        .user_agent("ComfyGUI/1.0 (Danbooru Tag Wiki)")
+                        .timeout(std::time::Duration::from_secs(15))
+                        .build()
+                    {
+                        Ok(c) => c,
+                        Err(_) => {
+                            responder.respond(
+                                tauri::http::Response::builder()
+                                    .status(500)
+                                    .body(Vec::new())
+                                    .unwrap(),
+                            );
+                            return;
+                        }
+                    };
+                    let url = format!("https://cdn.donmai.us/{path}");
+                    let response = match client.get(&url).send() {
+                        Ok(resp) if resp.status().is_success() => {
+                            let content_type = resp
+                                .headers()
+                                .get(reqwest::header::CONTENT_TYPE)
+                                .and_then(|h| h.to_str().ok())
+                                .unwrap_or("image/jpeg")
+                                .to_string();
+                            let bytes = resp.bytes().unwrap_or_default().to_vec();
+                            tauri::http::Response::builder()
+                                .header(tauri::http::header::CONTENT_TYPE, content_type)
+                                .header(tauri::http::header::CACHE_CONTROL, "public, max-age=604800")
+                                .header("Access-Control-Allow-Origin", "*")
+                                .body(bytes)
+                                .unwrap()
+                        }
+                        _ => tauri::http::Response::builder()
+                            .status(404)
+                            .body(Vec::new())
+                            .unwrap(),
+                    };
+                    responder.respond(response);
+                });
+            },
+        )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let gallery_cache_dir = app.path().app_config_dir()?.join(".cache");
@@ -318,6 +366,7 @@ pub fn run() {
             inject_bridge_custom_node,
             install_custom_node,
             show_in_folder,
+            danbooru_wiki::danbooru_wiki_request,
             civitai::models,
             civitai::model_by_id,
             civitai::enums,

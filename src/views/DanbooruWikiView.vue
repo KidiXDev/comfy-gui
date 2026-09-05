@@ -1,0 +1,390 @@
+<script setup lang="ts">
+import { computed, ref, shallowRef, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+  AlertCircle,
+  ArrowLeft,
+  BookOpen,
+  ExternalLink,
+  Layers,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  X
+} from '@lucide/vue';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator
+} from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from '@/components/ui/tooltip';
+import WikiArticle from '@/components/danbooru/WikiArticle.vue';
+import WikiGroups from '@/components/danbooru/WikiGroups.vue';
+import WikiSkeleton from '@/components/danbooru/WikiSkeleton.vue';
+import {
+  DANBOORU_URL,
+  fetchWikiPage,
+  fetchWikiPosts,
+  parseWikiGroups,
+  wikiPath,
+  wikiPostIds,
+  type WikiPage,
+  type WikiPost
+} from '@/services/danbooruWiki';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { isTauri } from '@tauri-apps/api/core';
+
+defineOptions({ name: 'DanbooruWikiView' });
+
+const route = useRoute();
+const router = useRouter();
+
+const title = computed(() => String(route.params.title || 'tag_groups'));
+const isIndex = computed(() => title.value === 'tag_groups');
+
+const page = shallowRef<WikiPage>();
+const posts = shallowRef<WikiPost[]>([]);
+const loading = ref(true);
+const loadingImages = ref(false);
+const error = ref('');
+const imageError = ref('');
+const search = ref('');
+const retry = ref(0);
+
+const groups = computed(() => parseWikiGroups(page.value?.body || ''));
+const displayTitle = computed(() =>
+  (page.value?.title || title.value).replaceAll('_', ' ')
+);
+
+const QUICK_GROUPS = [
+  { label: 'All Groups', path: '/danbooru-wiki' },
+  { label: 'Hair Styles', path: '/danbooru-wiki/hair_styles' },
+  { label: 'Eye Colors', path: '/danbooru-wiki/eye_colors' },
+  { label: 'Clothing', path: '/danbooru-wiki/clothing' },
+  { label: 'Poses', path: '/danbooru-wiki/poses' }
+];
+
+watch(
+  [title, retry],
+  async (_, __, onCleanup) => {
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+
+    page.value = undefined;
+    posts.value = [];
+    loading.value = true;
+    loadingImages.value = false;
+    error.value = '';
+    imageError.value = '';
+
+    try {
+      const result = await fetchWikiPage(title.value, controller.signal);
+      if (controller.signal.aborted) return;
+      page.value = result;
+      loading.value = false;
+
+      const ids = wikiPostIds(result.body);
+      if (ids.length > 0) {
+        loadingImages.value = true;
+        try {
+          const resultPosts = await fetchWikiPosts(ids, controller.signal);
+          if (!controller.signal.aborted) {
+            posts.value = resultPosts;
+          }
+        } catch (err) {
+          if (!controller.signal.aborted) {
+            imageError.value = `Post previews could not be loaded (${String(err)}). Links are still active.`;
+          }
+        }
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        error.value = err instanceof Error ? err.message : String(err);
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        loading.value = false;
+        loadingImages.value = false;
+      }
+    }
+  },
+  { immediate: true }
+);
+
+function handleSearch() {
+  const q = search.value.trim();
+  if (q) {
+    search.value = '';
+    void router.push(wikiPath(q));
+  }
+}
+
+async function openOfficial() {
+  const url = `${DANBOORU_URL}/wiki_pages/${encodeURIComponent(title.value)}`;
+  if (isTauri()) {
+    await openUrl(url).catch(console.error);
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+</script>
+
+<template>
+  <div class="bg-background flex h-full flex-col overflow-hidden select-none">
+    <!-- Top Header & Toolbar (Consistent with Animadex & Civitai views) -->
+    <header
+      class="border-border/80 bg-card/70 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
+    >
+      <!-- Row 1: App Identity + Global Actions -->
+      <div class="flex items-center justify-between gap-4">
+        <!-- Title & Subtitle -->
+        <div class="flex items-center gap-3">
+          <div
+            class="border-primary/30 bg-primary/10 text-primary flex size-9 items-center justify-center rounded-lg border shadow-xs"
+          >
+            <BookOpen class="size-4" />
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-xs font-bold tracking-wider uppercase">
+                Danbooru Tag Wiki
+              </h1>
+              <Badge
+                variant="outline"
+                class="border-primary/30 text-primary h-4 px-1.5 text-xs font-normal"
+              >
+                Knowledge Base
+              </Badge>
+            </div>
+            <p class="text-muted-foreground text-xs">
+              {{
+                isIndex
+                  ? 'Explore tag groups, visual taxonomy, and prompt vocabulary'
+                  : 'Tag definition, usage guidelines, and examples from Danbooru'
+              }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-8 gap-1.5 text-xs"
+                :disabled="loading"
+                @click="retry++"
+              >
+                <RefreshCw
+                  class="size-3.5"
+                  :class="{ 'animate-spin': loading }"
+                />
+                <span class="hidden sm:inline">Reload</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Reload wiki page</TooltipContent>
+          </Tooltip>
+
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 gap-1.5 text-xs"
+            @click="openOfficial"
+          >
+            <ExternalLink class="size-3.5" />
+            <span class="hidden sm:inline">Official Wiki</span>
+          </Button>
+        </div>
+      </div>
+
+      <!-- Row 2: Breadcrumb Navigation & Search Controls -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <!-- Breadcrumbs & Quick Jumps -->
+        <div class="flex flex-wrap items-center gap-3">
+          <Breadcrumb class="text-xs">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink as-child>
+                  <RouterLink
+                    to="/danbooru-wiki"
+                    class="hover:text-primary flex items-center gap-1.5 font-medium transition-colors"
+                  >
+                    <Layers class="size-3.5" />
+                    <span>Tag Groups</span>
+                  </RouterLink>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <template v-if="!isIndex">
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage
+                    class="text-foreground max-w-64 truncate font-semibold capitalize"
+                  >
+                    {{ displayTitle }}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </template>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          <!-- Quick Group Links (only shown on index) -->
+          <div
+            v-if="isIndex"
+            class="hidden items-center gap-1 border-l pl-3 md:flex"
+          >
+            <RouterLink
+              v-for="grp in QUICK_GROUPS.slice(1)"
+              :key="grp.path"
+              :to="grp.path"
+              class="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
+            >
+              {{ grp.label }}
+            </RouterLink>
+          </div>
+        </div>
+
+        <!-- Search Bar -->
+        <form
+          class="flex w-full max-w-xs items-center gap-2 sm:max-w-sm"
+          @submit.prevent="handleSearch"
+        >
+          <div class="relative flex-1">
+            <Search
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2"
+            />
+            <Input
+              v-model="search"
+              placeholder="Jump to tag wiki (e.g. blue eyes)..."
+              class="border-border bg-secondary/50 focus:bg-background h-8 pr-7 pl-8 text-xs transition-colors"
+              aria-label="Search or jump to tag wiki"
+            />
+            <button
+              v-if="search"
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
+              @click="search = ''"
+            >
+              <X class="size-3" />
+            </button>
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            class="h-8 px-3 text-xs"
+            :disabled="!search.trim()"
+          >
+            Go
+          </Button>
+        </form>
+      </div>
+    </header>
+
+    <!-- Main Viewport -->
+    <main
+      class="h-full min-h-0 flex-1 overflow-hidden"
+      :class="{ 'overflow-y-auto': !isIndex }"
+    >
+      <!-- Loading Skeleton State -->
+      <div v-if="loading" class="h-full" :class="{ 'p-5 lg:p-7': !isIndex }">
+        <WikiSkeleton :mode="isIndex ? 'groups' : 'article'" />
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="mx-auto max-w-lg p-5 py-12">
+        <Alert
+          variant="destructive"
+          class="border-destructive/40 bg-destructive/10 space-y-3"
+        >
+          <AlertCircle class="size-4" />
+          <AlertTitle class="text-sm font-semibold"
+            >Failed to load wiki page</AlertTitle
+          >
+          <AlertDescription class="text-xs leading-relaxed">
+            {{ error }}
+          </AlertDescription>
+          <div class="mt-4 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              class="text-xs"
+              @click="retry++"
+            >
+              <RotateCcw class="mr-1.5 size-3.5" />
+              Try again
+            </Button>
+            <Button
+              v-if="!isIndex"
+              variant="ghost"
+              size="sm"
+              class="text-xs"
+              @click="router.push('/danbooru-wiki')"
+            >
+              <ArrowLeft class="mr-1.5 size-3.5" />
+              All Tag Groups
+            </Button>
+          </div>
+        </Alert>
+      </div>
+
+      <!-- Loaded Content State -->
+      <template v-else-if="page">
+        <!-- Tag Groups Index Mode: Full-height 2-pane master-detail -->
+        <WikiGroups v-if="isIndex" :groups="groups" class="h-full" />
+
+        <!-- Individual Tag Article Mode: Full-width modern document container -->
+        <div v-else class="w-full space-y-6 p-6">
+          <!-- Image Previews Loading Status -->
+          <div
+            v-if="loadingImages"
+            class="border-border/60 bg-card/50 text-muted-foreground flex items-center gap-2 rounded-lg border px-3 py-2 text-xs"
+          >
+            <Loader2 class="text-primary size-3.5 animate-spin" />
+            <span>Fetching visual post examples from Danbooru…</span>
+          </div>
+
+          <!-- Image Previews Error Notice -->
+          <div
+            v-if="imageError"
+            class="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300"
+          >
+            <div class="flex items-center gap-2">
+              <AlertCircle class="size-3.5 shrink-0 text-amber-400" />
+              <span>{{ imageError }}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 px-2 text-xs text-amber-300 hover:bg-amber-500/20"
+              @click="retry++"
+            >
+              Retry
+            </Button>
+          </div>
+
+          <!-- Wiki Article Body & Actions -->
+          <WikiArticle
+            :key="page.title"
+            :title="page.title"
+            :body="page.body"
+            :posts="posts"
+            :updated-at="page.updated_at"
+          />
+        </div>
+      </template>
+    </main>
+  </div>
+</template>
