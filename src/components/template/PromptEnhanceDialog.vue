@@ -26,6 +26,7 @@ import {
 import { getOpenRouterModel } from '../../services/aiService';
 import { useAiStore } from '../../stores/aiStore';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
+import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 
 interface Props {
   open: boolean;
@@ -142,12 +143,14 @@ async function runEnhance() {
   );
 
   try {
-    const model = getOpenRouterModel(aiStore.config);
+    const model = getOpenRouterModel(aiStore.config, aiStore.selectedModelInfo);
 
     const result = streamText({
       model,
       system: buildEnhancerSystemPrompt(aiStore.config.enhancerSystemPrompt),
       prompt: userPrompt,
+      temperature: aiStore.config.temperature,
+      maxOutputTokens: aiStore.config.maxOutputTokens,
       abortSignal: abortController.signal
     });
 
@@ -210,6 +213,7 @@ async function copyEnhanced() {
             >
               AI Prompt Enhancer
               <AiModelSelector compact class="ml-1" />
+              <AiReasoningSelector compact :disabled="isStreaming" />
             </DialogTitle>
           </div>
         </div>

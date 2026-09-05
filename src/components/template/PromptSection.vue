@@ -12,6 +12,7 @@ import {
   FolderOpen,
   HelpCircle,
   Layers,
+  MoreHorizontal,
   Palette,
   Plus,
   RefreshCw,
@@ -802,52 +803,38 @@ const negativeTokenInfo = computed(() =>
             <span class="text-border">|</span>
 
             <!-- Format Button -->
-            <button
-              type="button"
-              class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Clean formatting, fix commas, and deduplicate tags"
-              @click="formatPrompt('positive')"
-            >
-              <Sparkles class="text-primary h-3 w-3" />
-              <span>Format</span>
-            </button>
-
-            <span class="text-border">|</span>
-
-            <!-- Copy Prompt Button -->
-            <button
-              type="button"
-              class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Copy Positive Prompt to Clipboard"
-              @click="copyPrompt('positive')"
-            >
-              <Check v-if="copiedPositive" class="h-3 w-3 text-emerald-400" />
-              <Copy v-else class="h-3 w-3" />
-            </button>
-
-            <span class="text-border">|</span>
-
-            <!-- Swap Prompts Button -->
-            <button
-              type="button"
-              class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Swap Positive & Negative prompts"
-              @click="swapPrompts"
-            >
-              <ArrowRightLeft class="h-3 w-3" />
-            </button>
-
-            <span class="text-border">|</span>
-
-            <!-- Clear Button -->
-            <button
-              type="button"
-              class="text-muted-foreground/70 hover:text-destructive inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Clear positive prompt"
-              @click="workflowStore.positivePrompt = ''"
-            >
-              <Trash2 class="h-3 w-3" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors"
+                  title="More prompt actions"
+                  aria-label="More positive prompt actions"
+                >
+                  <MoreHorizontal class="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="w-48">
+                <DropdownMenuItem @click="formatPrompt('positive')"
+                  ><Sparkles /><span>Format prompt</span></DropdownMenuItem
+                >
+                <DropdownMenuItem @click="copyPrompt('positive')"
+                  ><Check v-if="copiedPositive" class="text-emerald-400" /><Copy
+                    v-else
+                  /><span>{{
+                    copiedPositive ? 'Copied' : 'Copy prompt'
+                  }}</span></DropdownMenuItem
+                >
+                <DropdownMenuItem @click="swapPrompts"
+                  ><ArrowRightLeft /><span>Swap prompts</span></DropdownMenuItem
+                >
+                <DropdownMenuItem
+                  variant="destructive"
+                  @click="workflowStore.positivePrompt = ''"
+                  ><Trash2 /><span>Clear prompt</span></DropdownMenuItem
+                >
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </template>
 
@@ -1304,40 +1291,35 @@ const negativeTokenInfo = computed(() =>
             <span class="text-border">|</span>
 
             <!-- Format Button -->
-            <button
-              type="button"
-              class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Clean formatting & deduplicate negative tags"
-              @click="formatPrompt('negative')"
-            >
-              <Sparkles class="text-primary h-3 w-3" />
-              <span>Format</span>
-            </button>
-
-            <span class="text-border">|</span>
-
-            <!-- Copy Prompt Button -->
-            <button
-              type="button"
-              class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Copy Negative Prompt to Clipboard"
-              @click="copyPrompt('negative')"
-            >
-              <Check v-if="copiedNegative" class="h-3 w-3 text-emerald-400" />
-              <Copy v-else class="h-3 w-3" />
-            </button>
-
-            <span class="text-border">|</span>
-
-            <!-- Clear Button -->
-            <button
-              type="button"
-              class="text-muted-foreground/70 hover:text-destructive inline-flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-              title="Clear negative prompt"
-              @click="workflowStore.negativePrompt = ''"
-            >
-              <Trash2 class="h-3 w-3" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors"
+                  title="More prompt actions"
+                  aria-label="More negative prompt actions"
+                >
+                  <MoreHorizontal class="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="w-48">
+                <DropdownMenuItem @click="formatPrompt('negative')"
+                  ><Sparkles /><span>Format prompt</span></DropdownMenuItem
+                >
+                <DropdownMenuItem @click="copyPrompt('negative')"
+                  ><Check v-if="copiedNegative" class="text-emerald-400" /><Copy
+                    v-else
+                  /><span>{{
+                    copiedNegative ? 'Copied' : 'Copy prompt'
+                  }}</span></DropdownMenuItem
+                >
+                <DropdownMenuItem
+                  variant="destructive"
+                  @click="workflowStore.negativePrompt = ''"
+                  ><Trash2 /><span>Clear prompt</span></DropdownMenuItem
+                >
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </template>
 

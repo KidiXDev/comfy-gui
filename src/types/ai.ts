@@ -5,6 +5,9 @@ export interface AiConfig {
   enhancerSystemPrompt?: string;
   autoApply: boolean;
   temperature: number;
+  contextTokenLimit: number;
+  maxOutputTokens: number;
+  reasoningEffort?: 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   providerOverride?: string;
   allowProviderFallbacks?: boolean;
 }
@@ -30,6 +33,7 @@ export interface OpenRouterModel {
   context_length?: number;
   pricing?: OpenRouterModelPricing;
   architecture?: OpenRouterModelArchitecture;
+  supported_parameters?: string[];
 }
 
 export type ToolName =

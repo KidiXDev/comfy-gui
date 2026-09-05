@@ -40,6 +40,7 @@ import {
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -70,10 +71,35 @@ import {
 import { APP_VERSION, isNewerVersion } from '../version';
 import { useAiStore } from '../stores/aiStore';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
+import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 
 const launcherStore = useLauncherStore();
 const comfyStore = useComfyStore();
 const aiStore = useAiStore();
+
+const aiTemperature = computed<number[]>({
+  get: () => [aiStore.config.temperature],
+  set: ([value]) => {
+    aiStore.config.temperature = value ?? 0.7;
+  }
+});
+const aiContextMaximum = computed(() =>
+  Math.max(8192, aiStore.selectedModelInfo?.context_length ?? 131072)
+);
+const aiContextTokens = computed<number[]>({
+  get: () => [
+    Math.min(aiStore.config.contextTokenLimit, aiContextMaximum.value)
+  ],
+  set: ([value]) => {
+    aiStore.config.contextTokenLimit = value ?? 32768;
+  }
+});
+const aiResponseTokens = computed<number[]>({
+  get: () => [aiStore.config.maxOutputTokens],
+  set: ([value]) => {
+    aiStore.config.maxOutputTokens = value ?? 4096;
+  }
+});
 
 const workingDir = ref(launcherStore.config.workingDir);
 const pythonPath = ref(launcherStore.config.pythonPath);
@@ -375,6 +401,11 @@ function showSaved() {
   saveSuccessTimer = setTimeout(() => {
     saveSuccess.value = false;
   }, 2500);
+}
+
+function saveAiTuning() {
+  void aiStore.saveConfig();
+  showSaved();
 }
 
 async function saveApplicationSettings() {
@@ -1704,6 +1735,66 @@ async function checkForUpdates() {
             />
           </Field>
 
+          <AiReasoningSelector />
+
+          <div
+            class="border-border/60 bg-muted/20 grid gap-4 rounded-lg border p-3"
+          >
+            <Field class="gap-2">
+              <div class="flex items-center justify-between">
+                <FieldLabel class="text-xs">Temperature</FieldLabel>
+                <span class="text-primary font-mono text-xs">
+                  {{ aiStore.config.temperature.toFixed(1) }}
+                </span>
+              </div>
+              <Slider
+                v-model="aiTemperature"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                aria-label="AI temperature"
+                @value-commit="saveAiTuning"
+              />
+            </Field>
+
+            <Field class="gap-2">
+              <div class="flex items-center justify-between">
+                <FieldLabel class="text-xs">Chat Context Tokens</FieldLabel>
+                <span class="text-primary font-mono text-xs">
+                  {{ aiContextTokens[0]?.toLocaleString() }}
+                </span>
+              </div>
+              <Slider
+                v-model="aiContextTokens"
+                :min="2048"
+                :max="aiContextMaximum"
+                :step="1024"
+                aria-label="Chat context token budget"
+                @value-commit="saveAiTuning"
+              />
+              <p class="text-muted-foreground text-xs">
+                Approximate history budget, capped by the selected model.
+              </p>
+            </Field>
+
+            <Field class="gap-2">
+              <div class="flex items-center justify-between">
+                <FieldLabel class="text-xs">Response Tokens</FieldLabel>
+                <span class="text-primary font-mono text-xs">
+                  {{ aiStore.config.maxOutputTokens.toLocaleString() }}
+                </span>
+              </div>
+              <Slider
+                v-model="aiResponseTokens"
+                :min="512"
+                :max="16384"
+                :step="512"
+                aria-label="Maximum AI response tokens"
+                @value-commit="saveAiTuning"
+              />
+            </Field>
+          </div>
+
           <!-- Provider Routing Override (Custom Provider) -->
           <Field class="gap-1.5">
             <FieldLabel class="text-xs">
@@ -1757,8 +1848,8 @@ async function checkForUpdates() {
             </Label>
             <Switch
               id="ai-auto-apply-switch"
-              :checked="aiStore.config.autoApply"
-              @update:checked="
+              :model-value="aiStore.config.autoApply"
+              @update:model-value="
                 (val: boolean) => {
                   aiStore.config.autoApply = val;
                   void aiStore.saveConfig();

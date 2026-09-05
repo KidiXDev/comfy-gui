@@ -8,6 +8,9 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   enhancerSystemPrompt: '',
   autoApply: false,
   temperature: 0.7,
+  contextTokenLimit: 32768,
+  maxOutputTokens: 4096,
+  reasoningEffort: 'default',
   providerOverride: '',
   allowProviderFallbacks: true
 };
@@ -168,9 +171,21 @@ export function getOpenRouterProvider(apiKey: string) {
   });
 }
 
-export function getOpenRouterModel(config: AiConfig) {
+export function supportsReasoning(model?: OpenRouterModel): boolean {
+  return model?.supported_parameters?.includes('reasoning') ?? false;
+}
+
+export function getOpenRouterModel(config: AiConfig, model?: OpenRouterModel) {
   const provider = getOpenRouterProvider(config.apiKey);
   const settings: Record<string, unknown> = {};
+  if (
+    model?.id === config.selectedModel &&
+    supportsReasoning(model) &&
+    config.reasoningEffort &&
+    ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(config.reasoningEffort)
+  ) {
+    settings.reasoning = { effort: config.reasoningEffort };
+  }
 
   if (config.providerOverride?.trim()) {
     const order = config.providerOverride

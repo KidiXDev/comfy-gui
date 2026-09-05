@@ -1,6 +1,7 @@
 import { MockLanguageModelV3 } from 'ai/test';
 import { mock } from 'bun:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createPinia, setActivePinia } from 'pinia';
 import * as aiService from '../services/aiService';
 
@@ -146,6 +147,53 @@ for (const decision of ['accept', 'decline', 'stop', 'queue', 'negative']) {
   if (decision === 'negative') assert.equal(workflow.negativePrompt, 'updated');
   else assert.equal(workflow.negativePrompt, 'keep this');
 }
+for (const file of [
+  '../components/template/AiAssistantDrawer.vue',
+  '../views/SettingsView.vue'
+]) {
+  const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+  const autoApplySwitch = source.match(/<Switch\b[\s\S]*?\/>/gu)?.find(
+    (element) => element.includes('aiStore.config.autoApply')
+  );
+  assert.ok(autoApplySwitch, `${file}: Auto Apply switch exists`);
+  assert.ok(
+    autoApplySwitch.includes(':model-value="aiStore.config.autoApply"')
+  );
+  assert.ok(autoApplySwitch.includes('@update:model-value='));
+}
+
+store.config.autoApply = true;
+for (const toolName of [
+  'inject_positive_prompt',
+  'inject_negative_prompt',
+  'queue_generation'
+]) {
+  model = newModel();
+  requestedTool = toolName;
+  workflow.positivePrompt = 'original';
+  workflow.negativePrompt = 'keep this';
+  queued = 0;
+  const running = store.sendMessage('Apply the requested action');
+  await until(() => !store.isGenerating);
+  await running;
+  assert.equal(
+    model.doStreamCalls.length,
+    2,
+    'Auto Apply continues without approval'
+  );
+  assert.equal(
+    workflow.positivePrompt,
+    toolName === 'inject_positive_prompt' ? 'updated' : 'original'
+  );
+  assert.equal(
+    workflow.negativePrompt,
+    toolName === 'inject_negative_prompt' ? 'updated' : 'keep this'
+  );
+  assert.equal(queued, toolName === 'queue_generation' ? 1 : 0);
+}
+console.log(
+  'Auto Apply bindings and automatic positive, negative, and queue actions passed.'
+);
 console.log(
   'Approval pauses real SDK continuation; accept, decline note, stop, queue and separate prompt updates passed.'
 );

@@ -81,11 +81,41 @@ function appendTextPart(parts: ChatMessagePart[], text: string) {
 
 function appendReasoningPart(parts: ChatMessagePart[], text: string) {
   const lastPart = parts.at(-1);
-  if (lastPart && lastPart.type === 'reasoning' && !lastPart.isComplete) {
+  if (lastPart?.type === 'reasoning' && !lastPart.isComplete) {
     lastPart.text += text;
   } else {
     parts.push({ type: 'reasoning', text });
   }
+}
+
+function limitChatContext<T extends { role: string; content: unknown }>(
+  messages: T[],
+  tokenLimit: number
+): T[] {
+  // ponytail: token estimate is enough for budgeting; use a model tokenizer if exact limits become necessary.
+  const characterBudget = Math.max(1, tokenLimit) * 4;
+  let usedCharacters = 0;
+  let startIndex = messages.length - 1;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const content = messages[index].content;
+    const characterCount =
+      typeof content === 'string'
+        ? content.length
+        : JSON.stringify(content).length;
+    if (
+      index < messages.length - 1 &&
+      usedCharacters + characterCount > characterBudget
+    )
+      break;
+    usedCharacters += characterCount;
+    startIndex = index;
+  }
+  while (
+    startIndex < messages.length - 1 &&
+    messages[startIndex].role !== 'user'
+  )
+    startIndex++;
+  return messages.slice(startIndex);
 }
 
 export const useAiStore = defineStore('ai', () => {
@@ -239,6 +269,47 @@ export const useAiStore = defineStore('ai', () => {
     createSession('New Chat');
   }
 
+  function deleteMessage(messageId: string) {
+    const session = activeSession.value;
+    if (!session) return;
+    const index = session.messages.findIndex(
+      (message) => message.id === messageId
+    );
+    if (index === -1) return;
+    if (isGenerating.value) stopGeneration();
+    const message = session.messages[index];
+    const nextUserIndex =
+      message.role === 'user'
+        ? session.messages.findIndex(
+            (candidate, candidateIndex) =>
+              candidateIndex > index && candidate.role === 'user'
+          )
+        : index + 1;
+    session.messages.splice(
+      index,
+      nextUserIndex === -1
+        ? session.messages.length - index
+        : nextUserIndex - index
+    );
+    session.updatedAt = Date.now();
+    void saveChatSessions();
+  }
+
+  async function editMessageAndRegenerate(messageId: string, content: string) {
+    const session = activeSession.value;
+    const text = content.trim();
+    if (!session || !text || isGenerating.value) return;
+    if (!config.value.apiKey.trim())
+      throw new Error('OpenRouter API key is not configured.');
+    const index = session.messages.findIndex(
+      (message) => message.id === messageId && message.role === 'user'
+    );
+    if (index === -1) return;
+    const attachments = session.messages[index].attachments ?? [];
+    session.messages.splice(index);
+    await sendMessage(text, attachments);
+  }
+
   async function refreshModels(force = false) {
     isLoadingModels.value = true;
     try {
@@ -314,7 +385,7 @@ export const useAiStore = defineStore('ai', () => {
     const signal = currentAbortController.signal;
 
     try {
-      const model = getOpenRouterModel(config.value);
+      const model = getOpenRouterModel(config.value, selectedModelInfo.value);
       const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt);
 
       const getOrCreateInvocation = (
@@ -526,8 +597,17 @@ export const useAiStore = defineStore('ai', () => {
       const result = streamText({
         model,
         system: systemPrompt,
-        messages: coreMessages,
+        messages: limitChatContext(
+          coreMessages,
+          Math.min(
+            config.value.contextTokenLimit,
+            selectedModelInfo.value?.context_length ??
+              config.value.contextTokenLimit
+          )
+        ),
         tools,
+        temperature: config.value.temperature,
+        maxOutputTokens: config.value.maxOutputTokens,
         stopWhen: isStepCount(5),
         abortSignal: currentAbortController.signal
       });
@@ -693,6 +773,8 @@ export const useAiStore = defineStore('ai', () => {
     deleteSession,
     renameSession,
     clearAllSessions,
+    deleteMessage,
+    editMessageAndRegenerate,
     refreshModels,
     sendMessage,
     stopGeneration,

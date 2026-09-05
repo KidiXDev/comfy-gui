@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import mayaMascot from '@/assets/maya-mascot.png';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  Bot,
   Copy,
   Folder,
   Loader2,
@@ -214,7 +214,7 @@ onUnmounted(() => {
       <!-- AI Assistant Drawer Toggle Button (Icon only) -->
       <button
         type="button"
-        title="Toggle AI Assistant"
+        title="Toggle Maya AI Assistant"
         class="border-border inline-flex h-6.5 w-6.5 cursor-pointer items-center justify-center rounded-md border transition-colors"
         :class="
           aiStore.isDrawerOpen
@@ -223,7 +223,7 @@ onUnmounted(() => {
         "
         @click="aiStore.isDrawerOpen = !aiStore.isDrawerOpen"
       >
-        <Bot class="text-primary h-3.5 w-3.5" />
+        <img :src="mayaMascot" alt="Maya" class="h-5 w-5 object-contain" />
       </button>
 
       <div class="bg-border mx-1 h-3.5 w-px" />

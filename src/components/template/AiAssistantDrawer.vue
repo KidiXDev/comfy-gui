@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import mayaMascot from '@/assets/maya-mascot.png';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   ArrowUpRight,
-  Bot,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -51,6 +51,7 @@ import type {
   ChatMessagePart
 } from '../../types/ai';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
+import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 
 const aiStore = useAiStore();
 const comfyStore = useComfyStore();
@@ -70,6 +71,8 @@ const sessionSearchQuery = ref('');
 const editingSessionId = ref<string | null>(null);
 const editingTitle = ref('');
 const deletingSessionId = ref<string | null>(null);
+const editingMessageId = ref<string | null>(null);
+const editingMessageText = ref('');
 
 const filteredSessions = computed(() => {
   // eslint-disable-next-line unicorn/no-array-sort
@@ -144,6 +147,27 @@ function confirmDeleteSession(sessionId: string) {
 
 function cancelDeleteSession() {
   deletingSessionId.value = null;
+}
+
+function startMessageEdit(message: ChatMessage) {
+  editingMessageId.value = message.id;
+  editingMessageText.value = message.content;
+}
+
+function cancelMessageEdit() {
+  editingMessageId.value = null;
+  editingMessageText.value = '';
+}
+
+async function saveMessageEdit(messageId: string) {
+  const content = editingMessageText.value.trim();
+  if (!content) return;
+  try {
+    await aiStore.editMessageAndRegenerate(messageId, content);
+    cancelMessageEdit();
+  } catch (error) {
+    console.error('Failed to edit message:', error);
+  }
 }
 
 const expandedThoughts = ref<Record<string, boolean>>({});
@@ -394,15 +418,15 @@ function renderMarkdown(content: string): string {
         <!-- Top row: App title, Session history button, New chat, Close -->
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
-            <div
-              class="border-primary/30 bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-lg border"
-            >
-              <Sparkles class="h-4 w-4" />
-            </div>
+            <img
+              :src="mayaMascot"
+              alt="Maya"
+              class="border-primary/30 bg-primary/10 h-8 w-8 rounded-lg border object-contain"
+            />
             <span
               class="text-foreground text-xs font-bold tracking-wide uppercase"
             >
-              AI Assistant
+              Maya
             </span>
           </div>
 
@@ -492,9 +516,10 @@ function renderMarkdown(content: string): string {
                 <div class="flex cursor-pointer items-center gap-1.5">
                   <span class="text-muted-foreground text-xs">Auto-Apply</span>
                   <Switch
-                    :checked="aiStore.config.autoApply"
+                    :model-value="aiStore.config.autoApply"
+                    aria-label="Auto-Apply"
                     class="scale-75"
-                    @update:checked="handleAutoApplyChange"
+                    @update:model-value="handleAutoApplyChange"
                   />
                 </div>
               </TooltipTrigger>
@@ -737,19 +762,17 @@ function renderMarkdown(content: string): string {
                 v-if="messages.length === 0"
                 class="my-auto flex h-full flex-col items-center justify-center gap-3 p-4 text-center"
               >
-                <div
-                  class="bg-primary/10 border-primary/20 text-primary flex h-12 w-12 items-center justify-center rounded-2xl border shadow-xs"
-                >
-                  <Bot class="h-6 w-6" />
-                </div>
+                <img
+                  :src="mayaMascot"
+                  alt="Maya"
+                  class="bg-primary/10 border-primary/20 h-20 w-20 rounded-2xl border object-contain shadow-xs"
+                />
                 <div class="flex flex-col gap-1">
-                  <h3 class="text-foreground text-sm font-semibold">
-                    ComfyUI Studio Assistant
-                  </h3>
+                  <h3 class="text-foreground text-sm font-semibold">Maya</h3>
                   <p class="text-muted-foreground max-w-xs text-xs">
-                    Brainstorm Anima prompts, detail anime character outfits,
-                    analyze image styles with Vision, or ask the agent to
-                    inspect and queue renders.
+                    Ask Maya to brainstorm Anima prompts, detail anime character
+                    outfits, analyze image styles with Vision, or inspect and
+                    queue renders.
                   </p>
                 </div>
 
@@ -799,7 +822,7 @@ function renderMarkdown(content: string): string {
                 <!-- User Message -->
                 <div
                   v-if="msg.role === 'user'"
-                  class="flex flex-col items-end gap-1.5 pl-8"
+                  class="group flex flex-col items-end gap-1.5 pl-8"
                 >
                   <!-- Attachments if any -->
                   <div
@@ -821,10 +844,65 @@ function renderMarkdown(content: string): string {
 
                   <!-- Text Content -->
                   <div
-                    v-if="msg.content"
+                    v-if="editingMessageId === msg.id"
+                    class="w-full space-y-2"
+                  >
+                    <textarea
+                      v-model="editingMessageText"
+                      aria-label="Edit message"
+                      rows="3"
+                      class="border-primary/40 bg-background w-full rounded-xl border p-3 text-xs outline-none"
+                      @keydown.escape="cancelMessageEdit"
+                      @keydown.ctrl.enter.prevent="saveMessageEdit(msg.id)"
+                    />
+                    <div class="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        @click="cancelMessageEdit"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        :disabled="
+                          !editingMessageText.trim() || !aiStore.hasApiKey
+                        "
+                        @click="saveMessageEdit(msg.id)"
+                      >
+                        Save & regenerate
+                      </Button>
+                    </div>
+                  </div>
+                  <div
+                    v-else-if="msg.content"
                     class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs leading-relaxed shadow-xs"
                   >
                     {{ msg.content }}
+                  </div>
+                  <div
+                    v-if="editingMessageId !== msg.id"
+                    class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                  >
+                    <button
+                      v-if="msg.content"
+                      type="button"
+                      class="text-muted-foreground hover:text-foreground rounded p-1"
+                      title="Edit and regenerate"
+                      aria-label="Edit message"
+                      @click="startMessageEdit(msg)"
+                    >
+                      <Pencil class="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      class="text-muted-foreground hover:text-destructive rounded p-1"
+                      title="Delete this turn"
+                      aria-label="Delete message"
+                      @click="aiStore.deleteMessage(msg.id)"
+                    >
+                      <Trash2 class="h-3 w-3" />
+                    </button>
                   </div>
                 </div>
 
@@ -835,18 +913,27 @@ function renderMarkdown(content: string): string {
                     <div
                       class="text-muted-foreground flex items-center gap-1.5 text-xs font-medium"
                     >
-                      <div
-                        class="border-primary/25 bg-primary/10 text-primary flex h-5 w-5 items-center justify-center rounded-md border"
-                      >
-                        <Sparkles class="h-3 w-3" />
-                      </div>
-                      <span class="text-foreground font-semibold"
-                        >AI Assistant</span
-                      >
+                      <img
+                        :src="mayaMascot"
+                        alt=""
+                        class="border-primary/25 bg-primary/10 h-6 w-6 rounded-md border object-contain"
+                      />
+                      <span class="text-foreground font-semibold">Maya</span>
                     </div>
-                    <span class="text-muted-foreground font-mono text-[10px]">
-                      {{ formatRelativeTime(msg.createdAt) }}
-                    </span>
+                    <div class="flex items-center gap-1">
+                      <span class="text-muted-foreground font-mono text-[10px]">
+                        {{ formatRelativeTime(msg.createdAt) }}
+                      </span>
+                      <button
+                        type="button"
+                        class="text-muted-foreground hover:text-destructive rounded p-1"
+                        title="Delete response"
+                        aria-label="Delete response"
+                        @click="aiStore.deleteMessage(msg.id)"
+                      >
+                        <Trash2 class="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
 
                   <!-- Message Body -->
@@ -1419,8 +1506,9 @@ function renderMarkdown(content: string): string {
                 </span>
               </div>
 
-              <div class="flex min-w-0 items-center gap-1.5">
+              <div class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
                 <!-- Model Selector -->
+                <AiReasoningSelector compact :disabled="aiStore.isGenerating" />
                 <AiModelSelector
                   compact
                   :disabled="aiStore.isGenerating"
