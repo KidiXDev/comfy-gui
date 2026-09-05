@@ -1362,7 +1362,7 @@ function renderMarkdown(content: string): string {
             <textarea
               v-model="messageInput"
               rows="3"
-              placeholder="Ask AI, enhance prompts, or paste/drop images for vision analysis... (Enter to send, Shift+Enter for newline)"
+              placeholder="Ask Anything"
               class="placeholder:text-muted-foreground w-full resize-none bg-transparent p-3 text-xs leading-relaxed outline-none"
               @keydown.enter.exact.prevent="handleSend"
               @paste="handlePaste"
