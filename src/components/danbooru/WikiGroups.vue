@@ -3,28 +3,33 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   BookOpen,
+  Box,
   Copy,
   Folder,
-  FolderOpen,
+  Gamepad2,
+  Globe,
   Layers,
+  Paintbrush,
+  Palette,
   Search,
   SearchX,
+  Shirt,
   Sparkles,
+  Tag,
+  User,
+  Users,
   X
 } from '@lucide/vue';
 import { toast } from 'vue-sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import { wikiPath, type WikiGroup } from '@/services/danbooruWiki';
 import { useWorkflowStore } from '@/stores/workflowStore';
+
+interface Section {
+  title: string;
+  links: { title: string; label: string; depth: number }[];
+}
 
 const props = defineProps<{ groups: WikiGroup[] }>();
 
@@ -33,30 +38,39 @@ const workflowStore = useWorkflowStore();
 
 const groupQuery = ref('');
 const topicQuery = ref('');
-const selectedCategory = ref('all');
 const activeGroupKey = ref('');
 
-// Extract unique categories from tag groups
-const availableCategories = computed(() => {
-  const cats = new Set<string>();
-  for (const group of props.groups) {
-    if (group.category) {
-      cats.add(group.category);
-    }
-  }
-  return ['all', ...Array.from(cats)];
-});
+// Match context-aware icons for collection categories
+function getGroupIcon(title: string) {
+  const lower = title.toLowerCase();
+  if (lower.includes('body')) return User;
+  if (
+    lower.includes('attire') ||
+    lower.includes('cloth') ||
+    lower.includes('accessor')
+  )
+    return Shirt;
+  if (lower.includes('composition') || lower.includes('style')) return Palette;
+  if (lower.includes('object') || lower.includes('armor')) return Box;
+  if (lower.includes('character') || lower.includes('mascot')) return Users;
+  if (lower.includes('artist') || lower.includes('drawfag')) return Paintbrush;
+  if (lower.includes('game')) return Gamepad2;
+  if (
+    lower.includes('real world') ||
+    lower.includes('location') ||
+    lower.includes('compan')
+  )
+    return Globe;
+  if (lower.includes('metatag')) return Tag;
+  return Folder;
+}
 
-// Filter groups based on category and left-pane search query
+// Filter collections by user search query in left sidebar
 const filteredGroups = computed(() => {
   const q = groupQuery.value.trim().toLowerCase();
-  const cat = selectedCategory.value;
+  if (!q) return props.groups;
 
   return props.groups.filter((group) => {
-    const matchesCategory = cat === 'all' || group.category === cat;
-    if (!matchesCategory) return false;
-    if (!q) return true;
-
     return (
       group.title.toLowerCase().includes(q) ||
       group.category.toLowerCase().includes(q) ||
@@ -65,12 +79,26 @@ const filteredGroups = computed(() => {
   });
 });
 
-// Total count of all topics
+// Group collections by category in the sidebar
+const groupedByCategory = computed(() => {
+  const map = new Map<string, WikiGroup[]>();
+  for (const group of filteredGroups.value) {
+    const cat = group.category || 'General';
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat)?.push(group);
+  }
+  return Array.from(map.entries()).map(([category, groups]) => ({
+    category,
+    groups
+  }));
+});
+
+// Total count of all topics across all collections
 const totalTopicsAcrossAllGroups = computed(() =>
   props.groups.reduce((acc, g) => acc + g.links.length, 0)
 );
 
-// Determine the currently active group object
+// Determine active collection
 const activeGroup = computed(() => {
   if (filteredGroups.value.length === 0) return null;
   if (activeGroupKey.value) {
@@ -105,18 +133,59 @@ function selectGroup(group: WikiGroup) {
   topicQuery.value = '';
 }
 
-// Topics within the active group, filtered by topicQuery
-const filteredTopics = computed(() => {
+// Group links into natural sections based on hierarchy
+const sections = computed<Section[]>(() => {
+  if (!activeGroup.value) return [];
+  const links = activeGroup.value.links;
+  const hasSub = links.some((l) => l.depth > 0);
+
+  if (!hasSub) {
+    return [{ title: 'All Topics', links }];
+  }
+
+  const result: Section[] = [];
+  let currentSection: Section | null = null;
+  const standalone: typeof links = [];
+
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
+    const next = links[i + 1];
+
+    if (link.depth === 0) {
+      if (next && next.depth > 0) {
+        currentSection = { title: link.label, links: [link] };
+        result.push(currentSection);
+      } else {
+        currentSection = null;
+        standalone.push(link);
+      }
+    } else if (currentSection) {
+      currentSection.links.push(link);
+    } else {
+      standalone.push(link);
+    }
+  }
+
+  if (standalone.length > 0) {
+    result.push({ title: 'General Topics', links: standalone });
+  }
+
+  return result;
+});
+
+// Filter topics when searching inside active collection
+const searchResults = computed(() => {
   if (!activeGroup.value) return [];
   const q = topicQuery.value.trim().toLowerCase();
-  if (!q) return activeGroup.value.links;
+  if (!q) return [];
 
   return activeGroup.value.links.filter((link) =>
     `${link.label} ${link.title}`.toLowerCase().includes(q)
   );
 });
 
-function handleUsePrompt(tag: string) {
+function handleUsePrompt(tag: string, event?: Event) {
+  event?.stopPropagation();
   const current = workflowStore.positivePrompt.trim();
   if (current) {
     workflowStore.positivePrompt = `${current}, ${tag}`;
@@ -126,34 +195,29 @@ function handleUsePrompt(tag: string) {
   toast.success(`Added "${tag}" to prompt`);
 }
 
-function handleCopyTag(tag: string) {
+function handleCopyTag(tag: string, event?: Event) {
+  event?.stopPropagation();
   void navigator.clipboard.writeText(tag);
   toast.success(`Copied "${tag}"`);
-}
-
-function resetGroupFilters() {
-  groupQuery.value = '';
-  selectedCategory.value = 'all';
 }
 </script>
 
 <template>
   <div class="flex h-full min-h-0 w-full overflow-hidden select-none">
-    <!-- Left Pane: Navigator Directory Sidebar -->
+    <!-- Left Sidebar: Categorized Taxonomy Navigator -->
     <aside
-      class="border-border/60 bg-card/20 flex w-64 shrink-0 flex-col border-r sm:w-72"
+      class="border-border/60 bg-card/20 flex w-72 shrink-0 flex-col border-r sm:w-80"
     >
-      <!-- Filter controls -->
-      <div class="border-border/50 flex flex-col gap-2 border-b p-3">
-        <!-- Search Input -->
+      <!-- Search Filter Bar -->
+      <div class="border-border/50 border-b p-3">
         <div class="relative w-full">
           <Search
             class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
           />
           <Input
             v-model="groupQuery"
-            class="border-border/60 bg-secondary/40 focus:bg-background h-7 pr-6 pl-8 text-xs transition-colors"
-            placeholder="Search collections…"
+            class="border-border/60 bg-secondary/40 focus:bg-background h-8 pr-7 pl-8 text-xs transition-colors"
+            placeholder="Search collections or topics…"
           />
           <button
             v-if="groupQuery"
@@ -164,131 +228,133 @@ function resetGroupFilters() {
             <X class="size-3" />
           </button>
         </div>
-
-        <!-- Category Dropdown -->
-        <Select v-model="selectedCategory">
-          <SelectTrigger class="border-border/60 bg-secondary/40 h-7 text-xs">
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem value="all">
-                All Categories ({{ props.groups.length }})
-              </SelectItem>
-              <SelectItem
-                v-for="cat in availableCategories.filter((c) => c !== 'all')"
-                :key="cat"
-                :value="cat"
-              >
-                {{ cat }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
       </div>
 
-      <!-- Collections List -->
-      <div class="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+      <!-- Categorized Collections List -->
+      <div class="flex-1 overflow-y-auto p-2 space-y-4">
         <div
-          v-if="filteredGroups.length === 0"
-          class="text-muted-foreground py-8 text-center text-xs"
+          v-if="groupedByCategory.length === 0"
+          class="text-muted-foreground py-12 text-center text-xs"
         >
-          <p>No collections found</p>
+          <p>No collections found matching "{{ groupQuery }}"</p>
           <Button
             variant="ghost"
             size="sm"
-            class="mt-1 h-6 text-xs"
-            @click="resetGroupFilters"
+            class="mt-2 h-7 text-xs"
+            @click="groupQuery = ''"
           >
-            Reset
+            Clear search
           </Button>
         </div>
 
-        <button
-          v-for="group in filteredGroups"
-          :key="`${group.category}:${group.title}`"
-          type="button"
-          class="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer"
-          :class="
-            activeGroup &&
-            activeGroup.title === group.title &&
-            activeGroup.category === group.category
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'hover:bg-muted/60 text-muted-foreground hover:text-foreground'
-          "
-          @click="selectGroup(group)"
+        <div
+          v-for="catGroup in groupedByCategory"
+          :key="catGroup.category"
+          class="space-y-1"
         >
-          <div class="flex min-w-0 flex-1 items-center gap-2">
-            <Folder
-              v-if="
-                !activeGroup ||
-                activeGroup.title !== group.title ||
-                activeGroup.category !== group.category
-              "
-              class="size-3.5 shrink-0 opacity-60"
-            />
-            <FolderOpen v-else class="text-primary size-3.5 shrink-0" />
-            <span class="truncate">{{ group.title }}</span>
+          <!-- Category Section Header -->
+          <div
+            class="text-muted-foreground/70 flex items-center justify-between px-2.5 py-1 text-xs font-semibold tracking-wider uppercase"
+          >
+            <span class="truncate">{{ catGroup.category }}</span>
+            <span class="font-mono text-xs opacity-70">
+              {{ catGroup.groups.length }}
+            </span>
           </div>
 
-          <span
-            class="font-mono text-[11px] opacity-60"
-            :class="
-              activeGroup &&
-              activeGroup.title === group.title &&
-              activeGroup.category === group.category
-                ? 'text-primary opacity-100 font-semibold'
-                : ''
-            "
-          >
-            {{ group.links.length }}
-          </span>
-        </button>
+          <!-- Collection Buttons -->
+          <div class="space-y-0.5">
+            <button
+              v-for="group in catGroup.groups"
+              :key="`${group.category}:${group.title}`"
+              type="button"
+              class="flex w-full items-center justify-between gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer"
+              :class="
+                activeGroup &&
+                activeGroup.title === group.title &&
+                activeGroup.category === group.category
+                  ? 'bg-primary/10 text-primary font-semibold border-l-2 border-primary pl-2'
+                  : 'hover:bg-muted/60 text-muted-foreground hover:text-foreground'
+              "
+              @click="selectGroup(group)"
+            >
+              <div class="flex min-w-0 flex-1 items-center gap-2.5">
+                <component
+                  :is="getGroupIcon(group.title)"
+                  class="size-3.5 shrink-0"
+                  :class="
+                    activeGroup &&
+                    activeGroup.title === group.title &&
+                    activeGroup.category === group.category
+                      ? 'text-primary'
+                      : 'opacity-60'
+                  "
+                />
+                <span class="truncate">{{ group.title }}</span>
+              </div>
+
+              <span
+                class="rounded px-1.5 py-0.5 font-mono text-xs"
+                :class="
+                  activeGroup &&
+                  activeGroup.title === group.title &&
+                  activeGroup.category === group.category
+                    ? 'bg-primary/20 text-primary font-bold'
+                    : 'bg-secondary/60 text-muted-foreground'
+                "
+              >
+                {{ group.links.length }}
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Directory Footer -->
+      <!-- Directory Footer Status -->
       <div
-        class="border-border/50 text-muted-foreground bg-muted/10 flex items-center justify-between border-t px-3 py-2 text-[11px]"
+        class="border-border/50 text-muted-foreground bg-muted/10 flex items-center justify-between border-t px-3.5 py-2.5 text-xs"
       >
         <span class="flex items-center gap-1.5">
-          <Layers class="size-3 text-primary/70" />
+          <Layers class="size-3.5 text-primary/80" />
           <span>{{ filteredGroups.length }} collections</span>
         </span>
-        <span class="font-mono">{{ totalTopicsAcrossAllGroups }} tags</span>
+        <span class="font-mono">{{ totalTopicsAcrossAllGroups }} topics</span>
       </div>
     </aside>
 
-    <!-- Right Pane: Tag Chips Explorer -->
+    <!-- Right Main Pane: Topics Explorer -->
     <section class="flex flex-1 flex-col overflow-hidden bg-background">
       <!-- Collection Header Bar -->
       <div
         v-if="activeGroup"
-        class="border-border/50 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3"
+        class="border-border/50 flex shrink-0 flex-wrap items-center justify-between gap-4 border-b px-6 py-3.5"
       >
-        <div class="flex items-center gap-2.5">
-          <span
-            class="bg-secondary text-secondary-foreground rounded px-1.5 py-0.5 text-[11px] font-medium"
-          >
-            {{ activeGroup.category }}
-          </span>
-          <h2 class="text-base font-bold tracking-tight text-foreground">
+        <div class="flex flex-col gap-0.5">
+          <div class="flex items-center gap-2">
+            <span
+              class="border-border bg-secondary/80 text-secondary-foreground rounded px-1.5 py-0.5 text-xs font-medium"
+            >
+              {{ activeGroup.category }}
+            </span>
+            <span class="text-muted-foreground font-mono text-xs">
+              {{ activeGroup.links.length }} topics
+            </span>
+          </div>
+          <h2 class="text-lg font-bold tracking-tight text-foreground">
             {{ activeGroup.title }}
           </h2>
-          <span class="text-muted-foreground font-mono text-xs">
-            ({{ activeGroup.links.length }})
-          </span>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2.5">
           <!-- In-group Search -->
-          <div class="relative w-48 sm:w-56">
+          <div class="relative w-52 sm:w-64">
             <Search
               class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
             />
             <Input
               v-model="topicQuery"
-              class="border-border/60 bg-secondary/40 focus:bg-background h-7 pr-6 pl-7 text-xs transition-colors"
-              placeholder="Filter tags…"
+              class="border-border/60 bg-secondary/40 focus:bg-background h-8 pr-6 pl-8 text-xs transition-colors"
+              placeholder="Filter topics in this collection…"
             />
             <button
               v-if="topicQuery"
@@ -300,92 +366,133 @@ function resetGroupFilters() {
             </button>
           </div>
 
-          <!-- Open Wiki Page -->
+          <!-- Open Main Wiki Button -->
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            class="h-7 gap-1 text-xs font-medium"
+            class="h-8 gap-1.5 text-xs font-medium"
             @click="router.push(wikiPath(activeGroup.title))"
           >
             <BookOpen class="text-primary size-3.5" />
-            <span>Wiki</span>
+            <span>Open Guide</span>
           </Button>
         </div>
       </div>
 
-      <!-- Tag Chips Grid -->
-      <div v-if="activeGroup" class="flex-1 overflow-y-auto p-4 sm:p-5">
-        <div
-          v-if="filteredTopics.length"
-          class="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-        >
-          <div
-            v-for="link in filteredTopics"
-            :key="`${link.title}-${link.depth}`"
-            class="group border-border/50 hover:border-primary/50 bg-secondary/20 hover:bg-secondary/50 flex items-center justify-between gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors"
-          >
-            <div class="flex min-w-0 flex-1 items-center gap-1.5">
-              <span
-                v-if="link.depth > 0"
-                class="bg-primary/50 size-1 shrink-0 rounded-full"
-              />
-              <RouterLink
-                :to="wikiPath(link.title)"
-                class="text-foreground group-hover:text-primary truncate font-medium capitalize transition-colors"
-                :title="link.label"
-              >
-                {{ link.label }}
-              </RouterLink>
-            </div>
+      <!-- Topics Content Area -->
+      <div v-if="activeGroup" class="flex-1 overflow-y-auto p-6">
+        <!-- Search Filtered Results State -->
+        <div v-if="topicQuery" class="space-y-4">
+          <div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Matching Topics ({{ searchResults.length }})
+          </div>
 
-            <!-- Hover Quick Actions -->
+          <div v-if="searchResults.length" class="flex flex-wrap gap-2">
             <div
-              class="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+              v-for="link in searchResults"
+              :key="link.title"
+              class="group flex items-center gap-2 rounded-lg border border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 px-3 py-2 text-xs transition-colors cursor-pointer"
+              @click="router.push(wikiPath(link.title))"
             >
-              <button
-                type="button"
-                title="Append to positive prompt"
-                class="text-muted-foreground hover:text-amber-400 p-0.5 transition-colors cursor-pointer"
-                @click="handleUsePrompt(link.title)"
-              >
-                <Sparkles class="size-3" />
-              </button>
-              <button
-                type="button"
-                title="Copy tag name"
-                class="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
-                @click="handleCopyTag(link.title)"
-              >
-                <Copy class="size-3" />
-              </button>
+              <span class="font-medium text-foreground group-hover:text-primary transition-colors capitalize">
+                {{ link.label }}
+              </span>
+
+              <!-- Hover Quick Actions -->
+              <div class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  type="button"
+                  title="Copy tag"
+                  class="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
+                  @click="handleCopyTag(link.title, $event)"
+                >
+                  <Copy class="size-3" />
+                </button>
+                <button
+                  type="button"
+                  title="Use in prompt"
+                  class="text-muted-foreground hover:text-amber-400 p-0.5 transition-colors cursor-pointer"
+                  @click="handleUsePrompt(link.title, $event)"
+                >
+                  <Sparkles class="size-3" />
+                </button>
+              </div>
             </div>
+          </div>
+
+          <!-- Empty search match -->
+          <div
+            v-else
+            class="text-muted-foreground flex flex-col items-center justify-center py-20 text-center text-xs"
+          >
+            <SearchX class="mb-2.5 size-7 opacity-40" />
+            <p class="text-sm font-medium">No topics match “{{ topicQuery }}”</p>
+            <p class="text-muted-foreground mt-1 text-xs">
+              Try a different keyword or clear the filter.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="mt-3 h-7 text-xs"
+              @click="topicQuery = ''"
+            >
+              Clear search
+            </Button>
           </div>
         </div>
 
-        <!-- Empty state within active group -->
-        <div
-          v-else
-          class="text-muted-foreground flex flex-col items-center justify-center py-16 text-center text-xs"
-        >
-          <SearchX class="mb-2 size-6 opacity-50" />
-          <p>No tags match “{{ topicQuery }}” in this collection</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="mt-2 h-7 text-xs"
-            @click="topicQuery = ''"
+        <!-- Default Organized Sections (Clean, Card-less Flow) -->
+        <div v-else class="space-y-6">
+          <div
+            v-for="section in sections"
+            :key="section.title"
+            class="space-y-3"
           >
-            Clear search
-          </Button>
-        </div>
-      </div>
+            <!-- Section Header (Clean typography, no card box) -->
+            <div class="flex items-center gap-2 border-b border-border/40 pb-1.5">
+              <span class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {{ section.title }}
+              </span>
+              <span class="text-muted-foreground/60 font-mono text-xs">
+                ({{ section.links.length }})
+              </span>
+            </div>
 
-      <!-- Empty state when no collection selected -->
-      <div
-        v-else
-        class="text-muted-foreground flex flex-1 items-center justify-center text-xs"
-      >
-        Select a collection from the sidebar
+            <!-- Topic Chips (Clean, comfortable, scannable) -->
+            <div class="flex flex-wrap gap-2">
+              <div
+                v-for="link in section.links"
+                :key="link.title"
+                class="group flex items-center gap-2 rounded-lg border border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 px-3 py-1.5 text-xs transition-colors cursor-pointer"
+                @click="router.push(wikiPath(link.title))"
+              >
+                <span class="font-medium text-foreground group-hover:text-primary transition-colors capitalize">
+                  {{ link.label }}
+                </span>
+
+                <!-- Quick actions on hover -->
+                <div class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    title="Copy tag"
+                    class="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
+                    @click="handleCopyTag(link.title, $event)"
+                  >
+                    <Copy class="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Use in prompt"
+                    class="text-muted-foreground hover:text-amber-400 p-0.5 transition-colors cursor-pointer"
+                    @click="handleUsePrompt(link.title, $event)"
+                  >
+                    <Sparkles class="size-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </div>
