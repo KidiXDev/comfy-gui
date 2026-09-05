@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
+import SearchableSelect from '../common/SearchableSelect.vue';
+import { Textarea } from '@/components/ui/textarea';
+import type { FaceDetailerSettings } from '@/types/workflow';
 import { AlertCircle, FastForwardIcon, ScanFace } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -17,12 +20,15 @@ import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
-withDefaults(defineProps<{ showEnabled?: boolean }>(), { showEnabled: true });
+const props = withDefaults(
+  defineProps<{ showEnabled?: boolean; settings?: FaceDetailerSettings }>(),
+  { showEnabled: true }
+);
 
 const NO_SEGMENTATION = '__none__';
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
-const settings = computed(() => workflowStore.faceDetailer);
+const settings = computed(() => props.settings ?? workflowStore.faceDetailer);
 
 const samplerOptions = computed(() =>
   comfyStore.availableSamplers.length > 0
@@ -171,7 +177,7 @@ watch(
         </Badge>
         <Switch
           v-if="showEnabled"
-          v-model="workflowStore.faceDetailer.enabled"
+          v-model="settings.enabled"
           :disabled="
             comfyStore.isConnected && !comfyStore.isFaceDetailerAvailable
           "
@@ -182,7 +188,7 @@ watch(
 
     <!-- Main Config Body (shown when enabled or showEnabled=false) -->
     <div
-      v-if="!showEnabled || workflowStore.faceDetailer.enabled"
+      v-if="!showEnabled || settings.enabled"
       class="flex flex-col gap-3.5 pt-1"
     >
       <!-- ComfyUI Node Availability Warning -->
@@ -197,12 +203,29 @@ watch(
         </span>
       </div>
 
+      <WorkflowField label="Positive prompt (optional)">
+        <Textarea
+          v-model="settings.positivePrompt"
+          placeholder="Enter prompt"
+          class="min-h-20 text-xs"
+          aria-label="Face Detailer positive prompt"
+        />
+      </WorkflowField>
+      <WorkflowField label="Negative prompt (optional)">
+        <Textarea
+          v-model="settings.negativePrompt"
+          placeholder="Enter prompt"
+          class="min-h-20 text-xs"
+          aria-label="Face Detailer negative prompt"
+        />
+      </WorkflowField>
+
       <!-- 1. Detector Models Row -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <!-- BBox Detector -->
         <WorkflowField label="BBox Detector">
           <Select
-            v-model="workflowStore.faceDetailer.bboxModel"
+            v-model="settings.bboxModel"
             :disabled="!comfyStore.isConnected"
           >
             <SelectTrigger class="w-full font-mono text-xs">
@@ -263,33 +286,19 @@ watch(
             </div>
           </div>
           <Switch
-            v-model="workflowStore.faceDetailer.turboEnabled"
+            v-model="settings.turboEnabled"
             aria-label="Enable Face Detailer Turbo LoRA"
           />
         </div>
 
         <div v-if="settings.turboEnabled" class="border-border border-t pt-2.5">
           <WorkflowField label="Turbo LoRA Model">
-            <Select
-              v-model="workflowStore.faceDetailer.turboLora"
+            <SearchableSelect
+              v-model="settings.turboLora"
+              :options="turboLoraOptions"
+              placeholder="Select Turbo LoRA"
               :disabled="!comfyStore.isConnected"
-            >
-              <SelectTrigger class="w-full font-mono text-xs">
-                <SelectValue placeholder="Select Turbo LoRA" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem
-                    v-for="lora in turboLoraOptions"
-                    :key="lora"
-                    :value="lora"
-                    class="font-mono text-xs"
-                  >
-                    {{ lora }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            />
           </WorkflowField>
         </div>
       </div>
@@ -348,7 +357,7 @@ watch(
         <!-- Sampler -->
         <WorkflowField label="Sampler">
           <Select
-            v-model="workflowStore.faceDetailer.samplerName"
+            v-model="settings.samplerName"
             :disabled="!comfyStore.isConnected"
           >
             <SelectTrigger class="w-full font-mono text-xs">
@@ -372,7 +381,7 @@ watch(
         <!-- Scheduler -->
         <WorkflowField label="Scheduler">
           <Select
-            v-model="workflowStore.faceDetailer.scheduler"
+            v-model="settings.scheduler"
             :disabled="!comfyStore.isConnected"
           >
             <SelectTrigger class="w-full font-mono text-xs">

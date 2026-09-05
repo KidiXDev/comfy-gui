@@ -108,7 +108,9 @@ const DEFAULT_POSTFX: PostFxSettings = {
   }
 };
 
-const DEFAULT_FACE_DETAILER: FaceDetailerSettings = {
+export const DEFAULT_FACE_DETAILER: FaceDetailerSettings = {
+  positivePrompt: '',
+  negativePrompt: '',
   enabled: false,
   bboxModel: 'bbox/face_yolov8m.pt',
   segmModel: '',
@@ -283,8 +285,9 @@ export const useWorkflowStore = defineStore('workflow', () => {
     });
   }
 
-  function addLora(name = '', strength = 1.0) {
-    loras.value.push({
+  function addLora(name = '', strength = 1.0, stack?: LoraItem[]) {
+    stack ??= loras.value;
+    stack.push({
       id: `lora-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name,
       strength,
@@ -292,17 +295,24 @@ export const useWorkflowStore = defineStore('workflow', () => {
     });
   }
 
-  function removeLora(id: string) {
-    loras.value = loras.value.filter((l) => l.id !== id);
+  function removeLora(id: string, stack?: LoraItem[]) {
+    stack ??= loras.value;
+    const index = stack.findIndex((l) => l.id === id);
+    if (index !== -1) stack.splice(index, 1);
   }
 
-  function moveLora(index: number, direction: 'up' | 'down') {
+  function moveLora(
+    index: number,
+    direction: 'up' | 'down',
+    stack?: LoraItem[]
+  ) {
+    stack ??= loras.value;
     if (direction === 'up' && index > 0) {
-      const item = loras.value.splice(index, 1)[0];
-      loras.value.splice(index - 1, 0, item);
-    } else if (direction === 'down' && index < loras.value.length - 1) {
-      const item = loras.value.splice(index, 1)[0];
-      loras.value.splice(index + 1, 0, item);
+      const item = stack.splice(index, 1)[0];
+      stack.splice(index - 1, 0, item);
+    } else if (direction === 'down' && index < stack.length - 1) {
+      const item = stack.splice(index, 1)[0];
+      stack.splice(index + 1, 0, item);
     }
   }
 
@@ -321,15 +331,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
     void savePresets();
   }
 
-  function loadCustomPreset(presetId: string) {
+  function loadCustomPreset(presetId: string, stack = loras.value) {
     const preset = customPresets.value.find((p) => p.id === presetId);
     if (!preset) return;
-    loras.value = preset.loras.map((l, index) => ({
-      id: `lora-${index}-${Date.now()}`,
-      name: l.name,
-      strength: l.strength,
-      enabled: l.enabled
-    }));
+    stack.splice(
+      0,
+      stack.length,
+      ...preset.loras.map((l, index) => ({
+        id: `lora-${index}-${Date.now()}`,
+        name: l.name,
+        strength: l.strength,
+        enabled: l.enabled
+      }))
+    );
   }
 
   function deleteCustomPreset(presetId: string) {

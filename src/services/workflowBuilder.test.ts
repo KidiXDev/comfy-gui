@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type { WorkflowState } from '../types/workflow';
+import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
 import { buildWorkflowPrompt } from './workflowBuilder';
 
 const state: WorkflowState = {
@@ -84,6 +85,8 @@ const state: WorkflowState = {
     upscale: { enabled: false, upscaleModel: '', upscaleBy: 1 }
   },
   faceDetailer: {
+    positivePrompt: '',
+    negativePrompt: '',
     enabled: false,
     bboxModel: 'bbox/face.pt',
     segmModel: '',
@@ -194,3 +197,69 @@ assert.equal(standardInpaint['34'], undefined);
 assert.deepEqual(standardInpaint['9'].inputs.model, ['33', 0]);
 assert.equal(standardInpaint['9'].inputs.steps, 30);
 assert.equal(standardInpaint['9'].inputs.cfg, 4);
+
+// Each Detailer prompt has its own conditioning, independent of generation.
+for (const mode of ['text2img', 'img2img', 'inpaint'] as const) {
+  state.imageInput.mode = mode;
+  state.positivePrompt = 'generation positive';
+  state.negativePrompt = 'generation negative';
+  state.advanced.auraFlowEnabled = false;
+  state.advanced.cacheDiT.enabled = false;
+  state.advanced.renormCfg.enabled = false;
+  for (const [positive, negative] of [
+    ['', '   '],
+    ['', 'face negative'],
+    ['face positive', '   '],
+    ['face positive', 'face negative']
+  ]) {
+    state.faceDetailer.positivePrompt = positive;
+    state.faceDetailer.negativePrompt = negative;
+    const graph = buildWorkflowPrompt(state) as typeof detailed;
+    for (const [name, text] of [
+      ['positive', positive],
+      ['negative', negative]
+    ]) {
+      const id = `face_detailer_${name}`;
+      assert.equal(graph[id].inputs.text, text);
+      assert.deepEqual(graph.face_detailer_apply.inputs[name], [
+        `${id}${text.trim() ? '' : '_zero'}`,
+        0
+      ]);
+      assert.equal(Boolean(graph[`${id}_zero`]), !text.trim());
+    }
+    // Every connection must point to an emitted node, including model transforms disabled.
+    const connections = Object.values(graph).flatMap((node) =>
+      Object.values(node.inputs)
+    );
+    for (const value of connections.filter(
+      (input) => Array.isArray(input) && typeof input[0] === 'string'
+    ) as [string, number][]) {
+      assert.ok(graph[value[0]], value[0]);
+    }
+  }
+}
+
+const standalone = buildFaceDetailerPrompt(
+  'face.png',
+  state.faceDetailer,
+  state.models,
+  [
+    { id: 'off', name: 'disabled.safetensors', strength: 1, enabled: false },
+    { id: 'on', name: 'face-style.safetensors', strength: 0.8, enabled: true }
+  ],
+  42
+) as typeof detailed;
+assert.equal(standalone.detail_lora_0, undefined);
+assert.deepEqual(standalone.detail_lora_1.inputs.model, ['2', 0]);
+assert.deepEqual(standalone.face_detailer_turbo.inputs.model, [
+  'detail_lora_1',
+  0
+]);
+assert.deepEqual(standalone.face_detailer_apply.inputs.model, [
+  'face_detailer_turbo',
+  0
+]);
+assert.equal(standalone.face_detailer_apply.inputs.seed, 42);
+assert.equal(standalone['2'].inputs.unet_name, state.models.unetName);
+assert.equal(standalone['20'].class_type, 'SaveImage');
+console.log('Workflow and Face Detailer graph checks passed');

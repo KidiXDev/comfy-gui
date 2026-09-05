@@ -353,6 +353,7 @@ impl DownloadManager {
             "dir": download.model_path.parent().unwrap_or(Path::new(".")).to_string_lossy(),
             "out": download.file_name,
             "continue": "true",
+            "user-agent": "ComfyGUI/1.0",
             "auto-file-renaming": "false",
             "allow-overwrite": "false"
         });
@@ -478,14 +479,19 @@ impl DownloadManager {
         save_history(&inner, app)
     }
 
-    fn clear_history(&self, app: &AppHandle) -> Result<(), String> {
+    fn clear_history(&self, app: &AppHandle, gid: Option<&str>) -> Result<(), String> {
         let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
         load_history(&mut inner, app)?;
-        inner.records.retain(|record| {
-            !matches!(record.status.as_str(), "complete" | "error" | "removed")
-        });
+        remove_history_records(&mut inner.records, gid);
         save_history(&inner, app)
     }
+}
+
+fn remove_history_records(records: &mut Vec<DownloadRecord>, gid: Option<&str>) {
+    records.retain(|record| {
+        gid.is_some_and(|gid| record.gid != gid)
+            || !matches!(record.status.as_str(), "complete" | "error" | "removed")
+    });
 }
 
 #[tauri::command]
@@ -543,9 +549,10 @@ pub async fn cancel(
 pub async fn clear_history(
     app_handle: AppHandle,
     manager: State<'_, DownloadManager>,
+    gid: Option<String>,
 ) -> Result<(), String> {
     let manager = (*manager).clone();
-    tauri::async_runtime::spawn_blocking(move || manager.clear_history(&app_handle))
+    tauri::async_runtime::spawn_blocking(move || manager.clear_history(&app_handle, gid.as_deref()))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -554,6 +561,39 @@ pub async fn clear_history(
 mod tests {
     use super::cleanup_files;
     use std::fs;
+
+    #[test]
+    fn history_removal_targets_one_finished_item_and_preserves_active_downloads() {
+        let mut records: Vec<super::DownloadRecord> = [
+            "complete", "error", "removed", "active", "waiting", "paused",
+        ]
+        .into_iter()
+        .map(|status| {
+            serde_json::from_value(serde_json::json!({
+                "gid": status, "status": status, "versionId": 1,
+                "name": "model", "fileName": "model.safetensors",
+                "modelType": "LORA", "baseModel": "Anima", "modelPath": "model.safetensors",
+                "completedLength": 0, "totalLength": 0, "downloadSpeed": 0, "createdAt": 0
+            }))
+            .unwrap()
+        })
+        .collect();
+        super::remove_history_records(&mut records, Some("error"));
+        assert_eq!(records.len(), 5);
+        assert!(!records.iter().any(|record| record.gid == "error"));
+        for gid in ["active", "waiting", "paused", "missing"] {
+            super::remove_history_records(&mut records, Some(gid));
+            assert_eq!(records.len(), 5);
+        }
+        super::remove_history_records(&mut records, None);
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.gid.as_str())
+                .collect::<Vec<_>>(),
+            ["active", "waiting", "paused"]
+        );
+    }
 
     #[test]
     fn cleanup_removes_partial_download_and_sidecars() {

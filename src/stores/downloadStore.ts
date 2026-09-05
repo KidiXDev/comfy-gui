@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
+import { loadAppData } from '../services/appStorage';
 import {
   cancelDownload,
   clearDownloadHistory,
@@ -50,7 +51,11 @@ export const useDownloadStore = defineStore('downloads', () => {
       );
     if (!Number.isSafeInteger(options.versionId) || options.versionId <= 0)
       throw new Error('Select a valid model version before downloading.');
-    const record = await queueCivitaiDownload(options);
+    const settings = await loadAppData<{ apiKey?: string }>('civitai_settings');
+    const record = await queueCivitaiDownload({
+      ...options,
+      apiKey: (settings?.apiKey ?? options.apiKey).trim()
+    });
     const index = items.value.findIndex((item) => item.gid === record.gid);
     if (index === -1) items.value.unshift(record);
     else items.value[index] = record;
@@ -72,11 +77,13 @@ export const useDownloadStore = defineStore('downloads', () => {
     items.value = items.value.filter((item) => item.gid !== gid);
   }
 
-  async function clearHistory() {
+  async function clearHistory(gid?: string) {
     try {
-      await clearDownloadHistory();
-      items.value = items.value.filter((item) =>
-        ['active', 'waiting', 'paused'].includes(item.status)
+      await clearDownloadHistory(gid);
+      items.value = items.value.filter(
+        (item) =>
+          (gid !== undefined && item.gid !== gid) ||
+          ['active', 'waiting', 'paused'].includes(item.status)
       );
     } catch (error) {
       errorMessage.value =

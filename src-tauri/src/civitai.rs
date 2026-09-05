@@ -1,9 +1,9 @@
 use reqwest::blocking::{Client, Response};
-use reqwest::header::RANGE;
+use reqwest::header::{CACHE_CONTROL, RANGE};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, State};
 
 use crate::download_manager::{DownloadManager, DownloadRecord, NewDownload};
@@ -28,6 +28,43 @@ fn authorized(
     } else {
         request.bearer_auth(api_key.trim())
     }
+}
+
+fn resolve_download_url(
+    client: &Client,
+    mut url: reqwest::Url,
+    api_key: &str,
+) -> Result<String, String> {
+    for attempt in 0..2 {
+        if attempt > 0 {
+            url.query_pairs_mut().append_pair(
+                "comfygui_refresh",
+                &SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+                    .to_string(),
+            );
+        }
+        let response = authorized(client.get(url.clone()), api_key)
+            .header(RANGE, "bytes=0-0")
+            .header(CACHE_CONTROL, "no-cache")
+            .send()
+            .map_err(|_| "Failed to resolve Civitai download. Please retry.".to_string())?;
+        if response.status().is_success() {
+            return Ok(response.url().to_string());
+        }
+        if response.status() == reqwest::StatusCode::FORBIDDEN && attempt == 0 {
+            continue;
+        }
+        let service = if response.url().domain() == Some("civitai.com") {
+            "Civitai"
+        } else {
+            "Civitai CDN"
+        };
+        return Err(format!("{service} model download failed with {}. Check the API key and this model's access requirements.", response.status()));
+    }
+    unreachable!()
 }
 
 fn response_json(response: Response) -> Result<Value, String> {
@@ -60,7 +97,14 @@ fn models_blocking(
     {
         let mut params = url.query_pairs_mut();
         params.append_pair("limit", "24");
-        params.append_pair("nsfw", if nsfw.unwrap_or(false) { "true" } else { "false" });
+        params.append_pair(
+            "nsfw",
+            if nsfw.unwrap_or(false) {
+                "true"
+            } else {
+                "false"
+            },
+        );
         params.append_pair("primaryFileOnly", "true");
         params.append_pair("sort", &sort);
         params.append_pair("period", &period);
@@ -304,20 +348,10 @@ fn download_blocking(
         .or_else(|| metadata["downloadUrl"].as_str())
         .ok_or("Civitai did not return a download URL.")?;
     let download_url = reqwest::Url::parse(download_url).map_err(|error| error.to_string())?;
-    if download_url.domain() != Some("civitai.com") {
+    if download_url.scheme() != "https" || download_url.domain() != Some("civitai.com") {
         return Err("Civitai returned an unexpected download host.".into());
     }
-    let response = authorized(client.get(download_url), &api_key)
-        .header(RANGE, "bytes=0-0")
-        .send()
-        .map_err(|error| format!("Failed to resolve Civitai download: {error}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "Civitai download request failed with {}",
-            response.status()
-        ));
-    }
-    let download_url = response.url().to_string();
+    let download_url = resolve_download_url(&client, download_url, &api_key)?;
 
     let directory = root
         .join("models")
@@ -350,7 +384,11 @@ fn download_blocking(
                 response.bytes().map_err(|error| error.to_string())?,
             ))
         })
-        .transpose()?;
+        .transpose()
+        .unwrap_or_else(|error: String| {
+            eprintln!("Civitai preview unavailable; continuing model download: {error}");
+            None
+        });
 
     let stem = model_path
         .file_stem()
@@ -412,9 +450,63 @@ pub async fn download(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_civitai_host, is_image_item, model_folder, preview_extension, safe_filename,
-    };
+    use super::{is_civitai_host, is_image_item, model_folder, preview_extension, safe_filename};
+
+    #[test]
+    fn refreshes_forbidden_redirect_without_forwarding_credentials() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            for attempt in 0..4 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 4096];
+                while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    request.extend_from_slice(&buffer[..count]);
+                }
+                let request = String::from_utf8(request).unwrap().to_lowercase();
+                assert!(request.contains("range: bytes=0-0"));
+                let response = if attempt % 2 == 0 {
+                    assert!(request.contains("authorization: bearer test-key"));
+                    if attempt == 2 {
+                        assert!(request.contains("comfygui_refresh="));
+                    }
+                    format!("HTTP/1.1 302 Found\r\nLocation: http://localhost:{port}/cdn\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                } else {
+                    assert!(!request.contains("authorization:"));
+                    let status = if attempt == 1 {
+                        "403 Forbidden"
+                    } else {
+                        "206 Partial Content"
+                    };
+                    format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                };
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        });
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let result = super::resolve_download_url(
+            &client,
+            reqwest::Url::parse(&format!("http://127.0.0.1:{port}/download")).unwrap(),
+            "test-key",
+        )
+        .unwrap();
+        assert_eq!(result, format!("http://localhost:{port}/cdn"));
+        server.join().unwrap();
+    }
 
     #[test]
     fn rejects_unconfigured_download_directory() {
@@ -461,7 +553,9 @@ mod tests {
             "mp4"
         );
         assert_eq!(
-            preview_extension(&reqwest::Url::parse("https://image.civitai.com/image.webp").unwrap()),
+            preview_extension(
+                &reqwest::Url::parse("https://image.civitai.com/image.webp").unwrap()
+            ),
             "webp"
         );
         assert!(is_image_item(&serde_json::json!({

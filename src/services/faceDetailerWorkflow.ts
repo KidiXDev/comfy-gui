@@ -1,4 +1,8 @@
-import type { FaceDetailerSettings } from '../types/workflow';
+import type {
+  FaceDetailerSettings,
+  LoraItem,
+  ModelSettings
+} from '../types/workflow';
 
 export type WorkflowNodeRef = [string, number];
 
@@ -7,9 +11,23 @@ interface FaceDetailerSources {
   model: WorkflowNodeRef;
   clip: WorkflowNodeRef;
   vae: WorkflowNodeRef;
-  positive: WorkflowNodeRef;
-  negative: WorkflowNodeRef;
   seed: number;
+}
+
+function addConditioning(
+  prompt: Record<string, unknown>,
+  text: string,
+  clip: WorkflowNodeRef,
+  nodeId: string
+): WorkflowNodeRef {
+  prompt[nodeId] = { inputs: { text, clip }, class_type: 'CLIPTextEncode' };
+  if (text.trim()) return [nodeId, 0];
+  const zeroNode = `${nodeId}_zero`;
+  prompt[zeroNode] = {
+    inputs: { conditioning: [nodeId, 0] },
+    class_type: 'ConditioningZeroOut'
+  };
+  return [zeroNode, 0];
 }
 
 export function appendFaceDetailerStage(
@@ -91,8 +109,18 @@ export function appendFaceDetailerStage(
     model: modelSource,
     clip: sources.clip,
     vae: sources.vae,
-    positive: sources.positive,
-    negative: sources.negative,
+    positive: addConditioning(
+      prompt,
+      settings.positivePrompt ?? '',
+      sources.clip,
+      `${prefix}_positive`
+    ),
+    negative: addConditioning(
+      prompt,
+      settings.negativePrompt ?? '',
+      sources.clip,
+      `${prefix}_negative`
+    ),
     bbox_detector: [bboxNode, 0]
   };
   if (settings.segmModel) inputs.segm_detector_opt = [segmNode, 1];
@@ -103,4 +131,58 @@ export function appendFaceDetailerStage(
     _meta: { title: 'Face Detailer' }
   };
   return [detailerNode, 0];
+}
+
+export function buildFaceDetailerPrompt(
+  imageName: string,
+  settings: FaceDetailerSettings,
+  models: ModelSettings,
+  loras: LoraItem[],
+  seed: number
+) {
+  const prompt: Record<string, unknown> = {
+    '1': {
+      inputs: { image: imageName },
+      class_type: 'LoadImage',
+      _meta: { title: 'Load Image' }
+    },
+    '2': {
+      inputs: { unet_name: models.unetName, weight_dtype: 'default' },
+      class_type: 'UNETLoader',
+      _meta: { title: 'Load Diffusion Model' }
+    },
+    '3': {
+      inputs: { clip_name: models.clipName, type: 'cosmos', device: 'default' },
+      class_type: 'CLIPLoader',
+      _meta: { title: 'Load CLIP' }
+    },
+    '4': {
+      inputs: { vae_name: models.vaeName },
+      class_type: 'VAELoader',
+      _meta: { title: 'Load VAE' }
+    }
+  };
+  let model: WorkflowNodeRef = ['2', 0];
+  for (const [index, lora] of loras.entries()) {
+    if (!lora.enabled || !lora.name) continue;
+    const id = `detail_lora_${index}`;
+    prompt[id] = {
+      inputs: { model, lora_name: lora.name, strength_model: lora.strength },
+      class_type: 'YELoadLoraModel'
+    };
+    model = [id, 0];
+  }
+  const result = appendFaceDetailerStage(prompt, settings, {
+    image: ['1', 0],
+    model,
+    clip: ['3', 0],
+    vae: ['4', 0],
+    seed
+  });
+  prompt['20'] = {
+    inputs: { filename_prefix: 'ComfyGUI_FaceDetailer', images: result },
+    class_type: 'SaveImage',
+    _meta: { title: 'Save Detailed Image' }
+  };
+  return prompt;
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { dragHistoryImage } from '@/services/imageGallery';
 import {
   Check,
   Clock,
@@ -299,8 +300,12 @@ function formatModelName(name?: string): string {
             <div
               class="border-border bg-background group/img relative h-56 w-full shrink-0 cursor-pointer overflow-hidden rounded-lg border shadow-xs sm:h-56 sm:w-44"
               @click="inspectingItem = item"
+              :draggable="!!item.imageUrl"
+              @dragstart="dragHistoryImage($event, item)"
             >
               <img
+                v-if="item.imageUrl"
+                draggable="false"
                 :src="item.imageUrl"
                 :alt="item.filename"
                 class="h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-105"
@@ -340,6 +345,15 @@ function formatModelName(name?: string): string {
             <div class="flex min-w-0 flex-1 flex-col justify-between gap-2.5">
               <!-- Top Row: Timestamp, Model Name -->
               <div class="flex items-center justify-between gap-2">
+                <Button
+                  variant="ghost"
+                  size="iconSm"
+                  title="Remove from history"
+                  aria-label="Remove from history"
+                  @click="historyStore.removeHistory(item.id)"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                </Button>
                 <span
                   class="text-muted-foreground flex items-center gap-1.5 font-mono text-xs"
                 >

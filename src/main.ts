@@ -6,8 +6,20 @@ import App from './App.vue';
 import { queryClient } from './lib/queryClient';
 import './main.css';
 import router from './router';
+import { isNativeBrowserShortcut } from './utils/browserShortcuts';
 
 const app = createApp(App);
+
+if (import.meta.env.PROD) {
+  document.addEventListener('contextmenu', (event) => event.preventDefault());
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (isNativeBrowserShortcut(event)) event.preventDefault();
+    },
+    { capture: true }
+  );
+}
 
 app.use(createPinia());
 app.use(router);

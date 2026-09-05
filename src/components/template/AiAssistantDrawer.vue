@@ -399,7 +399,7 @@ function renderMarkdown(content: string): string {
 
     <!-- Slide-over Drawer -->
     <aside
-      class="border-border bg-sidebar absolute top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-xl"
+      class="border-border bg-sidebar absolute top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-2xl"
       :class="aiStore.isDrawerOpen ? 'translate-x-0' : 'translate-x-full'"
     >
       <!-- Hidden File Input for Image Attachments -->
@@ -425,7 +425,7 @@ function renderMarkdown(content: string): string {
               class="border-primary/30 bg-primary/10 h-8 w-8 rounded-lg border object-contain"
             />
             <span
-              class="text-foreground text-xs font-bold tracking-wide uppercase"
+              class="text-foreground text-sm font-bold tracking-wide uppercase"
             >
               Maya
             </span>
@@ -448,7 +448,7 @@ function renderMarkdown(content: string): string {
                 activeSession?.title || 'Conversations'
               }}</span>
               <span
-                class="bg-muted text-muted-foreground py-0.2 ml-0.5 rounded-full px-1.5 font-mono text-[10px]"
+                class="bg-muted text-muted-foreground ml-0.5 rounded-full px-1.5 py-0.5 font-mono text-xs"
               >
                 {{ aiStore.sessions.length }}
               </span>
@@ -494,7 +494,7 @@ function renderMarkdown(content: string): string {
             <span>Back to Chat</span>
           </Button>
 
-          <span class="text-muted-foreground font-mono text-[11px]">
+          <span class="text-muted-foreground font-mono text-xs">
             {{ filteredSessions.length }} conversation{{
               filteredSessions.length === 1 ? '' : 's'
             }}
@@ -641,7 +641,7 @@ function renderMarkdown(content: string): string {
             <div v-else class="flex items-center justify-between gap-2">
               <div class="flex min-w-0 flex-1 items-center gap-2">
                 <span
-                  class="text-foreground cursor-pointer truncate text-xs font-semibold hover:underline"
+                  class="text-foreground cursor-pointer truncate text-sm font-semibold hover:underline"
                   :title="s.title"
                   @dblclick.stop="startRename(s)"
                 >
@@ -649,7 +649,7 @@ function renderMarkdown(content: string): string {
                 </span>
                 <span
                   v-if="s.id === aiStore.activeSessionId"
-                  class="border-primary/30 bg-primary/10 text-primary py-0.2 shrink-0 rounded-full border px-1.5 font-mono text-[10px] font-medium"
+                  class="border-primary/30 bg-primary/10 text-primary shrink-0 rounded-full border px-1.5 py-0.5 font-mono text-xs font-medium"
                 >
                   Active
                 </span>
@@ -685,14 +685,14 @@ function renderMarkdown(content: string): string {
               class="border-destructive/30 bg-destructive/10 flex items-center justify-between gap-2 rounded-lg border p-2 text-xs"
               @click.stop
             >
-              <span class="text-destructive text-[11px] font-medium">
+              <span class="text-destructive text-xs font-medium">
                 Delete this conversation?
               </span>
               <div class="flex items-center gap-1.5">
                 <Button
                   size="sm"
                   variant="ghost"
-                  class="h-6 px-2 text-[11px]"
+                  class="h-6 px-2 text-xs"
                   @click="cancelDeleteSession"
                 >
                   Cancel
@@ -700,7 +700,7 @@ function renderMarkdown(content: string): string {
                 <Button
                   size="sm"
                   variant="destructive"
-                  class="h-6 px-2 text-[11px]"
+                  class="h-6 px-2 text-xs"
                   @click="confirmDeleteSession(s.id)"
                 >
                   Delete
@@ -711,7 +711,7 @@ function renderMarkdown(content: string): string {
             <!-- Meta info: Time & Messages -->
             <div
               v-if="deletingSessionId !== s.id"
-              class="text-muted-foreground flex items-center justify-between pt-0.5 text-[11px]"
+              class="text-muted-foreground flex items-center justify-between pt-0.5 text-xs"
             >
               <span class="flex items-center gap-1 font-mono">
                 <Clock class="h-3 w-3" />
@@ -770,7 +770,7 @@ function renderMarkdown(content: string): string {
                 />
                 <div class="flex flex-col gap-1">
                   <h3 class="text-foreground text-sm font-semibold">Maya</h3>
-                  <p class="text-muted-foreground max-w-xs text-xs">
+                  <p class="text-muted-foreground max-w-sm text-sm">
                     Ask Maya to brainstorm Anima prompts, detail anime character
                     outfits, analyze image styles with Vision, or inspect and
                     queue renders.
@@ -781,7 +781,7 @@ function renderMarkdown(content: string): string {
                 <div class="flex w-full max-w-xs flex-col gap-1.5 pt-2">
                   <button
                     type="button"
-                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors"
                     @click="
                       handleStarterClick(
                         'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
@@ -793,7 +793,7 @@ function renderMarkdown(content: string): string {
                   </button>
                   <button
                     type="button"
-                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors"
                     @click="
                       handleStarterClick(
                         'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
@@ -805,7 +805,7 @@ function renderMarkdown(content: string): string {
                   </button>
                   <button
                     type="button"
-                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2 text-left text-xs transition-colors"
+                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors"
                     @click="
                       handleStarterClick(
                         'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
@@ -852,7 +852,7 @@ function renderMarkdown(content: string): string {
                       v-model="editingMessageText"
                       aria-label="Edit message"
                       rows="3"
-                      class="border-primary/40 bg-background w-full rounded-xl border p-3 text-xs outline-none"
+                      class="border-primary/40 bg-background w-full rounded-xl border p-3 text-sm outline-none"
                       @keydown.escape="cancelMessageEdit"
                       @keydown.ctrl.enter.prevent="saveMessageEdit(msg.id)"
                     />
@@ -877,7 +877,7 @@ function renderMarkdown(content: string): string {
                   </div>
                   <div
                     v-else-if="msg.content"
-                    class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2 text-xs leading-relaxed shadow-xs"
+                    class="bg-primary text-primary-foreground rounded-2xl rounded-tr-xs px-3.5 py-2.5 text-sm leading-relaxed shadow-xs"
                   >
                     {{ msg.content }}
                   </div>
@@ -922,7 +922,7 @@ function renderMarkdown(content: string): string {
                       <span class="text-foreground font-semibold">Maya</span>
                     </div>
                     <div class="flex items-center gap-1">
-                      <span class="text-muted-foreground font-mono text-[10px]">
+                      <span class="text-muted-foreground font-mono text-xs">
                         {{ formatRelativeTime(msg.createdAt) }}
                       </span>
                       <button
@@ -938,7 +938,7 @@ function renderMarkdown(content: string): string {
                   </div>
 
                   <!-- Message Body -->
-                  <div class="w-full text-xs select-text">
+                  <div class="w-full text-sm select-text">
                     <!-- Chronological Message Parts -->
                     <div
                       v-for="(part, pIdx) in getChronologicalParts(msg)"
@@ -982,7 +982,7 @@ function renderMarkdown(content: string): string {
                       <!-- 2. Reasoning / Thinking Part -->
                       <div
                         v-else-if="part.type === 'reasoning' && part.text"
-                        class="text-xs"
+                        class="text-sm"
                       >
                         <button
                           type="button"
@@ -1004,12 +1004,12 @@ function renderMarkdown(content: string): string {
                             }}</span>
                             <span
                               v-if="isPartActive(msg, pIdx)"
-                              class="animate-text-shimmer font-mono text-[10px]"
+                              class="animate-text-shimmer font-mono text-xs"
                             >
                               pondering...
                             </span>
                           </div>
-                          <div class="flex items-center gap-1 text-[11px]">
+                          <div class="flex items-center gap-1 text-xs">
                             <span>{{
                               isThoughtExpanded(`${msg.id}-${pIdx}`)
                                 ? 'Hide'
@@ -1049,7 +1049,7 @@ function renderMarkdown(content: string): string {
                           v-if="
                             part.invocation.name === 'inspect_current_prompt'
                           "
-                          class="text-xs"
+                          class="text-sm"
                         >
                           <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2">
@@ -1089,7 +1089,7 @@ function renderMarkdown(content: string): string {
                             <button
                               v-if="part.invocation.result"
                               type="button"
-                              class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-[11px] transition-colors"
+                              class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-xs transition-colors"
                               @click="
                                 toggleThought(
                                   `${msg.id}-tool-${part.invocation.id}`
@@ -1121,7 +1121,7 @@ function renderMarkdown(content: string): string {
                                 `${msg.id}-tool-${part.invocation.id}`
                               ) && part.invocation.result
                             "
-                            class="border-border/30 mt-2.5 flex flex-col gap-1.5 border-t pt-2 font-mono text-[11px]"
+                            class="border-border/30 mt-2.5 flex flex-col gap-1.5 border-t pt-2 font-mono text-xs"
                           >
                             <div
                               v-if="
@@ -1130,7 +1130,7 @@ function renderMarkdown(content: string): string {
                               class="flex flex-col gap-0.5"
                             >
                               <span
-                                class="text-primary font-sans text-[10px] font-semibold uppercase"
+                                class="text-primary font-sans text-xs font-semibold uppercase"
                                 >Active Positive</span
                               >
                               <p
@@ -1169,7 +1169,7 @@ function renderMarkdown(content: string): string {
                             part.invocation.name ===
                               'retrieve_animadex_tag_by_id'
                           "
-                          class="flex items-center gap-2 text-xs"
+                          class="flex items-center gap-2 text-sm"
                         >
                           <div
                             class="flex h-5 w-5 items-center justify-center rounded-md border transition-colors duration-200"
@@ -1239,7 +1239,7 @@ function renderMarkdown(content: string): string {
                             part.invocation.name === 'inject_positive_prompt' ||
                             part.invocation.name === 'inject_negative_prompt'
                           "
-                          class="text-xs"
+                          class="text-sm"
                         >
                           <div
                             class="mb-2 flex items-center justify-between gap-2"
@@ -1251,7 +1251,7 @@ function renderMarkdown(content: string): string {
                                 <Wand2 class="h-3 w-3" />
                               </div>
                               <span
-                                class="text-foreground text-xs font-semibold"
+                                class="text-foreground text-sm font-semibold"
                               >
                                 {{
                                   part.invocation.name ===
@@ -1265,7 +1265,7 @@ function renderMarkdown(content: string): string {
                               </span>
                             </div>
                             <span
-                              class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
+                              class="rounded-full px-2 py-0.5 font-mono text-xs font-medium"
                               :class="[
                                 part.invocation.state === 'applied'
                                   ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
@@ -1294,7 +1294,7 @@ function renderMarkdown(content: string): string {
                             v-if="
                               typeof part.invocation.args.reason === 'string'
                             "
-                            class="text-muted-foreground mb-2 text-xs italic"
+                            class="text-muted-foreground mb-2 text-sm italic"
                           >
                             {{ part.invocation.args.reason }}
                           </p>
@@ -1335,7 +1335,7 @@ function renderMarkdown(content: string): string {
                           v-else-if="
                             part.invocation.name === 'queue_generation'
                           "
-                          class="text-xs"
+                          class="text-sm"
                         >
                           <div
                             class="mb-1.5 flex items-center justify-between gap-2"
@@ -1347,12 +1347,12 @@ function renderMarkdown(content: string): string {
                                 <Play class="h-3 w-3" />
                               </div>
                               <span
-                                class="text-foreground text-xs font-semibold"
+                                class="text-foreground text-sm font-semibold"
                                 >Queue Generation</span
                               >
                             </div>
                             <span
-                              class="rounded-full px-2 py-0.5 font-mono text-[10px] font-medium"
+                              class="rounded-full px-2 py-0.5 font-mono text-xs font-medium"
                               :class="[
                                 part.invocation.state === 'queued'
                                   ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
@@ -1377,7 +1377,7 @@ function renderMarkdown(content: string): string {
                             v-if="
                               typeof part.invocation.args.reason === 'string'
                             "
-                            class="text-muted-foreground mb-2 text-xs"
+                            class="text-muted-foreground mb-2 text-sm"
                           >
                             {{ part.invocation.args.reason }}
                           </p>
@@ -1409,7 +1409,7 @@ function renderMarkdown(content: string): string {
                           "
                           class="mt-2 space-y-2"
                         >
-                          <p class="text-muted-foreground text-xs">
+                          <p class="text-muted-foreground text-sm">
                             Waiting for your approval. The assistant is paused.
                           </p>
                           <textarea
@@ -1417,7 +1417,7 @@ function renderMarkdown(content: string): string {
                             aria-label="Optional decline note"
                             placeholder="Optional note if you decline..."
                             rows="2"
-                            class="border-border bg-background w-full rounded-md border p-2 text-xs"
+                            class="border-border bg-background w-full rounded-md border p-2 text-sm"
                           />
                           <div class="flex items-center gap-2">
                             <Button
@@ -1462,7 +1462,7 @@ function renderMarkdown(content: string): string {
                         isLastMessage(msg.id) &&
                         getChronologicalParts(msg).length === 0
                       "
-                      class="text-muted-foreground flex items-center gap-2 py-1 text-xs"
+                      class="text-muted-foreground flex items-center gap-2 py-1 text-sm"
                     >
                       <Sparkles
                         class="text-primary h-3.5 w-3.5 animate-pulse"
@@ -1523,7 +1523,7 @@ function renderMarkdown(content: string): string {
               v-model="messageInput"
               rows="3"
               placeholder="Ask Anything"
-              class="placeholder:text-muted-foreground w-full resize-none bg-transparent p-3 text-xs leading-relaxed outline-none"
+              class="placeholder:text-muted-foreground w-full resize-none bg-transparent p-3 text-sm leading-relaxed outline-none"
               @keydown.enter.exact.prevent="handleSend"
               @paste="handlePaste"
             />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onActivated, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   AlertCircle,
@@ -50,8 +50,21 @@ defineOptions({ name: 'DanbooruWikiView' });
 
 const route = useRoute();
 const router = useRouter();
+const viewport = ref<HTMLElement>();
+const scrollTop = ref(0);
+onActivated(async () => {
+  await nextTick();
+  if (viewport.value) viewport.value.scrollTop = scrollTop.value;
+});
 
-const title = computed(() => String(route.params.title || 'tag_groups'));
+const title = ref(String(route.params.title || 'tag_groups'));
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.name === 'danbooru-wiki')
+      title.value = String(route.params.title || 'tag_groups');
+  }
+);
 const isIndex = computed(() => title.value === 'tag_groups');
 
 const page = shallowRef<WikiPage>();
@@ -295,6 +308,8 @@ async function openOfficial() {
 
     <!-- Main Viewport -->
     <main
+      ref="viewport"
+      @scroll="scrollTop = viewport?.scrollTop ?? 0"
       class="h-full min-h-0 flex-1 overflow-hidden"
       :class="{ 'overflow-y-auto': !isIndex }"
     >

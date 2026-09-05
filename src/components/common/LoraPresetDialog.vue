@@ -31,7 +31,7 @@ import {
   type LoraPresetFile
 } from '../../services/presetService';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type { LoraPreset } from '../../types/workflow';
+import type { LoraItem, LoraPreset } from '../../types/workflow';
 
 const props = defineProps<{
   open: boolean;
@@ -42,6 +42,14 @@ const emit = defineEmits<{
 }>();
 
 const workflowStore = useWorkflowStore();
+const stack = defineModel<LoraItem[]>('loras');
+const loras = computed({
+  get: () => stack.value ?? workflowStore.loras,
+  set: (value) => {
+    if (stack.value === undefined) workflowStore.loras = value;
+    else stack.value = value;
+  }
+});
 
 const activeTab = ref<'load' | 'save'>('load');
 const presets = ref<LoraPresetFile[]>([]);
@@ -102,9 +110,9 @@ function applyLoraPreset(preset: LoraPreset, append = false) {
   }));
 
   if (append) {
-    workflowStore.loras.push(...newItems);
+    loras.value.push(...newItems);
   } else {
-    workflowStore.loras = newItems;
+    loras.value = newItems;
   }
 
   emit('update:open', false);
@@ -117,7 +125,7 @@ async function handleSavePreset() {
     id: `lora-preset-${Date.now()}`,
     name: saveName.value.trim(),
     description: saveDescription.value.trim() || undefined,
-    loras: workflowStore.loras.map((l) => ({
+    loras: loras.value.map((l) => ({
       name: l.name,
       strength: l.strength,
       enabled: l.enabled
@@ -219,7 +227,7 @@ function handleOpenFolder() {
               class="data-[state=active]:bg-background data-[state=active]:text-foreground flex items-center gap-2 rounded-md px-4 py-2 text-xs font-semibold transition-all data-[state=active]:shadow-xs"
             >
               <PlusCircle class="h-3.5 w-3.5" />
-              Save Current Stack ({{ workflowStore.loras.length }} LoRAs)
+              Save Current Stack ({{ loras.length }} LoRAs)
             </TabsTrigger>
           </TabsList>
         </div>
@@ -426,12 +434,12 @@ function handleOpenFolder() {
                   <span
                     class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
                   >
-                    Current LoRA Stack ({{ workflowStore.loras.length }} Items)
+                    Current LoRA Stack ({{ loras.length }} Items)
                   </span>
                 </div>
 
                 <div
-                  v-if="workflowStore.loras.length === 0"
+                  v-if="loras.length === 0"
                   class="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs"
                 >
                   No LoRAs currently in stack. Add some LoRAs first before
@@ -440,7 +448,7 @@ function handleOpenFolder() {
 
                 <div v-else class="flex flex-col gap-1.5">
                   <div
-                    v-for="(lora, lIdx) in workflowStore.loras"
+                    v-for="(lora, lIdx) in loras"
                     :key="lora.id"
                     class="border-border bg-card/60 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs"
                   >
@@ -488,7 +496,7 @@ function handleOpenFolder() {
 
             <Button
               class="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 px-4 text-xs font-semibold"
-              :disabled="!saveName.trim() || workflowStore.loras.length === 0"
+              :disabled="!saveName.trim() || loras.length === 0"
               @click="handleSavePreset"
             >
               <Plus class="h-3.5 w-3.5" />

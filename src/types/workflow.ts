@@ -119,6 +119,8 @@ export interface PostFxSettings {
 }
 
 export interface FaceDetailerSettings {
+  positivePrompt: string;
+  negativePrompt: string;
   enabled: boolean;
   bboxModel: string;
   segmModel: string;

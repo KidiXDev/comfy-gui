@@ -29,6 +29,7 @@ export const useHistoryStore = defineStore('history', () => {
   const items = ref<HistoryItem[]>([]);
   const isPanelOpen = ref(getInitialPanelOpen());
   const isDrawerOpen = ref(false);
+  const imageSession = Date.now();
 
   async function resolveLocalImages(historyItems = items.value) {
     const { workingDir, args } = launcherStore.config;
@@ -45,7 +46,8 @@ export const useHistoryStore = defineStore('history', () => {
       )
         return;
       for (const item of historyItems) {
-        if (resolved[item.id]) item.imageUrl = localImageUrl(resolved[item.id]);
+        if (resolved[item.id])
+          item.imageUrl = `${localImageUrl(resolved[item.id])}?session=${imageSession}`;
       }
     } catch (error) {
       console.warn('Could not resolve local history images', error);
@@ -71,6 +73,10 @@ export const useHistoryStore = defineStore('history', () => {
     try {
       const saved = await loadAppData<HistoryItem[]>(STORAGE_KEY);
       if (saved) {
+        // Local URLs must be registered again before this process can serve them.
+        for (const item of saved) {
+          if (item.imageUrl.includes('comfygui-image')) item.imageUrl = '';
+        }
         items.value = saved;
         await resolveLocalImages();
       }

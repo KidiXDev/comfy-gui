@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import type { LoraItem } from '@/types/workflow';
 import {
   ChevronDown,
   ChevronUp,
@@ -32,6 +33,14 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 const workflowStore = useWorkflowStore();
+const stack = defineModel<LoraItem[]>('loras');
+const loras = computed({
+  get: () => stack.value ?? workflowStore.loras,
+  set: (value) => {
+    if (stack.value === undefined) workflowStore.loras = value;
+    else stack.value = value;
+  }
+});
 
 const isLoraPresetManagerOpen = ref(false);
 const isLoraGridOpen = ref(false);
@@ -43,7 +52,7 @@ const loraOptions = computed(() => {
   if (comfyStore.availableLoras.length > 0) {
     return comfyStore.availableLoras;
   }
-  return workflowStore.loras.map((lora) => lora.name).filter(Boolean);
+  return loras.value.map((lora) => lora.name).filter(Boolean);
 });
 
 function openLoraGrid(index?: number) {
@@ -52,13 +61,10 @@ function openLoraGrid(index?: number) {
 }
 
 function handleLoraSelect(model: string) {
-  if (
-    editingLoraIndex.value !== null &&
-    workflowStore.loras[editingLoraIndex.value]
-  ) {
-    workflowStore.loras[editingLoraIndex.value].name = model;
+  if (editingLoraIndex.value !== null && loras.value[editingLoraIndex.value]) {
+    loras.value[editingLoraIndex.value].name = model;
   } else {
-    workflowStore.addLora(model, 0.8);
+    workflowStore.addLora(model, 0.8, loras.value);
   }
 }
 
@@ -88,8 +94,8 @@ function getLoraPreviewUrl(name: string, res = 200): string {
           v-if="comfyStore.isConnected"
           class="border-border bg-muted text-foreground rounded-md border px-2 py-0.5 font-mono text-xs font-bold"
         >
-          {{ workflowStore.loras.filter((l) => l.enabled).length }} /
-          {{ workflowStore.loras.length }}
+          {{ loras.filter((l) => l.enabled).length }} /
+          {{ loras.length }}
         </span>
         <span
           v-else
@@ -129,7 +135,7 @@ function getLoraPreviewUrl(name: string, res = 200): string {
           variant="outline"
           :disabled="!comfyStore.isConnected"
           class="border-border bg-secondary text-foreground hover:bg-accent px-2 py-1 text-xs"
-          @click="workflowStore.addLora('', 0.8)"
+          @click="workflowStore.addLora('', 0.8, loras)"
         >
           <Plus class="h-3 w-3" />
           <span>Add LoRA</span>
@@ -152,7 +158,7 @@ function getLoraPreviewUrl(name: string, res = 200): string {
           type="button"
           :disabled="!comfyStore.isConnected"
           class="hover:text-primary cursor-pointer font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-          @click="workflowStore.loadCustomPreset(preset.id)"
+          @click="workflowStore.loadCustomPreset(preset.id, loras)"
         >
           {{ preset.name }}
         </button>
@@ -169,7 +175,7 @@ function getLoraPreviewUrl(name: string, res = 200): string {
 
     <!-- Empty State -->
     <div
-      v-if="workflowStore.loras.length === 0"
+      v-if="loras.length === 0"
       class="border-border bg-muted/20 flex flex-col items-center justify-center rounded-xl border border-dashed py-8 text-center"
     >
       <div
@@ -204,7 +210,7 @@ function getLoraPreviewUrl(name: string, res = 200): string {
     <!-- LoRA Items List -->
     <div v-else class="flex flex-col gap-2">
       <div
-        v-for="(lora, index) in workflowStore.loras"
+        v-for="(lora, index) in loras"
         :key="lora.id"
         class="border-border bg-card/60 relative flex flex-col gap-2 rounded-xl border p-2.5 transition-all"
         :class="{ 'opacity-50': !lora.enabled || !comfyStore.isConnected }"
@@ -304,19 +310,16 @@ function getLoraPreviewUrl(name: string, res = 200): string {
               variant="ghost"
               :disabled="!comfyStore.isConnected || index === 0"
               class="text-muted-foreground hover:text-foreground"
-              @click="workflowStore.moveLora(index, 'up')"
+              @click="workflowStore.moveLora(index, 'up', loras)"
             >
               <ChevronUp class="h-3.5 w-3.5" />
             </Button>
             <Button
               size="iconSm"
               variant="ghost"
-              :disabled="
-                !comfyStore.isConnected ||
-                index === workflowStore.loras.length - 1
-              "
+              :disabled="!comfyStore.isConnected || index === loras.length - 1"
               class="text-muted-foreground hover:text-foreground"
-              @click="workflowStore.moveLora(index, 'down')"
+              @click="workflowStore.moveLora(index, 'down', loras)"
             >
               <ChevronDown class="h-3.5 w-3.5" />
             </Button>
@@ -325,7 +328,7 @@ function getLoraPreviewUrl(name: string, res = 200): string {
               variant="ghost"
               :disabled="!comfyStore.isConnected"
               class="text-muted-foreground hover:text-destructive"
-              @click="workflowStore.removeLora(lora.id)"
+              @click="workflowStore.removeLora(lora.id, loras)"
             >
               <Trash2 class="h-3.5 w-3.5" />
             </Button>
@@ -367,7 +370,10 @@ function getLoraPreviewUrl(name: string, res = 200): string {
     </div>
 
     <!-- LoRA Stack Preset Manager Dialog -->
-    <LoraPresetDialog v-model:open="isLoraPresetManagerOpen" />
+    <LoraPresetDialog
+      v-model:open="isLoraPresetManagerOpen"
+      v-model:loras="loras"
+    />
 
     <!-- Grid View LoRA Selector Dialog -->
     <ModelGridSelectorDialog
@@ -376,9 +382,7 @@ function getLoraPreviewUrl(name: string, res = 200): string {
       category="loras"
       :models="loraOptions"
       :selected-model="
-        editingLoraIndex !== null
-          ? workflowStore.loras[editingLoraIndex]?.name || ''
-          : ''
+        editingLoraIndex !== null ? loras[editingLoraIndex]?.name || '' : ''
       "
       @select="handleLoraSelect"
     />

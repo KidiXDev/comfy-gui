@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { dragHistoryImage } from '@/services/imageGallery';
 import { History, Images, Maximize2, Trash2, Wand2, X } from '@lucide/vue';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { Badge } from '@/components/ui/badge';
@@ -121,6 +122,8 @@ function formatTime(timestamp: number) {
         <div
           v-for="item in historyStore.items"
           :key="item.id"
+          :draggable="!!item.imageUrl"
+          @dragstart="dragHistoryImage($event, item)"
           class="group relative aspect-3/4 cursor-pointer overflow-hidden rounded-lg border bg-black/40 transition-all duration-150"
           :class="
             comfyStore.lastGeneratedImage?.url === item.imageUrl
@@ -130,6 +133,8 @@ function formatTime(timestamp: number) {
           @click="selectImage(item)"
         >
           <img
+            v-if="item.imageUrl"
+            draggable="false"
             :src="item.imageUrl"
             :alt="item.filename || 'history image'"
             class="h-full w-full object-cover"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import type { ModelSettings } from '@/types/workflow';
 import { LayoutGrid, Loader2, RotateCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +18,8 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
+const props = defineProps<{ models?: ModelSettings }>();
+const models = computed(() => props.models ?? workflowStore.models);
 const openedSelects = reactive(new Set<string>());
 const isModelGridOpen = ref(false);
 
@@ -24,21 +27,21 @@ const unetOptions = computed(() => {
   if (comfyStore.availableUnets.length > 0) {
     return comfyStore.availableUnets;
   }
-  return workflowStore.models.unetName ? [workflowStore.models.unetName] : [];
+  return models.value.unetName ? [models.value.unetName] : [];
 });
 
 const clipOptions = computed(() => {
   if (comfyStore.availableClips.length > 0) {
     return comfyStore.availableClips;
   }
-  return workflowStore.models.clipName ? [workflowStore.models.clipName] : [];
+  return models.value.clipName ? [models.value.clipName] : [];
 });
 
 const vaeOptions = computed(() => {
   if (comfyStore.availableVaes.length > 0) {
     return comfyStore.availableVaes;
   }
-  return workflowStore.models.vaeName ? [workflowStore.models.vaeName] : [];
+  return models.value.vaeName ? [models.value.vaeName] : [];
 });
 </script>
 
@@ -67,7 +70,7 @@ const vaeOptions = computed(() => {
         </template>
         <div class="flex items-center gap-1.5">
           <Select
-            v-model="workflowStore.models.unetName"
+            v-model="models.unetName"
             :disabled="!comfyStore.isConnected"
             @update:open="(open) => open && openedSelects.add('unet')"
           >
@@ -76,7 +79,7 @@ const vaeOptions = computed(() => {
               class="w-full font-mono text-xs"
             >
               <SelectValue placeholder="Select checkpoint...">
-                {{ workflowStore.models.unetName }}
+                {{ models.unetName }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent v-if="openedSelects.has('unet')">
@@ -131,7 +134,7 @@ const vaeOptions = computed(() => {
         </template>
         <div class="flex items-center gap-1.5">
           <Select
-            v-model="workflowStore.models.vaeName"
+            v-model="models.vaeName"
             :disabled="!comfyStore.isConnected"
             @update:open="(open) => open && openedSelects.add('vae')"
           >
@@ -140,7 +143,7 @@ const vaeOptions = computed(() => {
               class="w-full font-mono text-xs"
             >
               <SelectValue placeholder="Select VAE...">
-                {{ workflowStore.models.vaeName }}
+                {{ models.vaeName }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent v-if="openedSelects.has('vae')">
@@ -198,7 +201,7 @@ const vaeOptions = computed(() => {
           </span>
         </template>
         <Select
-          v-model="workflowStore.models.clipName"
+          v-model="models.clipName"
           :disabled="!comfyStore.isConnected"
           @update:open="(open) => open && openedSelects.add('clip')"
         >
@@ -207,7 +210,7 @@ const vaeOptions = computed(() => {
             class="w-full font-mono text-xs"
           >
             <SelectValue placeholder="Select CLIP...">
-              {{ workflowStore.models.clipName }}
+              {{ models.clipName }}
             </SelectValue>
           </SelectTrigger>
           <SelectContent v-if="openedSelects.has('clip')">
@@ -232,8 +235,8 @@ const vaeOptions = computed(() => {
       title="Select Checkpoint / Diffusion Model"
       category="unet"
       :models="unetOptions"
-      :selected-model="workflowStore.models.unetName"
-      @select="(model) => (workflowStore.models.unetName = model)"
+      :selected-model="models.unetName"
+      @select="(model) => (models.unetName = model)"
     />
   </div>
 </template>

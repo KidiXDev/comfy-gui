@@ -34,8 +34,8 @@ export function cancelDownload(gid: string) {
   return invoke('cancel', { gid });
 }
 
-export function clearDownloadHistory() {
-  return invoke('clear_history');
+export function clearDownloadHistory(gid?: string) {
+  return invoke('clear_history', { gid });
 }
 
 export function queueCivitaiDownload(options: {

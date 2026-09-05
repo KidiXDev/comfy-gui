@@ -4,21 +4,6 @@ import {
   type WorkflowNodeRef
 } from './faceDetailerWorkflow';
 
-function zeroConditioningWhenEmpty(
-  prompt: Record<string, unknown>,
-  text: string,
-  source: WorkflowNodeRef,
-  nodeId: string
-): WorkflowNodeRef {
-  if (text.trim()) return source;
-  prompt[nodeId] = {
-    inputs: { conditioning: source },
-    class_type: 'ConditioningZeroOut',
-    _meta: { title: 'Zero Empty Face Detailer Conditioning' }
-  };
-  return [nodeId, 0];
-}
-
 function variationInputs(state: WorkflowState) {
   if (!state.sampler.variationEnabled) return {};
   return {
@@ -251,25 +236,11 @@ export function buildWorkflowPrompt(
 
   let decodedImageSource: WorkflowNodeRef = ['6', 0];
   if (state.faceDetailer.enabled) {
-    const positive = zeroConditioningWhenEmpty(
-      prompt,
-      state.positivePrompt,
-      ['18', 0],
-      'face_detailer_positive_zero'
-    );
-    const negative = zeroConditioningWhenEmpty(
-      prompt,
-      state.negativePrompt,
-      ['18', 1],
-      'face_detailer_negative_zero'
-    );
     decodedImageSource = appendFaceDetailerStage(prompt, state.faceDetailer, {
       image: decodedImageSource,
-      model: ['13', 0],
+      model: [lastModelNodeId, 0],
       clip: ['28', 0],
       vae: ['27', 0],
-      positive,
-      negative,
       seed: state.sampler.seed
     });
   }
@@ -514,18 +485,6 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
   }
 
   if (state.faceDetailer.enabled) {
-    const positive = zeroConditioningWhenEmpty(
-      prompt,
-      state.positivePrompt,
-      ['21', 0],
-      'face_detailer_positive_zero'
-    );
-    const negative = zeroConditioningWhenEmpty(
-      prompt,
-      state.negativePrompt,
-      ['17', 0],
-      'face_detailer_negative_zero'
-    );
     const finalImageSource = appendFaceDetailerStage(
       prompt,
       state.faceDetailer,
@@ -534,8 +493,6 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
         model: [modelNode, 0],
         clip: ['28', 0],
         vae: ['27', 0],
-        positive,
-        negative,
         seed: state.sampler.seed
       }
     );

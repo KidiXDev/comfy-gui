@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchableSelect from '../common/SearchableSelect.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   AlertCircle,
@@ -209,9 +210,26 @@ async function uploadSource(file?: File) {
   }
 }
 
-function handleDrop(event: DragEvent) {
+async function handleDrop(event: DragEvent) {
   isDragging.value = false;
-  void uploadSource(event.dataTransfer?.files[0]);
+  const file = event.dataTransfer?.files[0];
+  if (file) return uploadSource(file);
+  const url = event.dataTransfer
+    ?.getData('text/uri-list')
+    .split(/\r?\n/u)
+    .find((line) => line && !line.startsWith('#'));
+  if (!url) return;
+  try {
+    const response = await fetch(url);
+    if (!response.ok)
+      throw new Error(`Could not read dropped image (${response.status}).`);
+    const blob = await response.blob();
+    await uploadSource(
+      new File([blob], 'dropped-image.png', { type: blob.type })
+    );
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  }
 }
 
 function handleDragLeave(event: DragEvent) {
@@ -582,23 +600,11 @@ async function saveMask(blob: Blob) {
             >
               Turbo LoRA
             </Label>
-            <Select v-model="workflowStore.imageInput.turboLora">
-              <SelectTrigger class="w-full font-mono text-xs">
-                <SelectValue placeholder="Select turbo LoRA..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem
-                    v-for="lora in comfyStore.availableLoras"
-                    :key="lora"
-                    :value="lora"
-                    class="font-mono text-xs"
-                  >
-                    {{ lora }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              v-model="workflowStore.imageInput.turboLora"
+              :options="comfyStore.availableLoras"
+              placeholder="Select turbo LoRA..."
+            />
           </div>
 
           <div class="grid grid-cols-2 gap-3">

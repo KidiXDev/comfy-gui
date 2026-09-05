@@ -52,15 +52,17 @@ import {
 } from '@/components/ui/tooltip';
 import FaceDetailerSection from '@/components/template/FaceDetailerSection.vue';
 import { ComfyApi } from '../services/comfyApi';
-import {
-  appendFaceDetailerStage,
-  type WorkflowNodeRef
-} from '../services/faceDetailerWorkflow';
+import { buildFaceDetailerPrompt } from '../services/faceDetailerWorkflow';
 import { useComfyStore } from '../stores/comfyStore';
 import { useLauncherStore } from '../stores/launcherStore';
-import { useWorkflowStore } from '../stores/workflowStore';
+import { useFaceDetailerStore } from '../stores/faceDetailerStore';
+import FaceDetailerModels from '@/components/template/FaceDetailerModels.vue';
 import type { ComfyHistoryEntry } from '../types/comfy';
-import type { FaceDetailerSettings, ModelSettings } from '../types/workflow';
+import type {
+  FaceDetailerSettings,
+  ModelSettings,
+  LoraItem
+} from '../types/workflow';
 
 type DetailStatus = 'ready' | 'uploading' | 'queued' | 'done' | 'error';
 type ViewMode = 'split' | 'side-by-side' | 'result' | 'original';
@@ -81,7 +83,8 @@ interface DetailItem {
 const IMAGE_FILE_NAME = /\.(?:avif|bmp|gif|jpe?g|png|tiff?|webp)$/iu;
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
-const workflowStore = useWorkflowStore();
+defineOptions({ name: 'FaceDetailerView' });
+const detailerStore = useFaceDetailerStore();
 
 const fileInput = ref<HTMLInputElement>();
 const items = ref<DetailItem[]>([]);
@@ -141,13 +144,14 @@ const overallProgress = computed(() => {
 
 const canRun = computed(
   () =>
+    detailerStore.loaded &&
     comfyStore.isConnected &&
     comfyStore.isFaceDetailerAvailable &&
-    Boolean(workflowStore.faceDetailer.bboxModel) &&
+    Boolean(detailerStore.state.settings.bboxModel) &&
     Boolean(
-      workflowStore.models.unetName &&
-      workflowStore.models.clipName &&
-      workflowStore.models.vaeName
+      detailerStore.state.models.unetName &&
+      detailerStore.state.models.clipName &&
+      detailerStore.state.models.vaeName
     ) &&
     readyItems.value.length > 0 &&
     !isSubmitting.value
@@ -297,100 +301,12 @@ function clearItems() {
 function retryItem(item: DetailItem) {
   item.status = 'ready';
   item.error = undefined;
-  const state = workflowStore.getFullWorkflowState();
-  const seed = state.sampler.randomizeSeed
-    ? Math.floor(Math.random() * 10_000_000_000)
-    : state.sampler.seed;
-  void queueItem(
-    item,
-    state.faceDetailer,
-    state.models,
-    state.positivePrompt,
-    state.negativePrompt,
-    seed
-  );
-}
-
-function addConditioning(
-  prompt: Record<string, unknown>,
-  text: string,
-  clip: WorkflowNodeRef,
-  nodeId: string
-): WorkflowNodeRef {
-  prompt[nodeId] = {
-    inputs: { text, clip },
-    class_type: 'CLIPTextEncode',
-    _meta: {
-      title: `${nodeId.includes('positive') ? 'Positive' : 'Negative'} Conditioning`
-    }
-  };
-  if (text.trim()) return [nodeId, 0];
-  const zeroNode = `${nodeId}_zero`;
-  prompt[zeroNode] = {
-    inputs: { conditioning: [nodeId, 0] },
-    class_type: 'ConditioningZeroOut',
-    _meta: { title: 'Zero Empty Conditioning' }
-  };
-  return [zeroNode, 0];
-}
-
-function buildWorkflow(
-  imageName: string,
-  settings: FaceDetailerSettings,
-  models: ModelSettings,
-  positivePrompt: string,
-  negativePrompt: string,
-  seed: number
-) {
-  const prompt: Record<string, unknown> = {
-    '1': {
-      inputs: { image: imageName },
-      class_type: 'LoadImage',
-      _meta: { title: 'Load Image' }
-    },
-    '2': {
-      inputs: { unet_name: models.unetName, weight_dtype: 'default' },
-      class_type: 'UNETLoader',
-      _meta: { title: 'Load Diffusion Model' }
-    },
-    '3': {
-      inputs: { clip_name: models.clipName, type: 'cosmos', device: 'default' },
-      class_type: 'CLIPLoader',
-      _meta: { title: 'Load CLIP' }
-    },
-    '4': {
-      inputs: { vae_name: models.vaeName },
-      class_type: 'VAELoader',
-      _meta: { title: 'Load VAE' }
-    }
-  };
-  const positive = addConditioning(
-    prompt,
-    positivePrompt,
-    ['3', 0],
-    'detail_positive'
-  );
-  const negative = addConditioning(
-    prompt,
-    negativePrompt,
-    ['3', 0],
-    'detail_negative'
-  );
-  const result = appendFaceDetailerStage(prompt, settings, {
-    image: ['1', 0],
-    model: ['2', 0],
-    clip: ['3', 0],
-    vae: ['4', 0],
-    positive,
-    negative,
-    seed
-  });
-  prompt['20'] = {
-    inputs: { filename_prefix: 'ComfyGUI_FaceDetailer', images: result },
-    class_type: 'SaveImage',
-    _meta: { title: 'Save Detailed Image' }
-  };
-  return prompt;
+  const state = JSON.parse(
+    JSON.stringify(detailerStore.state)
+  ) as typeof detailerStore.state;
+  const seed =
+    state.seed < 0 ? Math.floor(Math.random() * 10_000_000_000) : state.seed;
+  void queueItem(item, state.settings, state.models, state.loras, seed);
 }
 
 async function monitorResult(
@@ -440,8 +356,7 @@ async function queueItem(
   item: DetailItem,
   settings: FaceDetailerSettings,
   models: ModelSettings,
-  positivePrompt: string,
-  negativePrompt: string,
+  loras: LoraItem[],
   seed: number
 ) {
   item.status = 'uploading';
@@ -456,14 +371,7 @@ async function queueItem(
     );
     const queued = await ComfyApi.queuePrompt(
       launcherStore.config.serverUrl,
-      buildWorkflow(
-        uploaded.name,
-        settings,
-        models,
-        positivePrompt,
-        negativePrompt,
-        seed
-      ),
+      buildFaceDetailerPrompt(uploaded.name, settings, models, loras, seed),
       `comfy-gui-face-detailer-${crypto.randomUUID()}`
     );
     item.status = 'queued';
@@ -477,23 +385,16 @@ async function queueItem(
 async function queueBatch() {
   if (!canRun.value) return;
   isSubmitting.value = true;
-  const state = workflowStore.getFullWorkflowState();
-  const settings = state.faceDetailer;
+  const state = JSON.parse(
+    JSON.stringify(detailerStore.state)
+  ) as typeof detailerStore.state;
+  const settings = state.settings;
   const models = state.models;
-  const positivePrompt = state.positivePrompt;
-  const negativePrompt = state.negativePrompt;
-  const seed = state.sampler.randomizeSeed
-    ? Math.floor(Math.random() * 10_000_000_000)
-    : state.sampler.seed;
+  const loras = state.loras;
+  const seed =
+    state.seed < 0 ? Math.floor(Math.random() * 10_000_000_000) : state.seed;
   for (const item of readyItems.value) {
-    await queueItem(
-      item,
-      settings,
-      models,
-      positivePrompt,
-      negativePrompt,
-      seed
-    );
+    await queueItem(item, settings, models, loras, seed);
   }
   isSubmitting.value = false;
 }
@@ -733,7 +634,11 @@ onUnmounted(() => {
           <section
             class="border-border bg-card flex shrink-0 flex-col gap-3.5 rounded-xl border p-4 shadow-2xs"
           >
-            <FaceDetailerSection :show-enabled="false" />
+            <FaceDetailerModels />
+            <FaceDetailerSection
+              :show-enabled="false"
+              :settings="detailerStore.state.settings"
+            />
 
             <!-- Batch Progress Bar if batch is active -->
             <div
@@ -1276,7 +1181,8 @@ onUnmounted(() => {
                     <p class="text-muted-foreground font-mono text-xs">
                       Detector:
                       {{
-                        workflowStore.faceDetailer.bboxModel || 'Standard BBox'
+                        detailerStore.state.settings.bboxModel ||
+                        'Standard BBox'
                       }}
                     </p>
                   </div>

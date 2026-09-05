@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
-import { ArrowLeftRight, Dices, HelpCircle } from '@lucide/vue';
+import { ArrowLeftRight, HelpCircle } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import SeedControl from '../common/SeedControl.vue';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
@@ -120,18 +121,6 @@ const batchModel = computed({
   }
 });
 
-const randomizeSeed = computed({
-  get: () => workflowStore.sampler.randomizeSeed,
-  set: (randomize: boolean) => {
-    if (randomize) {
-      workflowStore.sampler.seed = -1;
-      workflowStore.sampler.randomizeSeed = true;
-    } else {
-      workflowStore.randomizeSeedValue();
-    }
-  }
-});
-
 const variationStrengthModel = computed({
   get: () => [workflowStore.sampler.variationStrength],
   set: (value: number[]) => {
@@ -146,17 +135,6 @@ function setSeedValue(value: string | number) {
   if (!Number.isFinite(seed)) return;
   workflowStore.sampler.seed = seed;
   workflowStore.sampler.randomizeSeed = seed === -1;
-}
-
-function setVariationSeed(value: string | number) {
-  const seed = Number(value);
-  if (Number.isFinite(seed)) {
-    workflowStore.sampler.variationSeed = Math.max(-1, Math.trunc(seed));
-  }
-}
-
-function randomizeVariationSeed() {
-  workflowStore.sampler.variationSeed = -1;
 }
 </script>
 
@@ -453,46 +431,10 @@ function randomizeVariationSeed() {
       <!-- Row 4: Seed & Variation Section -->
       <div class="border-border flex flex-col gap-3 border-t pt-3">
         <!-- Generation Seed -->
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <span
-              class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
-            >
-              Generation Seed
-            </span>
-            <div class="flex items-center gap-1.5">
-              <Checkbox id="randomize-seed-checkbox" v-model="randomizeSeed" />
-              <Label
-                for="randomize-seed-checkbox"
-                class="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-medium select-none"
-              >
-                Randomize
-              </Label>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-1.5">
-            <Input
-              :model-value="workflowStore.sampler.seed"
-              type="number"
-              class="w-full font-mono text-xs"
-              placeholder="Enter seed number (-1 for random)..."
-              @update:model-value="setSeedValue"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              class="border-border bg-secondary text-foreground hover:bg-accent h-8 w-8 shrink-0"
-              title="Roll New Random Seed"
-              @click="workflowStore.randomizeSeedValue()"
-            >
-              <Dices
-                class="text-muted-foreground hover:text-foreground h-3.5 w-3.5"
-              />
-            </Button>
-          </div>
-        </div>
+        <SeedControl
+          :model-value="workflowStore.sampler.seed"
+          @update:model-value="setSeedValue"
+        />
 
         <!-- Variation Seed Sub-card -->
         <div
@@ -517,27 +459,11 @@ function randomizeVariationSeed() {
             v-if="workflowStore.sampler.variationEnabled"
             class="border-border flex flex-col gap-2.5 border-t pt-2"
           >
-            <div class="flex items-center gap-1.5">
-              <Input
-                :model-value="workflowStore.sampler.variationSeed"
-                type="number"
-                min="-1"
-                class="font-mono text-xs"
-                placeholder="Variation seed..."
-                aria-label="Variation seed"
-                @update:model-value="setVariationSeed"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                class="border-border bg-secondary text-foreground hover:bg-accent h-8 w-8 shrink-0"
-                title="Roll New Variation Seed"
-                @click="randomizeVariationSeed"
-              >
-                <Dices class="text-muted-foreground h-3.5 w-3.5" />
-              </Button>
-            </div>
+            <SeedControl
+              v-model="workflowStore.sampler.variationSeed"
+              label="Variation Seed"
+              :disabled="!workflowStore.sampler.variationEnabled"
+            />
 
             <WorkflowField label="Variation Strength">
               <template #action>

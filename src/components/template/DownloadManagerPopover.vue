@@ -398,6 +398,16 @@ async function handleRedownload(item: DownloadRecord) {
                           <Download v-else class="h-3.5 w-3.5" />
                           <span>Retry</span>
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="iconSm"
+                          title="Delete from download history"
+                          aria-label="Delete from download history"
+                          :disabled="reDownloadingGids.has(item.gid)"
+                          @click="downloadStore.clearHistory(item.gid)"
+                        >
+                          <Trash2 class="text-destructive h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
 

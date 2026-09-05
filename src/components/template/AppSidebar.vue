@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   BookOpen,
@@ -25,6 +25,14 @@ import { useLauncherStore } from '../../stores/launcherStore';
 
 const route = useRoute();
 const router = useRouter();
+const lastWikiPath = ref('/danbooru-wiki');
+watch(
+  () => route.fullPath,
+  (path) => {
+    if (route.name === 'danbooru-wiki') lastWikiPath.value = path;
+  },
+  { immediate: true }
+);
 const launcherStore = useLauncherStore();
 
 const navItems = [
@@ -177,7 +185,7 @@ function navigate(path: string) {
                 ? 'border-primary/30 bg-accent text-primary border shadow-xs'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             "
-            @click="navigate('/danbooru-wiki')"
+            @click="navigate(lastWikiPath)"
           >
             <BookOpen class="h-4 w-4" />
           </button>

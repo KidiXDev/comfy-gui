@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { HistoryItem } from '../types/workflow';
 
+export function dragHistoryImage(event: DragEvent, item: HistoryItem) {
+  if (!event.dataTransfer || !item.imageUrl) return;
+  event.dataTransfer.effectAllowed = 'copy';
+  event.dataTransfer.setData('text/uri-list', item.imageUrl);
+  event.dataTransfer.setData('text/plain', item.imageUrl);
+}
+
 export function localImageUrl(localId: string, thumbnail = false): string {
   const kind = thumbnail ? 'thumb' : 'full';
   return navigator.userAgent.includes('Windows')
