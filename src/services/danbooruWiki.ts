@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { http } from './httpClient';
 
 export const DANBOORU_URL = 'https://danbooru.donmai.us';
 export interface WikiPage {
@@ -92,9 +93,7 @@ async function request<T>(
   const path = title
     ? `/wiki_pages/${encodeURIComponent(title)}.json`
     : `/posts.json?${new URLSearchParams({ tags: `id:${postIds?.join(',') ?? ''}`, limit: '100', only: 'id,preview_file_url' })}`;
-  const response = await fetch(`${DANBOORU_URL}${path}`, { signal });
-  if (!response.ok) throw new Error(`Danbooru returned ${response.status}`);
-  return response.json();
+  return await http.get<T>(`${DANBOORU_URL}${path}`, { signal });
 }
 export async function fetchWikiPage(title: string, signal?: AbortSignal) {
   const page = await request<WikiPage>(

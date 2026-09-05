@@ -90,7 +90,7 @@ while (!store.isLoaded) await nextTick();
 store.config.apiKey = 'test-only';
 assert.match(
   aiService.DEFAULT_SYSTEM_PROMPT,
-  /Maya helps artists write and edit image-generation prompts/u
+  /Maya collaborates with artists|Maya helps artists/u
 );
 assert.doesNotMatch(
   aiService.DEFAULT_SYSTEM_PROMPT,

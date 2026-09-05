@@ -1,8 +1,11 @@
 import type {
+  BridgeModelsResponse,
+  BridgeSystemResponse,
   ComfyHistoryEntry,
   ComfyObjectInfo,
   ComfyPromptResponse
 } from '../types/comfy';
+import { http, type RequestProgressCallback } from './httpClient';
 
 export interface AutocompleteItem {
   label: string;
@@ -46,21 +49,15 @@ export const ComfyApi = {
   async checkHealth(serverUrl: string): Promise<boolean> {
     const base = this.cleanUrl(serverUrl);
     try {
-      const res = await fetch(`${base}/system_stats`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(2500)
-      });
-      if (res.ok) return true;
+      await http.get(`${base}/system_stats`, { timeout: 2500 });
+      return true;
     } catch {
       // fallback
     }
 
     try {
-      const res = await fetch(`${base}/prompt`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(2500)
-      });
-      if (res.ok) return true;
+      await http.get(`${base}/prompt`, { timeout: 2500 });
+      return true;
     } catch {
       // offline
     }
@@ -70,13 +67,7 @@ export const ComfyApi = {
 
   async fetchObjectInfo(serverUrl: string): Promise<ComfyObjectInfo> {
     const url = `${this.cleanUrl(serverUrl)}/object_info`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(
-        `Failed to fetch object info: ${res.status} ${res.statusText}`
-      );
-    }
-    return (await res.json()) as ComfyObjectInfo;
+    return await http.get<ComfyObjectInfo>(url);
   },
 
   async queuePrompt(
@@ -85,21 +76,10 @@ export const ComfyApi = {
     clientId: string
   ): Promise<ComfyPromptResponse> {
     const url = `${this.cleanUrl(serverUrl)}/prompt`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        client_id: clientId
-      })
+    return await http.post<ComfyPromptResponse>(url, {
+      prompt,
+      client_id: clientId
     });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Failed to queue prompt: ${res.status} - ${errorText}`);
-    }
-
-    return (await res.json()) as ComfyPromptResponse;
   },
 
   async fetchHistory(
@@ -107,51 +87,47 @@ export const ComfyApi = {
     promptId: string
   ): Promise<Record<string, ComfyHistoryEntry>> {
     const url = `${this.cleanUrl(serverUrl)}/history/${promptId}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch history: ${res.statusText}`);
-    }
-    return (await res.json()) as Record<string, ComfyHistoryEntry>;
+    return await http.get<Record<string, ComfyHistoryEntry>>(url);
   },
 
   async interrupt(serverUrl: string): Promise<void> {
     const url = `${this.cleanUrl(serverUrl)}/interrupt`;
-    await fetch(url, { method: 'POST' });
+    await http.post(url);
   },
 
   async shutdown(serverUrl: string): Promise<boolean> {
     try {
-      const res = await fetch(`${this.cleanUrl(serverUrl)}/comfygui/shutdown`, {
-        method: 'POST',
-        signal: AbortSignal.timeout(3000)
+      await http.post(`${this.cleanUrl(serverUrl)}/comfygui/shutdown`, undefined, {
+        timeout: 3000
       });
-      return res.ok;
+      return true;
     } catch {
       return false;
     }
   },
 
-  async uploadImage(serverUrl: string, file: Blob, name: string) {
+  async uploadImage(
+    serverUrl: string,
+    file: Blob,
+    name: string,
+    onProgress?: RequestProgressCallback
+  ): Promise<UploadedImage> {
     const form = new FormData();
     form.append('image', file, name);
     form.append('type', 'input');
     form.append('overwrite', 'true');
-    const res = await fetch(`${this.cleanUrl(serverUrl)}/upload/image`, {
-      method: 'POST',
-      body: form
-    });
-    if (!res.ok) throw new Error(`Image upload failed: ${res.statusText}`);
-    return (await res.json()) as UploadedImage;
+    return await http.upload<UploadedImage>(
+      `${this.cleanUrl(serverUrl)}/upload/image`,
+      form,
+      onProgress
+    );
   },
 
   async fetchNodeInfo(serverUrl: string, classType: string) {
     try {
-      const res = await fetch(
+      const data = await http.get<ComfyObjectInfo>(
         `${this.cleanUrl(serverUrl)}/object_info/${encodeURIComponent(classType)}`
       );
-      if (!res.ok) return null;
-      const data =
-        (await res.json()) as import('../types/comfy').ComfyObjectInfo;
       return data[classType] ?? null;
     } catch {
       return null;
@@ -218,48 +194,33 @@ export const ComfyApi = {
 
   async fetchBridgeModels(
     serverUrl: string
-  ): Promise<import('../types/comfy').BridgeModelsResponse | null> {
+  ): Promise<BridgeModelsResponse | null> {
     const url = `${this.cleanUrl(serverUrl)}/comfygui/models`;
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(3000)
-      });
-      if (res.ok) {
-        return (await res.json()) as import('../types/comfy').BridgeModelsResponse;
-      }
+      return await http.get<BridgeModelsResponse>(url, { timeout: 3000 });
     } catch {
       // Bridge not installed or server not ready
+      return null;
     }
-    return null;
   },
 
   async fetchBridgeSystem(
     serverUrl: string
-  ): Promise<import('../types/comfy').BridgeSystemResponse | null> {
+  ): Promise<BridgeSystemResponse | null> {
     const url = `${this.cleanUrl(serverUrl)}/comfygui/system`;
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(3000)
-      });
-      if (res.ok) {
-        return (await res.json()) as import('../types/comfy').BridgeSystemResponse;
-      }
+      return await http.get<BridgeSystemResponse>(url, { timeout: 3000 });
     } catch {
       // Bridge not installed
+      return null;
     }
-    return null;
   },
 
   async refreshBridgeModels(serverUrl: string): Promise<boolean> {
     const url = `${this.cleanUrl(serverUrl)}/comfygui/refresh`;
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        signal: AbortSignal.timeout(3000)
-      });
-      return res.ok;
+      await http.post(url, undefined, { timeout: 3000 });
+      return true;
     } catch {
       return false;
     }
@@ -276,13 +237,15 @@ export const ComfyApi = {
     const params = new URLSearchParams({ q: query, limit: String(limit) });
     if (mode === 'artist') params.set('category', '1');
     if (mode === 'wildcard') params.set('mode', 'wildcard');
-    const res = await fetch(
-      `${base}/yet_essential/autocomplete/search?${params.toString()}`,
-      { signal }
-    );
-    if (!res.ok) return [];
-    const payload = (await res.json()) as { items?: AutocompleteItem[] };
-    return payload.items ?? [];
+    try {
+      const payload = await http.get<{ items?: AutocompleteItem[] }>(
+        `${base}/yet_essential/autocomplete/search?${params.toString()}`,
+        { signal }
+      );
+      return payload.items ?? [];
+    } catch {
+      return [];
+    }
   },
 
   async updateTagAutocompleteSettings(
@@ -291,18 +254,14 @@ export const ComfyApi = {
     limit: number
   ): Promise<boolean> {
     try {
-      const res = await fetch(
+      await http.post(
         `${this.cleanUrl(serverUrl)}/yet_essential/settings/update`,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            search_algorithm: algorithm,
-            search_limit: limit
-          })
+          search_algorithm: algorithm,
+          search_limit: limit
         }
       );
-      return res.ok;
+      return true;
     } catch {
       return false;
     }
@@ -312,12 +271,10 @@ export const ComfyApi = {
     serverUrl: string
   ): Promise<TagAutocompleteSettings | null> {
     try {
-      const res = await fetch(
+      const settings = await http.get<Partial<TagAutocompleteSettings>>(
         `${this.cleanUrl(serverUrl)}/yet_essential/settings/get`,
-        { signal: AbortSignal.timeout(2500) }
+        { timeout: 2500 }
       );
-      if (!res.ok) return null;
-      const settings = (await res.json()) as Partial<TagAutocompleteSettings>;
       if (
         !['fuzzy', 'contains', 'prefix'].includes(
           settings.search_algorithm ?? ''
@@ -342,10 +299,9 @@ export const ComfyApi = {
   ): Promise<ModelMetadata[]> {
     try {
       const params = new URLSearchParams({ type: folderType });
-      const res = await fetch(
+      return await http.get<ModelMetadata[]>(
         `${this.cleanUrl(serverUrl)}/yet_essential/model/metadata?${params}`
       );
-      return res.ok ? ((await res.json()) as ModelMetadata[]) : [];
     } catch {
       return [];
     }

@@ -1,5 +1,6 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { AiConfig, OpenRouterModel } from '../types/ai';
+import { http } from './httpClient';
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
   apiKey: '',
@@ -137,18 +138,10 @@ export async function fetchAvailableModels(
       headers.Authorization = `Bearer ${apiKey.trim()}`;
     }
 
-    const res = await fetch('https://openrouter.ai/api/v1/models', {
-      headers
-    });
-
-    if (!res.ok) {
-      console.warn(
-        `Failed to fetch OpenRouter models: ${res.status} ${res.statusText}`
-      );
-      return cachedModels ?? POPULAR_MODELS;
-    }
-
-    const json = (await res.json()) as { data?: OpenRouterModel[] };
+    const json = await http.get<{ data?: OpenRouterModel[] }>(
+      'https://openrouter.ai/api/v1/models',
+      { headers }
+    );
     if (Array.isArray(json.data) && json.data.length > 0) {
       cachedModels = json.data;
       lastFetchTime = now;

@@ -1077,9 +1077,9 @@ function renderMarkdown(content: string): string {
                               >
                                 {{
                                   part.invocation.result
-                                    ? 'Studio Prompts Inspected'
+                                    ? 'Prompts Inspected'
                                     : isPartActive(msg, pIdx)
-                                      ? 'Inspecting active studio prompts...'
+                                      ? 'Inspecting active prompts...'
                                       : 'Prompt inspection stopped'
                                 }}
                               </span>
@@ -1206,7 +1206,7 @@ function renderMarkdown(content: string): string {
                             >
                               {{
                                 part.invocation.state === 'applied'
-                                  ? '✓ Applied to Studio'
+                                  ? '✓ Applied'
                                   : part.invocation.state === 'building'
                                     ? 'Preparing...'
                                     : part.invocation.state === 'queued'
@@ -1506,7 +1506,9 @@ function renderMarkdown(content: string): string {
                 </span>
               </div>
 
-              <div class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+              <div
+                class="flex min-w-0 flex-wrap items-center justify-end gap-1.5"
+              >
                 <!-- Model Selector -->
                 <AiReasoningSelector compact :disabled="aiStore.isGenerating" />
                 <AiModelSelector

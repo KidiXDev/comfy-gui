@@ -11,6 +11,7 @@ import type {
   CopyrightFilterParams,
   CopyrightSearchResponse
 } from '../types/animadex';
+import { http } from './httpClient';
 
 export const ANIMADEX_BASE_URL = 'https://animadex.net';
 
@@ -33,7 +34,7 @@ async function requestAnimadex<T>(endpointUrl: string): Promise<T> {
       return await invoke<T>('animadex_request', { url: endpointUrl });
     } catch (err) {
       console.warn(
-        'Tauri animadex_request failed, falling back to fetch:',
+        'Tauri animadex_request failed, falling back to axios:',
         err
       );
     }
@@ -43,14 +44,7 @@ async function requestAnimadex<T>(endpointUrl: string): Promise<T> {
     ? endpointUrl
     : `${ANIMADEX_BASE_URL}${endpointUrl.startsWith('/') ? endpointUrl : `/${endpointUrl}`}`;
 
-  const res = await fetch(fullUrl);
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => '');
-    throw new Error(
-      `AnimaDex request failed (${res.status}): ${errorText || res.statusText}`
-    );
-  }
-  return (await res.json()) as T;
+  return await http.get<T>(fullUrl);
 }
 
 export async function searchCharacters(

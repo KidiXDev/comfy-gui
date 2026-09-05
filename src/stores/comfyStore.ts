@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
+import { queryKeys } from '../composables/queryKeys';
+import { queryClient } from '../lib/queryClient';
 import { ComfyApi } from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
 import { buildWorkflowPrompt } from '../services/workflowBuilder';
@@ -535,6 +537,12 @@ export const useComfyStore = defineStore('comfy', () => {
 
   async function refreshModels() {
     await ComfyApi.refreshBridgeModels(launcherStore.config.serverUrl);
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.comfy.models(launcherStore.config.serverUrl)
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ['comfy', 'objectInfo', launcherStore.config.serverUrl]
+    });
     await fetchDiscovery();
   }
 

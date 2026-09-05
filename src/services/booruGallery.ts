@@ -1,3 +1,5 @@
+import { http } from './httpClient';
+
 const API_PATH = '/aaalice/booru-gallery';
 
 export interface BooruSource {
@@ -65,16 +67,11 @@ function apiUrl(serverUrl: string, path: string): string {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  const payload = (await response.json().catch(() => null)) as
-    (T & { message?: string }) | null;
-  if (!response.ok) {
-    throw new Error(
-      payload?.message || `Booru request failed (${response.status})`
-    );
+  if (init?.method?.toUpperCase() === 'POST') {
+    const data = init.body ? JSON.parse(init.body as string) : undefined;
+    return await http.post<T>(url, data);
   }
-  if (!payload) throw new Error('Booru returned an empty response');
-  return payload;
+  return await http.get<T>(url);
 }
 
 export async function fetchBooruSources(serverUrl: string) {
