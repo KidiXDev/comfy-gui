@@ -1120,11 +1120,13 @@ function renderMarkdown(content: string): string {
                               {{
                                 part.invocation.state === 'applied'
                                   ? '✓ Applied to Studio'
-                                  : part.invocation.state === 'queued'
-                                    ? '✓ Applied & Queued'
-                                    : part.invocation.state === 'rejected'
-                                      ? '✕ Discarded'
-                                      : 'Pending Confirmation'
+                                  : part.invocation.state === 'building'
+                                    ? 'Preparing...'
+                                    : part.invocation.state === 'queued'
+                                      ? '✓ Applied & Queued'
+                                      : part.invocation.state === 'rejected'
+                                        ? '✕ Discarded'
+                                        : 'Pending Confirmation'
                               }}
                             </span>
                           </div>
@@ -1139,6 +1141,23 @@ function renderMarkdown(content: string): string {
                           </p>
 
                           <div
+                            v-if="part.invocation.state === 'building'"
+                            class="text-muted-foreground flex items-center gap-2 py-2"
+                          >
+                            <Sparkles
+                              class="text-primary h-3.5 w-3.5 animate-pulse"
+                            />
+                            <span class="animate-text-shimmer">
+                              {{
+                                part.invocation.name ===
+                                'inject_positive_prompt'
+                                  ? 'Preparing positive prompt proposal...'
+                                  : 'Preparing negative prompt proposal...'
+                              }}
+                            </span>
+                          </div>
+                          <div
+                            v-else
                             class="border-border/40 bg-muted/20 mb-2 rounded-lg border p-2 font-mono text-xs whitespace-pre-wrap"
                           >
                             {{
@@ -1184,9 +1203,11 @@ function renderMarkdown(content: string): string {
                               {{
                                 part.invocation.state === 'queued'
                                   ? '✓ Queued'
-                                  : part.invocation.state === 'rejected'
-                                    ? 'Declined'
-                                    : 'Pending Confirmation'
+                                  : part.invocation.state === 'building'
+                                    ? 'Preparing...'
+                                    : part.invocation.state === 'rejected'
+                                      ? 'Declined'
+                                      : 'Pending Confirmation'
                               }}
                             </span>
                           </div>
@@ -1199,6 +1220,17 @@ function renderMarkdown(content: string): string {
                           >
                             {{ part.invocation.args.reason }}
                           </p>
+                          <div
+                            v-if="part.invocation.state === 'building'"
+                            class="text-muted-foreground flex items-center gap-2 py-2"
+                          >
+                            <Sparkles
+                              class="text-primary h-3.5 w-3.5 animate-pulse"
+                            />
+                            <span class="animate-text-shimmer"
+                              >Preparing generation request...</span
+                            >
+                          </div>
                         </div>
                         <div
                           v-if="

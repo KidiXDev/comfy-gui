@@ -32,14 +32,19 @@ function sanitizeLegacySessionInvocations(session: ChatSession) {
   for (const msg of session.messages) {
     if (msg.toolInvocations) {
       for (const inv of msg.toolInvocations) {
-        if (inv.state === 'pending') inv.state = 'rejected';
+        if (inv.state === 'pending' || inv.state === 'building')
+          inv.state = 'rejected';
         if (inv.name === 'inspect_current_prompt') {
           inv.state = 'applied';
         }
       }
     }
     for (const part of msg.parts ?? []) {
-      if (part.type === 'tool' && part.invocation.state === 'pending')
+      if (
+        part.type === 'tool' &&
+        (part.invocation.state === 'pending' ||
+          part.invocation.state === 'building')
+      )
         part.invocation.state = 'rejected';
     }
     // Synthesize chronological parts for legacy messages if not present
@@ -312,6 +317,33 @@ export const useAiStore = defineStore('ai', () => {
       const model = getOpenRouterModel(config.value);
       const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt);
 
+      const getOrCreateInvocation = (
+        id: string,
+        name: ToolName,
+        args: Record<string, unknown> = {},
+        state: ToolInvocation['state'] = 'building'
+      ) => {
+        const existing = assistantMsg.toolInvocations?.find(
+          (invocation) => invocation.id === id
+        );
+        if (existing) {
+          existing.name = name;
+          existing.args = args;
+          existing.state = state;
+          return existing;
+        }
+        const invocation = reactive<ToolInvocation>({
+          id,
+          name,
+          args,
+          state,
+          timestamp: Date.now()
+        });
+        assistantMsg.toolInvocations?.push(invocation);
+        assistantMsg.parts?.push({ type: 'tool', invocation });
+        return invocation;
+      };
+
       // Exclude the empty assistant placeholder from history
       const coreMessages = session.messages.slice(0, -1).map((m) => {
         if (m.role === 'user') {
@@ -365,15 +397,7 @@ export const useAiStore = defineStore('ai', () => {
         toolCallId: string
       ) => {
         signal.throwIfAborted();
-        const inv = reactive<ToolInvocation>({
-          id: toolCallId,
-          name,
-          args: input,
-          state: 'pending',
-          timestamp: Date.now()
-        });
-        assistantMsg.toolInvocations?.push(inv);
-        assistantMsg.parts?.push({ type: 'tool', invocation: inv });
+        const inv = getOrCreateInvocation(toolCallId, name, input, 'pending');
         try {
           let decision: ApprovalDecision = { action: 'accept' };
           if (!config.value.autoApply) {
@@ -535,6 +559,15 @@ export const useAiStore = defineStore('ai', () => {
             appendReasoningPart(assistantMsg.parts, part.text);
           }
           assistantMsg.currentStep = 'thinking';
+        } else if (part.type === 'tool-input-start') {
+          const toolName = part.toolName as ToolName;
+          getOrCreateInvocation(part.id, toolName);
+          assistantMsg.currentStep =
+            toolName === 'inspect_current_prompt'
+              ? 'inspecting'
+              : toolName === 'queue_generation'
+                ? 'queueing'
+                : 'injecting';
         } else if (part.type === 'tool-call') {
           const toolName = part.toolName as ToolName;
           if (toolName !== 'inspect_current_prompt') {
@@ -546,21 +579,14 @@ export const useAiStore = defineStore('ai', () => {
             continue;
           }
           assistantMsg.currentStep = 'inspecting';
-          const invocation: ToolInvocation = {
-            id: part.toolCallId,
-            name: toolName,
-            args:
-              'input' in part && part.input
-                ? (part.input as Record<string, unknown>)
-                : {},
-            state: 'applied',
-            timestamp: Date.now()
-          };
-          if (!assistantMsg.toolInvocations) {
-            assistantMsg.toolInvocations = [];
-          }
-          assistantMsg.toolInvocations.push(invocation);
-          assistantMsg.parts.push({ type: 'tool', invocation });
+          getOrCreateInvocation(
+            part.toolCallId,
+            toolName,
+            'input' in part && part.input
+              ? (part.input as Record<string, unknown>)
+              : {},
+            'applied'
+          );
         } else if (part.type === 'tool-result') {
           const existing = assistantMsg.toolInvocations?.find(
             (t) => t.id === part.toolCallId

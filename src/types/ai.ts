@@ -42,7 +42,7 @@ export interface ToolInvocation {
   id: string;
   name: ToolName;
   args: Record<string, unknown>;
-  state: 'pending' | 'applied' | 'queued' | 'rejected';
+  state: 'building' | 'pending' | 'applied' | 'queued' | 'rejected';
   result?: unknown;
   note?: string;
   timestamp: number;

@@ -29,6 +29,18 @@ mock.module('ai', () => ({
       yield { type: 'reasoning-end' };
       assert.equal(store.activeMessages.at(-1).parts.at(-1).isComplete, true);
       yield {
+        type: 'tool-input-start',
+        id: 'draft',
+        toolName: 'inject_positive_prompt'
+      };
+      await nextTick();
+      assert.equal(store.activeMessages.at(-1).parts.at(-1).type, 'tool');
+      assert.equal(
+        store.activeMessages.at(-1).parts.at(-1).invocation.state,
+        'building'
+      );
+      assert.equal(store.activeMessages.at(-1).currentStep, 'injecting');
+      yield {
         type: 'tool-call',
         toolName: 'inspect_current_prompt',
         toolCallId: 'inspect',
