@@ -29,7 +29,7 @@ import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
 
 type ApprovalDecision = {
-  action: 'accept' | 'queue' | 'decline';
+  action: 'accept' | 'decline';
   note?: string;
 };
 
@@ -38,6 +38,7 @@ const READ_ONLY_TOOLS: ToolName[] = [
   'search_animadex',
   'retrieve_animadex_tag_by_id'
 ];
+const NOOP = () => {};
 
 function sanitizeLegacySessionInvocations(session: ChatSession) {
   for (const msg of session.messages) {
@@ -425,6 +426,7 @@ export const useAiStore = defineStore('ai', () => {
         assistantMsg.parts?.push({ type: 'tool', invocation });
         return invocation;
       };
+      let approvalTail = Promise.resolve();
 
       // Exclude the empty assistant placeholder from history
       const coreMessages = session.messages.slice(0, -1).map((m) => {
@@ -479,10 +481,23 @@ export const useAiStore = defineStore('ai', () => {
         toolCallId: string
       ) => {
         signal.throwIfAborted();
-        const inv = getOrCreateInvocation(toolCallId, name, input, 'pending');
+        const inv = getOrCreateInvocation(
+          toolCallId,
+          name,
+          input,
+          config.value.autoApply ? 'pending' : 'building'
+        );
+        let releaseApproval = NOOP;
         try {
           let decision: ApprovalDecision = { action: 'accept' };
           if (!config.value.autoApply) {
+            const previousApproval = approvalTail;
+            approvalTail = new Promise<void>((resolve) => {
+              releaseApproval = resolve;
+            });
+            await previousApproval;
+            signal.throwIfAborted();
+            inv.state = 'pending';
             assistantMsg.currentStep = 'awaiting_approval';
             let resolveDecision!: (value: ApprovalDecision) => void;
             const promise = new Promise<ApprovalDecision>((resolve) => {
@@ -524,26 +539,35 @@ export const useAiStore = defineStore('ai', () => {
           )
             workflowStore.negativePrompt = input.prompt;
           inv.state = name === 'queue_generation' ? 'pending' : 'applied';
-          if (name === 'queue_generation' || decision.action === 'queue') {
+          if (name === 'queue_generation') {
             assistantMsg.currentStep = 'queueing';
-            const success = await comfyStore.generateImage(
+            const promptId = await comfyStore.queueGeneration(
               workflowStore.getFullWorkflowState()
             );
-            inv.state = success
+            inv.state = promptId
               ? 'queued'
               : name === 'queue_generation'
                 ? 'rejected'
                 : 'applied';
+            if (!promptId) return { status: 'generation_failed' };
+            const image = await comfyStore.waitForGeneration(promptId, signal);
             return {
-              status: success ? 'generation_queued' : 'generation_failed',
-              prompt: input.prompt
+              status: 'generation_completed',
+              prompt: input.prompt,
+              image
             };
           }
           return { status: 'applied', prompt: input.prompt };
         } catch (error) {
-          if (inv.state === 'pending') inv.state = 'rejected';
+          if (
+            inv.state === 'building' ||
+            inv.state === 'pending' ||
+            inv.state === 'queued'
+          )
+            inv.state = 'rejected';
           throw error;
         } finally {
+          releaseApproval();
           approvals.delete(toolCallId);
           void saveChatSessions();
         }
@@ -613,7 +637,7 @@ export const useAiStore = defineStore('ai', () => {
 
         inject_positive_prompt: tool({
           description:
-            'Propose or inject a new or enhanced positive prompt into the studio.',
+            'Propose or inject a new or enhanced positive prompt into the studio. Never request generation in the same step. If the user also wants generation, wait until this change is approved and completed, then request generation in a later step.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced positive prompt text'),
             reason: z
@@ -627,7 +651,7 @@ export const useAiStore = defineStore('ai', () => {
 
         inject_negative_prompt: tool({
           description:
-            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use inject_positive_prompt and preserve the current negative prompt.',
+            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use the positive prompt capability and preserve the current negative prompt. Never request generation in the same step; wait until this change is approved and completed first.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced negative prompt text'),
             reason: z
@@ -641,7 +665,7 @@ export const useAiStore = defineStore('ai', () => {
 
         queue_generation: tool({
           description:
-            'Trigger the ComfyUI image generation queue with current parameters.',
+            'Delegate the already-approved current workflow to ComfyUI and wait for that exact job to finish. Use this only when no prompt change is pending or awaiting approval, and never request it in parallel with a prompt update. The completed result includes the generated image; use it to report completion and discuss the result with the user.',
           inputSchema: z.object({
             reason: z
               .string()
@@ -794,10 +818,6 @@ export const useAiStore = defineStore('ai', () => {
     resolveApproval(messageId, toolId, { action: 'accept' });
   }
 
-  function applyAndQueueToolInvocation(messageId: string, toolId: string) {
-    resolveApproval(messageId, toolId, { action: 'queue' });
-  }
-
   function rejectToolInvocation(messageId: string, toolId: string, note = '') {
     resolveApproval(messageId, toolId, {
       action: 'decline',
@@ -842,7 +862,6 @@ export const useAiStore = defineStore('ai', () => {
     sendMessage,
     stopGeneration,
     applyToolInvocation,
-    applyAndQueueToolInvocation,
     rejectToolInvocation
   };
 });

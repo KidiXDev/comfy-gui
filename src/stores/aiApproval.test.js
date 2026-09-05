@@ -11,6 +11,8 @@ const workflow = {
   getFullWorkflowState: () => ({})
 };
 let queued = 0;
+let deferCompletion = false;
+let generationResolve;
 let requestedTool = 'inject_positive_prompt';
 let model;
 const usage = { inputTokens: { total: 1 }, outputTokens: { total: 1 } };
@@ -67,9 +69,20 @@ mock.module('../services/appStorage', () => ({
 mock.module('./workflowStore', () => ({ useWorkflowStore: () => workflow }));
 mock.module('./comfyStore', () => ({
   useComfyStore: () => ({
-    generateImage: async () => {
+    queueGeneration: async () => {
       queued++;
-      return true;
+      return 'prompt-1';
+    },
+    waitForGeneration: (promptId) => {
+      const result = {
+        promptId,
+        url: 'http://localhost/generated.png',
+        filename: 'generated.png'
+      };
+      if (!deferCompletion) return Promise.resolve(result);
+      return new Promise((resolve) => {
+        generationResolve = () => resolve(result);
+      });
     }
   })
 }));
@@ -85,6 +98,7 @@ async function until(predicate) {
   }
   throw new Error('Timed out waiting for approval');
 }
+const hasGenerationResolver = () => Boolean(generationResolve);
 await until(() => store.isLoaded);
 store.config.apiKey = 'test-only';
 for (const decision of ['accept', 'decline', 'stop', 'queue', 'negative']) {
@@ -126,7 +140,17 @@ for (const decision of ['accept', 'decline', 'stop', 'queue', 'negative']) {
       'approval',
       'Keep the original outfit'
     );
-  else store.applyToolInvocation(message.id, 'approval');
+  else {
+    if (decision === 'queue') deferCompletion = true;
+    store.applyToolInvocation(message.id, 'approval');
+  }
+  if (decision === 'queue') {
+    await until(hasGenerationResolver);
+    assert.equal(model.doStreamCalls.length, 1);
+    generationResolve();
+    generationResolve = undefined;
+    deferCompletion = false;
+  }
   await running;
   assert.equal(store.isGenerating, false);
   if (decision === 'stop') assert.equal(model.doStreamCalls.length, 1);
@@ -152,9 +176,9 @@ for (const file of [
   '../views/SettingsView.vue'
 ]) {
   const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-  const autoApplySwitch = source.match(/<Switch\b[\s\S]*?\/>/gu)?.find(
-    (element) => element.includes('aiStore.config.autoApply')
-  );
+  const autoApplySwitch = source
+    .match(/<Switch\b[\s\S]*?\/>/gu)
+    ?.find((element) => element.includes('aiStore.config.autoApply'));
   assert.ok(autoApplySwitch, `${file}: Auto Apply switch exists`);
   assert.ok(
     autoApplySwitch.includes(':model-value="aiStore.config.autoApply"')

@@ -33,6 +33,16 @@ interface PendingGeneration {
   };
 }
 
+interface GenerationResult {
+  url: string;
+  filename: string;
+  subfolder: string;
+  type: string;
+  promptId: string;
+  workflowState: WorkflowState;
+  durationMs: number;
+}
+
 function extractImageFromOutputs(outputs?: Record<string, ComfyHistoryOutput>) {
   if (!outputs) return null;
   for (const output of Object.values(outputs)) {
@@ -153,15 +163,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const maxSteps = ref(0);
   const progressPercent = ref(0);
   const currentPreviewUrl = ref<string | null>(null);
-  const lastGeneratedImage = ref<{
-    url: string;
-    filename: string;
-    subfolder: string;
-    type: string;
-    promptId: string;
-    workflowState: WorkflowState;
-    durationMs: number;
-  } | null>(null);
+  const lastGeneratedImage = ref<GenerationResult | null>(null);
   const executionError = ref<string | null>(null);
   const generationStartTime = ref<number>(0);
   const currentPromptNodes = ref<Record<string, Record<string, unknown>>>({});
@@ -170,6 +172,13 @@ export const useComfyStore = defineStore('comfy', () => {
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let healthCheck: Promise<boolean> | null = null;
   const pendingGenerations = new Map<string, PendingGeneration>();
+  const generationWaiters = new Map<
+    string,
+    {
+      resolve: (result: GenerationResult) => void;
+      reject: (error: Error) => void;
+    }
+  >();
 
   // Extracted Available Options from Bridge or ObjectInfo
   const availableCheckpoints = computed<string[]>(() => {
@@ -296,7 +305,7 @@ export const useComfyStore = defineStore('comfy', () => {
   }
 
   function publishGenerationImage(entry: PendingGeneration) {
-    if (!entry.image) return;
+    if (!entry.image) return null;
     if (!isGenerating.value && currentPreviewUrl.value) {
       URL.revokeObjectURL(currentPreviewUrl.value);
       currentPreviewUrl.value = null;
@@ -313,6 +322,7 @@ export const useComfyStore = defineStore('comfy', () => {
       workflowState: entry.workflowState,
       durationMs: Date.now() - (entry.startedAt ?? entry.queuedAt)
     };
+    return lastGeneratedImage.value;
   }
 
   async function loadGenerationImage(entry: PendingGeneration) {
@@ -328,10 +338,10 @@ export const useComfyStore = defineStore('comfy', () => {
         // Executed output remains the fallback.
       }
     }
-    publishGenerationImage(entry);
+    return publishGenerationImage(entry);
   }
 
-  function finishGeneration(
+  async function finishGeneration(
     promptId: string,
     status: 'completed' | 'error' | 'interrupted'
   ) {
@@ -353,7 +363,46 @@ export const useComfyStore = defineStore('comfy', () => {
               : 'Failed';
       }
     }
-    if (status === 'completed') void loadGenerationImage(entry);
+    const waiter = generationWaiters.get(promptId);
+    generationWaiters.delete(promptId);
+    if (status === 'completed') {
+      const result = await loadGenerationImage(entry);
+      if (result) waiter?.resolve(result);
+      else waiter?.reject(new Error('Generation completed without an image'));
+    } else {
+      waiter?.reject(
+        new Error(
+          status === 'interrupted'
+            ? 'Generation interrupted'
+            : 'Generation failed'
+        )
+      );
+    }
+  }
+
+  function waitForGeneration(promptId: string, signal?: AbortSignal) {
+    const completed = lastGeneratedImage.value;
+    if (completed?.promptId === promptId) return Promise.resolve(completed);
+    if (!pendingGenerations.has(promptId))
+      return Promise.reject(new Error('Generation job not found'));
+
+    return new Promise<GenerationResult>((resolve, reject) => {
+      const abort = () => {
+        generationWaiters.delete(promptId);
+        reject(new DOMException('Generation wait aborted', 'AbortError'));
+      };
+      generationWaiters.set(promptId, {
+        resolve: (result) => {
+          signal?.removeEventListener('abort', abort);
+          resolve(result);
+        },
+        reject: (error) => {
+          signal?.removeEventListener('abort', abort);
+          reject(error);
+        }
+      });
+      signal?.addEventListener('abort', abort, { once: true });
+    });
   }
 
   function handleWsMessage(msg: ComfyWsMessage) {
@@ -364,7 +413,7 @@ export const useComfyStore = defineStore('comfy', () => {
       const entry = pendingGenerations.get(execMsg.data.prompt_id);
       if (!entry) return;
       if (!execMsg.data.node) {
-        finishGeneration(entry.id, 'completed');
+        void finishGeneration(entry.id, 'completed');
         return;
       }
 
@@ -398,11 +447,11 @@ export const useComfyStore = defineStore('comfy', () => {
         executionError.value =
           errorMsg.data.exception_message ||
           'Execution error occurred in ComfyUI node.';
-        finishGeneration(errorMsg.data.prompt_id, 'error');
+        void finishGeneration(errorMsg.data.prompt_id, 'error');
       }
     } else if (msg.type === 'execution_interrupted') {
       const interruptedMsg = msg as ComfyWsExecutionInterrupted;
-      finishGeneration(interruptedMsg.data.prompt_id, 'interrupted');
+      void finishGeneration(interruptedMsg.data.prompt_id, 'interrupted');
     }
   }
 
@@ -479,6 +528,9 @@ export const useComfyStore = defineStore('comfy', () => {
         isFaceDetailerAvailable.value = false;
         isCacheDiTAvailable.value = false;
         pendingGenerations.clear();
+        for (const waiter of generationWaiters.values())
+          waiter.reject(new Error('ComfyUI stopped'));
+        generationWaiters.clear();
         pendingGenerationCount.value = 0;
         isGenerating.value = false;
         currentPromptId.value = null;
@@ -546,8 +598,8 @@ export const useComfyStore = defineStore('comfy', () => {
     await fetchDiscovery();
   }
 
-  async function generateImage(workflowState: WorkflowState) {
-    if (isQueueing.value) return false;
+  async function queueGeneration(workflowState: WorkflowState) {
+    if (isQueueing.value) return null;
     isQueueing.value = true;
     executionError.value = null;
 
@@ -571,18 +623,22 @@ export const useComfyStore = defineStore('comfy', () => {
         lastGeneratedImage.value = null;
         activateGeneration(entry);
       }
-      return true;
+      return entry.id;
     } catch (err) {
       executionError.value = err instanceof Error ? err.message : String(err);
-      return false;
+      return null;
     } finally {
       isQueueing.value = false;
     }
   }
 
+  async function generateImage(workflowState: WorkflowState) {
+    return (await queueGeneration(workflowState)) !== null;
+  }
+
   function onExecutionFinished() {
     if (currentPromptId.value) {
-      finishGeneration(currentPromptId.value, 'completed');
+      void finishGeneration(currentPromptId.value, 'completed');
     }
   }
 
@@ -634,6 +690,8 @@ export const useComfyStore = defineStore('comfy', () => {
     fetchDiscovery,
     refreshModels,
     generateImage,
+    queueGeneration,
+    waitForGeneration,
     interrupt,
     onExecutionFinished
   };

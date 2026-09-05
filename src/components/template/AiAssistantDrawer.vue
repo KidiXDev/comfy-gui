@@ -11,6 +11,7 @@ import {
   Eye,
   History,
   ImagePlus,
+  Loader2,
   MessageSquare,
   Pencil,
   Play,
@@ -1187,7 +1188,7 @@ function renderMarkdown(content: string): string {
                               leave-active-class="transition duration-100 ease-in"
                               leave-to-class="scale-75 opacity-0"
                             >
-                              <Check
+                              <Search
                                 v-if="part.invocation.result"
                                 key="done"
                                 class="h-3 w-3"
@@ -1197,10 +1198,10 @@ function renderMarkdown(content: string): string {
                                 key="cancelled"
                                 class="h-3 w-3"
                               />
-                              <Search
+                              <Loader2
                                 v-else
                                 key="searching"
-                                class="h-3 w-3 animate-pulse"
+                                class="h-3 w-3 animate-spin"
                               />
                             </Transition>
                           </div>
@@ -1359,13 +1360,15 @@ function renderMarkdown(content: string): string {
                               ]"
                             >
                               {{
-                                part.invocation.state === 'queued'
-                                  ? '✓ Queued'
-                                  : part.invocation.state === 'building'
-                                    ? 'Preparing...'
-                                    : part.invocation.state === 'rejected'
-                                      ? 'Declined'
-                                      : 'Pending Confirmation'
+                                part.invocation.result
+                                  ? '✓ Done'
+                                  : part.invocation.state === 'queued'
+                                    ? 'Generating...'
+                                    : part.invocation.state === 'building'
+                                      ? 'Preparing...'
+                                      : part.invocation.state === 'rejected'
+                                        ? 'Declined'
+                                        : 'Pending Confirmation'
                               }}
                             </span>
                           </div>
@@ -1378,6 +1381,15 @@ function renderMarkdown(content: string): string {
                           >
                             {{ part.invocation.args.reason }}
                           </p>
+                          <img
+                            v-if="(part.invocation.result as any)?.image?.url"
+                            :src="(part.invocation.result as any).image.url"
+                            :alt="
+                              (part.invocation.result as any).image.filename ||
+                              'Generated image'
+                            "
+                            class="border-border mt-2 max-h-72 w-full rounded-lg border object-contain"
+                          />
                           <div
                             v-if="part.invocation.state === 'building'"
                             class="text-muted-foreground flex items-center gap-2 py-2"
@@ -1418,17 +1430,6 @@ function renderMarkdown(content: string): string {
                                 )
                               "
                               >Accept</Button
-                            >
-                            <Button
-                              v-if="part.invocation.name !== 'queue_generation'"
-                              size="sm"
-                              @click="
-                                aiStore.applyAndQueueToolInvocation(
-                                  msg.id,
-                                  part.invocation.id
-                                )
-                              "
-                              >Accept & Queue</Button
                             >
                             <Button
                               size="sm"
