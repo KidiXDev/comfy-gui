@@ -13,17 +13,45 @@ mock.module('../services/appStorage', () => ({
   loadAppData: async () => null,
   saveAppData: async () => {}
 }));
+mock.module('../services/animadexApi', () => ({
+  searchArtists: async (params) => ({ kind: 'artists', params, results: [] }),
+  searchCopyrights: async (params) => ({
+    kind: 'copyrights',
+    params,
+    results: []
+  }),
+  searchCharacters: async (params) => ({
+    kind: 'characters',
+    params,
+    results: params.character
+      ? [
+          {
+            slug: 'raiden_shogun',
+            name: 'Raiden Shogun',
+            copyright_name: 'Genshin Impact',
+            trigger: 'raiden shogun, genshin impact',
+            tags: ['1girl', 'purple hair'],
+            url: 'https://animadex.net/c/raiden_shogun'
+          }
+        ]
+      : []
+  })
+}));
 mock.module('./workflowStore', () => ({ useWorkflowStore: () => ({}) }));
 mock.module('./comfyStore', () => ({ useComfyStore: () => ({}) }));
 
 let renderedText;
 let renderedReasoning;
 let requestMessages;
+let requestSystem;
+let requestTools;
 mock.module('ai', () => ({
   tool: (definition) => definition,
   isStepCount: () => () => false,
-  streamText: ({ messages, temperature, maxOutputTokens }) => {
+  streamText: ({ messages, system, tools, temperature, maxOutputTokens }) => {
     requestMessages = messages;
+    requestSystem = system;
+    requestTools = tools;
     assert.equal(temperature, store.config.temperature);
     assert.equal(maxOutputTokens, store.config.maxOutputTokens);
     return {
@@ -114,6 +142,35 @@ try {
   for (const emptySession of [false, true]) {
     if (emptySession) store.sessions = [];
     await store.sendMessage('Hello');
+    assert.doesNotMatch(
+      requestSystem,
+      /inspect_current_prompt|search_animadex|retrieve_animadex_tag_by_id/u
+    );
+    assert.deepEqual(
+      await requestTools.search_animadex.execute({
+        query: 'raiden',
+        category: 'characters',
+        page: 1
+      }),
+      {
+        kind: 'characters',
+        params: { q: 'raiden', page: 1, sort: 'count' },
+        results: []
+      }
+    );
+    assert.deepEqual(
+      await requestTools.retrieve_animadex_tag_by_id.execute({
+        id: 'raiden_shogun'
+      }),
+      {
+        id: 'raiden_shogun',
+        name: 'Raiden Shogun',
+        copyright: 'Genshin Impact',
+        trigger: 'raiden shogun, genshin impact',
+        tags: ['1girl', 'purple hair'],
+        url: 'https://animadex.net/c/raiden_shogun'
+      }
+    );
     assert.equal(
       JSON.stringify(store.activeMessages).includes("Claude's guidelines"),
       true

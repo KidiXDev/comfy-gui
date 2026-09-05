@@ -1161,6 +1161,77 @@ function renderMarkdown(content: string): string {
                           </div>
                         </div>
 
+                        <!-- Animadex lookup -->
+                        <div
+                          v-else-if="
+                            part.invocation.name === 'search_animadex' ||
+                            part.invocation.name ===
+                              'retrieve_animadex_tag_by_id'
+                          "
+                          class="flex items-center gap-2 text-xs"
+                        >
+                          <div
+                            class="flex h-5 w-5 items-center justify-center rounded-md border transition-colors duration-200"
+                            :class="
+                              part.invocation.result
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                                : part.invocation.state === 'rejected'
+                                  ? 'border-muted bg-muted/40 text-muted-foreground'
+                                  : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
+                            "
+                          >
+                            <Transition
+                              mode="out-in"
+                              enter-active-class="transition duration-200 ease-out"
+                              enter-from-class="scale-75 opacity-0"
+                              leave-active-class="transition duration-100 ease-in"
+                              leave-to-class="scale-75 opacity-0"
+                            >
+                              <Check
+                                v-if="part.invocation.result"
+                                key="done"
+                                class="h-3 w-3"
+                              />
+                              <X
+                                v-else-if="part.invocation.state === 'rejected'"
+                                key="cancelled"
+                                class="h-3 w-3"
+                              />
+                              <Search
+                                v-else
+                                key="searching"
+                                class="h-3 w-3 animate-pulse"
+                              />
+                            </Transition>
+                          </div>
+                          <Transition
+                            mode="out-in"
+                            enter-active-class="transition duration-200 ease-out"
+                            enter-from-class="translate-y-0.5 opacity-0"
+                            leave-active-class="transition duration-100 ease-in"
+                            leave-to-class="-translate-y-0.5 opacity-0"
+                          >
+                            <span
+                              :key="
+                                part.invocation.result
+                                  ? 'done'
+                                  : part.invocation.state === 'rejected'
+                                    ? 'cancelled'
+                                    : 'searching'
+                              "
+                              class="text-foreground font-medium"
+                            >
+                              {{
+                                part.invocation.result
+                                  ? 'Done'
+                                  : part.invocation.state === 'rejected'
+                                    ? 'Search cancelled'
+                                    : 'Searching...'
+                              }}
+                            </span>
+                          </Transition>
+                        </div>
+
                         <!-- Prompt update -->
                         <div
                           v-else-if="
@@ -1339,7 +1410,7 @@ function renderMarkdown(content: string): string {
                           <div class="flex items-center gap-2">
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="default"
                               @click="
                                 aiStore.applyToolInvocation(
                                   msg.id,
@@ -1369,6 +1440,7 @@ function renderMarkdown(content: string): string {
                                   declineNotes[part.invocation.id]
                                 )
                               "
+                              class="text-destructive"
                               >Decline</Button
                             >
                           </div>

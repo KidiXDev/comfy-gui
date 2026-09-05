@@ -7,7 +7,8 @@ export interface AiConfig {
   temperature: number;
   contextTokenLimit: number;
   maxOutputTokens: number;
-  reasoningEffort?: 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  reasoningEffort?:
+    'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   providerOverride?: string;
   allowProviderFallbacks?: boolean;
 }
@@ -38,6 +39,8 @@ export interface OpenRouterModel {
 
 export type ToolName =
   | 'inspect_current_prompt'
+  | 'search_animadex'
+  | 'retrieve_animadex_tag_by_id'
   | 'inject_positive_prompt'
   | 'inject_negative_prompt'
   | 'queue_generation';
@@ -62,6 +65,7 @@ export interface ChatMessageAttachment {
 export type AgentStep =
   | 'thinking'
   | 'inspecting'
+  | 'searching'
   | 'injecting'
   | 'awaiting_approval'
   | 'queueing'

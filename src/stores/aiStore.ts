@@ -9,6 +9,11 @@ import {
   getOpenRouterModel,
   POPULAR_MODELS
 } from '../services/aiService';
+import {
+  searchArtists,
+  searchCharacters,
+  searchCopyrights
+} from '../services/animadexApi';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import type {
   AiConfig,
@@ -27,6 +32,12 @@ type ApprovalDecision = {
   action: 'accept' | 'queue' | 'decline';
   note?: string;
 };
+
+const READ_ONLY_TOOLS: ToolName[] = [
+  'inspect_current_prompt',
+  'search_animadex',
+  'retrieve_animadex_tag_by_id'
+];
 
 function sanitizeLegacySessionInvocations(session: ChatSession) {
   for (const msg of session.messages) {
@@ -552,6 +563,54 @@ export const useAiStore = defineStore('ai', () => {
           }
         }),
 
+        search_animadex: tool({
+          description:
+            'Search the Animadex catalogue for characters, artists, or copyrights/series. Character results are reference data only: tags may be accurate but incomplete, may cover only basic appearance such as hair or eye color while omitting clothing and other details, or may be empty. Never treat an omitted tag as proof that the character lacks that feature.',
+          inputSchema: z.object({
+            query: z.string().min(1).describe('Search text'),
+            category: z
+              .enum(['characters', 'artists', 'copyrights'])
+              .default('characters'),
+            page: z.number().int().positive().default(1)
+          }),
+          execute: ({ query, category, page }) => {
+            if (category === 'artists')
+              return searchArtists({ q: query, page, sort: 'count' });
+            if (category === 'copyrights')
+              return searchCopyrights({ q: query, page, sort: 'count' });
+            return searchCharacters({ q: query, page, sort: 'count' });
+          }
+        }),
+
+        retrieve_animadex_tag_by_id: tool({
+          description:
+            'Retrieve a character trigger and available core tags from Animadex using its exact slug/ID. Treat the result only as a reference: tags may be accurate but incomplete, may describe only basic appearance while omitting clothing and other details, or may be empty. Never present missing tags as a complete character description or infer that omitted features are absent.',
+          inputSchema: z.object({
+            id: z.string().min(1).describe('Exact Animadex character slug/ID')
+          }),
+          execute: async ({ id }) => {
+            const normalizedId = id.trim().toLowerCase();
+            const response = await searchCharacters({
+              character: [id.trim()],
+              page: 1,
+              sort: 'count'
+            });
+            const character = response.results.find(
+              (item) => item.slug.toLowerCase() === normalizedId
+            );
+            if (!character)
+              throw new Error(`Animadex character not found: ${id}`);
+            return {
+              id: character.slug,
+              name: character.name,
+              copyright: character.copyright_name,
+              trigger: character.trigger,
+              tags: character.tags,
+              url: character.url
+            };
+          }
+        }),
+
         inject_positive_prompt: tool({
           description:
             'Propose or inject a new or enhanced positive prompt into the studio.',
@@ -645,12 +704,15 @@ export const useAiStore = defineStore('ai', () => {
           assistantMsg.currentStep =
             toolName === 'inspect_current_prompt'
               ? 'inspecting'
-              : toolName === 'queue_generation'
-                ? 'queueing'
-                : 'injecting';
+              : toolName === 'search_animadex' ||
+                  toolName === 'retrieve_animadex_tag_by_id'
+                ? 'searching'
+                : toolName === 'queue_generation'
+                  ? 'queueing'
+                  : 'injecting';
         } else if (part.type === 'tool-call') {
           const toolName = part.toolName as ToolName;
-          if (toolName !== 'inspect_current_prompt') {
+          if (!READ_ONLY_TOOLS.includes(toolName)) {
             const approval = approvals.get(part.toolCallId);
             assistantMsg.currentStep = approval
               ? 'awaiting_approval'
@@ -658,7 +720,8 @@ export const useAiStore = defineStore('ai', () => {
             await approval?.promise;
             continue;
           }
-          assistantMsg.currentStep = 'inspecting';
+          assistantMsg.currentStep =
+            toolName === 'inspect_current_prompt' ? 'inspecting' : 'searching';
           getOrCreateInvocation(
             part.toolCallId,
             toolName,
@@ -673,10 +736,9 @@ export const useAiStore = defineStore('ai', () => {
           );
           if (existing) {
             existing.result = 'output' in part ? part.output : undefined;
-            existing.state =
-              existing.name === 'inspect_current_prompt'
-                ? 'applied'
-                : existing.state;
+            existing.state = READ_ONLY_TOOLS.includes(existing.name)
+              ? 'applied'
+              : existing.state;
           }
           const partTool = assistantMsg.parts.find(
             (p) => p.type === 'tool' && p.invocation.id === part.toolCallId
@@ -684,10 +746,11 @@ export const useAiStore = defineStore('ai', () => {
           if (partTool && partTool.type === 'tool') {
             partTool.invocation.result =
               'output' in part ? part.output : undefined;
-            partTool.invocation.state =
-              partTool.invocation.name === 'inspect_current_prompt'
-                ? 'applied'
-                : partTool.invocation.state;
+            partTool.invocation.state = READ_ONLY_TOOLS.includes(
+              partTool.invocation.name
+            )
+              ? 'applied'
+              : partTool.invocation.state;
           }
           assistantMsg.currentStep = 'tool_completed';
         }
