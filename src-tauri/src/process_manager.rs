@@ -214,6 +214,48 @@ fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf
     ))
 }
 
+#[tauri::command]
+pub async fn discover_local_models(
+    working_dir: String,
+    python_path: String,
+    args: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = PathBuf::from(clean_path_str(&working_dir));
+        if work.as_os_str().is_empty() {
+            return Err("Select a ComfyUI directory in Settings first.".to_string());
+        }
+        let root = if work.join("main.py").is_file() {
+            work.clone()
+        } else {
+            work.join("ComfyUI")
+        };
+        if !root.join("main.py").is_file() {
+            return Err("Select a valid ComfyUI directory in Settings.".to_string());
+        }
+        let root = root.canonicalize().map_err(|error| error.to_string())?;
+        let mut command = Command::new(resolve_python_executable(&python_path, &work)?);
+        command
+            .current_dir(&work)
+            .args(["-s", "-c", include_str!("local_model_discovery.py")])
+            .arg(root)
+            .arg(serde_json::to_string(&args).map_err(|error| error.to_string())?)
+            .env("PYTHONIOENCODING", "utf-8");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        let output = command.output().map_err(|error| error.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+        serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn github_repo_name(url: &str) -> Result<&str, String> {
     let path = url
         .trim()

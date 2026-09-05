@@ -18,6 +18,7 @@ import type { DownloadRecord } from '@/services/downloadManager';
 import { useComfyStore } from '@/stores/comfyStore';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useLauncherStore } from '@/stores/launcherStore';
+import { useCivitaiStore } from '@/stores/civitaiStore';
 
 defineOptions({ name: 'CivitaiModelDetailView' });
 
@@ -26,6 +27,10 @@ const router = useRouter();
 const comfyStore = useComfyStore();
 const downloadStore = useDownloadStore();
 const launcherStore = useLauncherStore();
+const civitaiStore = useCivitaiStore();
+onMounted(() => {
+  void civitaiStore.refreshLocalModels();
+});
 
 const modelId = computed(() => Number(route.params.id));
 const model = ref<CivitaiModel | null>(null);
@@ -60,7 +65,9 @@ function modelFileSet(...groups: (string[] | undefined)[]) {
 }
 
 const discoveredModelFiles = computed(() => {
-  const bridge = comfyStore.bridgeModels;
+  const bridge =
+    civitaiStore.localModels ??
+    (launcherStore.hasComfyDirectory ? comfyStore.bridgeModels : null);
   return {
     checkpoints: modelFileSet(bridge?.checkpoints, bridge?.unets),
     loras: modelFileSet(bridge?.loras),
@@ -154,6 +161,10 @@ async function downloadModel(
 ) {
   const version = versionParam ?? activeVersion.value;
   if (!version || isDownloadBusy(version.id)) return;
+  if (!launcherStore.hasComfyDirectory) {
+    errorMessage.value = launcherStore.localSetupMessage;
+    return;
+  }
   errorMessage.value = '';
   queueingVersions.value.add(version.id);
   try {
@@ -340,6 +351,11 @@ watch(
       :is-queueing="queueingVersions.has(activeVersion?.id || 0)"
       :progress-record="progress[activeVersion?.id || 0]"
       :downloaded-record="downloaded[activeVersion?.id || 0]"
+      :download-disabled="!launcherStore.hasComfyDirectory"
+      :download-message="
+        !launcherStore.hasComfyDirectory ? launcherStore.localSetupMessage : ''
+      "
+      :error-message="errorMessage || civitaiStore.discoveryError"
       @update:selected-version-id="(val) => (selectedVersionId = val)"
       @close="goBack"
       @download="downloadModel"

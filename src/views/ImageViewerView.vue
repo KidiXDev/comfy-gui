@@ -70,6 +70,7 @@ import {
   clearGalleryCache,
   getGalleryCacheDirectory,
   listOutputImages,
+  localImageUrl,
   prepareOutputGallery,
   readOutputImageMetadata,
   refreshOutputImages,
@@ -237,32 +238,43 @@ const indexPercent = computed(() =>
 );
 
 function imageUrl(image: OutputImage, thumbnail = true) {
-  const kind = thumbnail ? 'thumb' : 'full';
-  return navigator.userAgent.includes('Windows')
-    ? `http://comfygui-image.localhost/${kind}/${image.localId}`
-    : `comfygui-image://localhost/${kind}/${image.localId}`;
+  return localImageUrl(image.localId, thumbnail);
 }
 
 async function loadImages() {
+  if (!launcherStore.hasComfyDirectory) {
+    images.value = [];
+    errorMessage.value = '';
+    isLoading.value = false;
+    return;
+  }
+  const workingDir = launcherStore.config.workingDir;
   isLoading.value = true;
   indexStage.value = 'Scanning output files';
   indexProcessed.value = 0;
   indexTotal.value = 0;
   errorMessage.value = '';
   try {
-    images.value = await prepareOutputGallery(launcherStore.config.workingDir);
+    const result = await prepareOutputGallery(workingDir);
+    if (workingDir !== launcherStore.config.workingDir) return;
+    images.value = result;
     scrollViewport.value?.scrollTo({ top: 0 });
   } catch (error) {
-    errorMessage.value = String(error);
+    if (workingDir === launcherStore.config.workingDir)
+      errorMessage.value = String(error);
   } finally {
-    isLoading.value = false;
+    if (workingDir === launcherStore.config.workingDir) isLoading.value = false;
   }
 }
 
 async function clearCacheAndReindex() {
   if (isLoading.value) return;
-  await clearGalleryCache();
-  await loadImages();
+  try {
+    await clearGalleryCache();
+    await loadImages();
+  } catch (error) {
+    errorMessage.value = String(error);
+  }
 }
 
 const panX = ref(0);
@@ -508,6 +520,35 @@ function deactivateView() {
   window.removeEventListener('keydown', handleKeydown);
 }
 
+async function restoreImages() {
+  if (!launcherStore.hasComfyDirectory) return;
+  const workingDir = launcherStore.config.workingDir;
+  try {
+    const cached = await listOutputImages(workingDir);
+    if (workingDir !== launcherStore.config.workingDir) return;
+    images.value = cached;
+    void refreshOutputImages(workingDir)
+      .then((latestImages) => {
+        if (workingDir === launcherStore.config.workingDir)
+          images.value = latestImages;
+      })
+      .catch(() => {});
+  } catch {
+    if (workingDir === launcherStore.config.workingDir) await loadImages();
+  }
+}
+
+watch(
+  () => launcherStore.config.workingDir,
+  () => {
+    images.value = [];
+    selectedImage.value = undefined;
+    errorMessage.value = '';
+    isLoading.value = false;
+    void restoreImages();
+  }
+);
+
 onMounted(async () => {
   cacheDirectory.value = await getGalleryCacheDirectory();
   unlistenProgress = await listen<{
@@ -528,14 +569,7 @@ onMounted(async () => {
     }
   });
   activateView();
-  try {
-    images.value = await listOutputImages(launcherStore.config.workingDir);
-    void refreshOutputImages(launcherStore.config.workingDir)
-      .then((latestImages) => (images.value = latestImages))
-      .catch(() => {});
-  } catch {
-    await loadImages();
-  }
+  await restoreImages();
 });
 
 onActivated(activateView);
@@ -771,7 +805,21 @@ onUnmounted(() => {
       >
         <!-- Scanning / Indexing Loader -->
         <div
-          v-if="isLoading && images.length === 0"
+          v-if="!launcherStore.hasComfyDirectory"
+          class="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
+        >
+          <h3 class="text-foreground text-sm font-semibold">
+            Set up your local gallery
+          </h3>
+          <p class="text-xs">
+            Choose your ComfyUI folder in Settings to view local output images.
+          </p>
+          <Button variant="outline" size="sm" @click="router.push('/settings')"
+            >Open Settings</Button
+          >
+        </div>
+        <div
+          v-else-if="isLoading && images.length === 0"
           class="flex h-full items-center justify-center p-8"
         >
           <div

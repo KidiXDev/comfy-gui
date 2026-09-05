@@ -76,6 +76,9 @@ interface Props {
   isQueueing?: boolean;
   progressRecord?: DownloadRecord;
   downloadedRecord?: DownloadRecord;
+  downloadDisabled?: boolean;
+  downloadMessage?: string;
+  errorMessage?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -1001,7 +1004,10 @@ onUnmounted(() => {
                 size="default"
                 :variant="props.isInstalled ? 'secondary' : 'default'"
                 :disabled="
-                  !primaryModelFile || props.isQueueing || props.isInstalled
+                  !primaryModelFile ||
+                  props.isQueueing ||
+                  props.isInstalled ||
+                  props.downloadDisabled
                 "
                 @click="emit('download', model, currentVersion)"
               >
@@ -1013,6 +1019,9 @@ onUnmounted(() => {
                   <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
                   <span>Installed in ComfyUI</span>
                 </template>
+                <template v-else-if="!primaryModelFile"
+                  >No downloadable file</template
+                >
                 <template v-else>
                   <Download class="mr-2 h-4 w-4" />
                   <span
@@ -1022,6 +1031,24 @@ onUnmounted(() => {
                   >
                 </template>
               </Button>
+
+              <div
+                v-if="props.downloadMessage"
+                class="text-muted-foreground space-y-2 text-xs"
+                role="status"
+              >
+                <p>{{ props.downloadMessage }}</p>
+                <Button as-child variant="outline" size="sm"
+                  ><RouterLink to="/settings">Open Settings</RouterLink></Button
+                >
+              </div>
+              <p
+                v-if="props.errorMessage"
+                class="text-destructive text-xs"
+                role="alert"
+              >
+                {{ props.errorMessage }}
+              </p>
 
               <!-- Show in folder button if downloaded -->
               <Button

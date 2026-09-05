@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
 import PromptPresetDialog from '../common/PromptPresetDialog.vue';
+import PromptFormatMenu from '../common/PromptFormatMenu.vue';
 import PromptEnhanceDialog from './PromptEnhanceDialog.vue';
 import WorkflowField from './WorkflowField.vue';
 import { ComfyApi, type AutocompleteItem } from '../../services/comfyApi';
@@ -59,6 +60,7 @@ import {
   adjustPromptWeight,
   estimateClipTokens,
   formatAndCleanPrompt,
+  DEFAULT_FORMAT_OPTIONS,
   parsePromptToChips,
   reconstructPromptFromChips,
   type PromptTag
@@ -84,6 +86,33 @@ const defaultTextareaSizes: PromptTextareaSizes = {
   negative: 80
 };
 const textareaSizes = ref<Partial<PromptTextareaSizes>>({});
+const formatOptions = ref({ ...DEFAULT_FORMAT_OPTIONS });
+let formatOptionsLoaded = false;
+onMounted(async () => {
+  try {
+    const saved = await loadAppData<typeof formatOptions.value>(
+      'prompt_format_options'
+    );
+    for (const key of Object.keys(
+      DEFAULT_FORMAT_OPTIONS
+    ) as (keyof typeof DEFAULT_FORMAT_OPTIONS)[]) {
+      if (typeof saved?.[key] === 'boolean')
+        formatOptions.value[key] = saved[key];
+    }
+  } catch (error) {
+    console.warn('Failed to load prompt format options', error);
+  } finally {
+    formatOptionsLoaded = true;
+  }
+});
+watch(
+  formatOptions,
+  (options) => {
+    if (formatOptionsLoaded)
+      void saveAppData('prompt_format_options', options).catch(console.error);
+  },
+  { deep: true }
+);
 
 async function loadTextareaSizes() {
   try {
@@ -641,11 +670,13 @@ function swapPrompts() {
 function formatPrompt(field: PromptField) {
   if (field === 'positive') {
     workflowStore.positivePrompt = formatAndCleanPrompt(
-      workflowStore.positivePrompt
+      workflowStore.positivePrompt,
+      formatOptions.value
     );
   } else {
     workflowStore.negativePrompt = formatAndCleanPrompt(
-      workflowStore.negativePrompt
+      workflowStore.negativePrompt,
+      formatOptions.value
     );
   }
 }
@@ -792,12 +823,12 @@ const negativeTokenInfo = computed(() =>
             <!-- AI Enhance Button -->
             <button
               type="button"
-              class="text-primary hover:text-primary/80 inline-flex cursor-pointer items-center gap-1 text-xs font-semibold transition-colors"
+              class="text-primary hover:text-primary/80 inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors"
               title="Enhance prompt with AI"
+              aria-label="Enhance positive prompt with AI"
               @click="openEnhanceDialog('positive')"
             >
               <Sparkles class="h-3 w-3" />
-              <span>AI Enhance</span>
             </button>
 
             <span class="text-border">|</span>
@@ -815,9 +846,11 @@ const negativeTokenInfo = computed(() =>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" class="w-48">
-                <DropdownMenuItem @click="formatPrompt('positive')"
-                  ><Sparkles /><span>Format prompt</span></DropdownMenuItem
-                >
+                <PromptFormatMenu
+                  v-model="formatOptions"
+                  :disabled="!workflowStore.positivePrompt.trim()"
+                  @format="formatPrompt('positive')"
+                />
                 <DropdownMenuItem @click="copyPrompt('positive')"
                   ><Check v-if="copiedPositive" class="text-emerald-400" /><Copy
                     v-else
@@ -1280,12 +1313,12 @@ const negativeTokenInfo = computed(() =>
             <!-- AI Enhance Button -->
             <button
               type="button"
-              class="text-primary hover:text-primary/80 inline-flex cursor-pointer items-center gap-1 text-xs font-semibold transition-colors"
+              class="text-primary hover:text-primary/80 inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors"
               title="Enhance negative prompt with AI"
+              aria-label="Enhance negative prompt with AI"
               @click="openEnhanceDialog('negative')"
             >
               <Sparkles class="h-3 w-3" />
-              <span>AI Enhance</span>
             </button>
 
             <span class="text-border">|</span>
@@ -1303,9 +1336,11 @@ const negativeTokenInfo = computed(() =>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" class="w-48">
-                <DropdownMenuItem @click="formatPrompt('negative')"
-                  ><Sparkles /><span>Format prompt</span></DropdownMenuItem
-                >
+                <PromptFormatMenu
+                  v-model="formatOptions"
+                  :disabled="!workflowStore.negativePrompt.trim()"
+                  @format="formatPrompt('negative')"
+                />
                 <DropdownMenuItem @click="copyPrompt('negative')"
                   ><Check v-if="copiedNegative" class="text-emerald-400" /><Copy
                     v-else

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defineStore } from 'pinia';
-import { onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
 import type {
@@ -24,7 +24,20 @@ export const DEFAULT_LAUNCHER_CONFIG: LauncherConfig = {
 };
 
 export function cleanPath(value: string): string {
-  return value.trim().replaceAll(/^['"]+|['"]+$/gu, '');
+  return typeof value === 'string'
+    ? value
+        .trim()
+        .replaceAll(/^['"]+|['"]+$/gu, '')
+        .trim()
+    : '';
+}
+
+export function parseLauncherArgs(value: string): string[] {
+  if (typeof value !== 'string') return [];
+  return Array.from(
+    value.matchAll(/[^\s"']+|"([^"]*)"|'([^']*)'/gu),
+    (match) => match[1] ?? match[2] ?? match[0]
+  );
 }
 
 const STORAGE_KEY = 'launcher_config';
@@ -36,6 +49,16 @@ export const useLauncherStore = defineStore('launcher', () => {
   const isTerminalOpen = ref(false);
   const isSettingsOpen = ref(false);
   const errorMessage = ref('');
+  const hasComfyDirectory = computed(
+    () => cleanPath(config.value.workingDir).length > 0
+  );
+  const localSetupMessage = computed(() => {
+    if (!hasComfyDirectory.value)
+      return 'Choose your ComfyUI folder in Settings to use local images, model discovery, and downloads.';
+    if (!cleanPath(config.value.pythonPath))
+      return 'Choose your Python executable in Settings to enable local model discovery and start ComfyUI.';
+    return '';
+  });
 
   let unlistenLog: UnlistenFn | null = null;
   let unlistenStatus: UnlistenFn | null = null;
@@ -192,6 +215,11 @@ export const useLauncherStore = defineStore('launcher', () => {
   }
 
   async function startServer() {
+    if (localSetupMessage.value) {
+      errorMessage.value = localSetupMessage.value;
+      isSettingsOpen.value = true;
+      return;
+    }
     if (
       processStatus.value === 'running' ||
       processStatus.value === 'starting' ||
@@ -205,12 +233,7 @@ export const useLauncherStore = defineStore('launcher', () => {
     addLog('system', `Starting ComfyUI from ${config.value.workingDir}...`);
 
     try {
-      const argsArray: string[] = [];
-      const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/gu;
-      let match;
-      while ((match = regex.exec(config.value.args)) !== null) {
-        argsArray.push(match[1] || match[2] || match[0]);
-      }
+      const argsArray = parseLauncherArgs(config.value.args);
 
       await invoke('start_comfyui', {
         workingDir: config.value.workingDir,
@@ -276,6 +299,8 @@ export const useLauncherStore = defineStore('launcher', () => {
     isTerminalOpen,
     isSettingsOpen,
     errorMessage,
+    hasComfyDirectory,
+    localSetupMessage,
     loadConfig,
     saveConfig,
     selectComfyDir,

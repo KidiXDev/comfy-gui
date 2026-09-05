@@ -1,4 +1,29 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { HistoryItem } from '../types/workflow';
+
+export function localImageUrl(localId: string, thumbnail = false): string {
+  const kind = thumbnail ? 'thumb' : 'full';
+  return navigator.userAgent.includes('Windows')
+    ? `http://comfygui-image.localhost/${kind}/${localId}`
+    : `comfygui-image://localhost/${kind}/${localId}`;
+}
+
+export function resolveHistoryImages(
+  workingDir: string,
+  args: string[],
+  images: HistoryItem[]
+) {
+  return invoke<Record<string, string>>('resolve_history_images', {
+    workingDir,
+    args,
+    images: images.map(({ id, filename, subfolder, type }) => ({
+      id,
+      filename,
+      subfolder,
+      type
+    }))
+  });
+}
 
 export interface OutputImage {
   localId: string;

@@ -2,7 +2,12 @@ import { useDebounceFn } from '@vueuse/core';
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { loadAppData, saveAppData } from '../services/appStorage';
-import { fetchCivitaiBaseModels } from '../services/civitai';
+import {
+  discoverLocalModels,
+  fetchCivitaiBaseModels
+} from '../services/civitai';
+import type { BridgeModelsResponse } from '../types/comfy';
+import { parseLauncherArgs, useLauncherStore } from './launcherStore';
 
 export interface CivitaiBrowserFilterState {
   modelType?: string;
@@ -12,6 +17,49 @@ export interface CivitaiBrowserFilterState {
 }
 
 export const useCivitaiStore = defineStore('civitai', () => {
+  const launcherStore = useLauncherStore();
+  const localModels = ref<Partial<BridgeModelsResponse> | null>(null);
+  const discoveryError = ref('');
+  let discoveryRequest = 0;
+  let discoveryStarted = false;
+
+  async function refreshLocalModels() {
+    discoveryStarted = true;
+    const request = ++discoveryRequest;
+    discoveryError.value = '';
+    if (launcherStore.localSetupMessage) {
+      localModels.value = null;
+      return;
+    }
+    const { workingDir, pythonPath, args } = launcherStore.config;
+    try {
+      const models = await discoverLocalModels(
+        workingDir,
+        pythonPath,
+        parseLauncherArgs(args)
+      );
+      if (request === discoveryRequest) localModels.value = models;
+    } catch (error) {
+      if (request === discoveryRequest) {
+        localModels.value = null;
+        discoveryError.value = `Local model discovery failed: ${String(error)}`;
+      }
+    }
+  }
+
+  watch(
+    () => [
+      launcherStore.config.workingDir,
+      launcherStore.config.pythonPath,
+      launcherStore.config.args
+    ],
+    () => {
+      ++discoveryRequest;
+      localModels.value = null;
+      discoveryError.value = '';
+      if (discoveryStarted) void refreshLocalModels();
+    }
+  );
   const isLoaded = ref(false);
   const query = ref('');
   const modelType = ref('all');
@@ -81,6 +129,9 @@ export const useCivitaiStore = defineStore('civitai', () => {
 
   return {
     isLoaded,
+    localModels,
+    discoveryError,
+    refreshLocalModels,
     query,
     modelType,
     baseModel,

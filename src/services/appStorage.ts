@@ -8,6 +8,7 @@ type AppDataName =
   | 'launcher_config'
   | 'lora_presets'
   | 'prompt_textarea_sizes'
+  | 'prompt_format_options'
   | 'remove_background_preferences'
   | 'session_history'
   | 'upscaler_preferences'
@@ -24,6 +25,7 @@ const dataFiles: Record<AppDataName, DataFile> = {
   launcher_config: 'config',
   lora_presets: 'state',
   prompt_textarea_sizes: 'state',
+  prompt_format_options: 'state',
   remove_background_preferences: 'state',
   session_history: 'history',
   upscaler_preferences: 'state',

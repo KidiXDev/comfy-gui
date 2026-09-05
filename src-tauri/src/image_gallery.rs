@@ -29,6 +29,7 @@ pub struct OutputImage {
 #[derive(Clone)]
 pub struct GalleryFiles {
     files: Arc<RwLock<HashMap<String, PathBuf>>>,
+    history_files: Arc<RwLock<HashMap<String, PathBuf>>>,
     index: Arc<RwLock<Option<(PathBuf, Vec<OutputImage>)>>>,
     thumbnails_in_flight: Arc<(Mutex<HashSet<String>>, Condvar)>,
     thumbnail_dir: Arc<RwLock<PathBuf>>,
@@ -38,6 +39,7 @@ impl Default for GalleryFiles {
     fn default() -> Self {
         Self {
             files: Arc::default(),
+            history_files: Arc::default(),
             index: Arc::default(),
             thumbnails_in_flight: Arc::new((Mutex::new(HashSet::new()), Condvar::new())),
             thumbnail_dir: Arc::new(RwLock::new(
@@ -62,7 +64,13 @@ impl GalleryFiles {
     }
 
     pub fn read(&self, id: &str, thumbnail: bool) -> Option<(Vec<u8>, &'static str)> {
-        let path = self.files.read().ok()?.get(id)?.clone();
+        let path = self
+            .files
+            .read()
+            .ok()?
+            .get(id)
+            .cloned()
+            .or_else(|| self.history_files.read().ok()?.get(id).cloned())?;
         if thumbnail {
             let cache_dir = self.cache_dir()?;
             fs::create_dir_all(&cache_dir).ok()?;
@@ -171,15 +179,99 @@ pub struct ImageMetadata {
     raw_workflow: String,
 }
 
-fn comfy_dir(working_dir: &str) -> PathBuf {
+fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
-    if path.join("main.py").is_file() {
-        path
-    } else if path.join("ComfyUI").join("main.py").is_file() {
-        path.join("ComfyUI")
-    } else {
-        path
+    if path.as_os_str().is_empty() {
+        return Err("Choose your ComfyUI folder in Settings first.".into());
     }
+    if path.join("main.py").is_file() {
+        Ok(path)
+    } else if path.join("ComfyUI").join("main.py").is_file() {
+        Ok(path.join("ComfyUI"))
+    } else {
+        Err("Select a valid ComfyUI directory in Settings first.".into())
+    }
+}
+
+#[derive(Deserialize)]
+pub struct HistoryImage {
+    id: String,
+    filename: String,
+    subfolder: String,
+    #[serde(rename = "type")]
+    image_type: String,
+}
+
+#[tauri::command]
+pub async fn resolve_history_images(
+    working_dir: String,
+    args: Vec<String>,
+    images: Vec<HistoryImage>,
+    gallery_files: State<'_, GalleryFiles>,
+) -> Result<HashMap<String, String>, String> {
+    let gallery_files = gallery_files.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
+        if working_dir.trim().is_empty() {
+            return Ok(HashMap::new());
+        }
+        let root = comfy_dir(&working_dir)?;
+        let base = directory_argument(&args, "--base-directory", &work).unwrap_or(root);
+        let mut resolved = HashMap::new();
+        let mut files = gallery_files
+            .history_files
+            .write()
+            .map_err(|_| "Image history lock is unavailable")?;
+        for image in images {
+            let root = match image.image_type.as_str() {
+                "output" | "input" => {
+                    directory_argument(&args, &format!("--{}-directory", image.image_type), &work)
+                        .unwrap_or_else(|| base.join(&image.image_type))
+                }
+                "temp" => directory_argument(&args, "--temp-directory", &work)
+                    .map(|path| path.join("temp"))
+                    .unwrap_or_else(|| base.join("temp")),
+                _ => continue,
+            };
+            let Some(path) = history_image_path(&root, &image.subfolder, &image.filename) else {
+                continue;
+            };
+            let mut hasher = DefaultHasher::new();
+            path.hash(&mut hasher);
+            fs::metadata(&path)
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .hash(&mut hasher);
+            let local_id = format!("history-{:x}", hasher.finish());
+            files.insert(local_id.clone(), path);
+            resolved.insert(image.id, local_id);
+        }
+        Ok(resolved)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn directory_argument(args: &[String], flag: &str, work: &Path) -> Option<PathBuf> {
+    let value = args.iter().enumerate().rev().find_map(|(index, arg)| {
+        arg.strip_prefix(&format!("{flag}=")).or_else(|| {
+            (arg == flag)
+                .then(|| args.get(index + 1).map(String::as_str))
+                .flatten()
+        })
+    })?;
+    Some(work.join(value))
+}
+
+fn history_image_path(root: &Path, subfolder: &str, filename: &str) -> Option<PathBuf> {
+    if filename.contains(['/', '\\', ':']) || filename.is_empty() {
+        return None;
+    }
+    let root = root.canonicalize().ok()?;
+    let path = root.join(subfolder).join(filename).canonicalize().ok()?;
+    let extension = path.extension()?.to_str()?.to_lowercase();
+    (path.starts_with(&root) && path.is_file() && IMAGE_EXTENSIONS.contains(&extension.as_str()))
+        .then_some(path)
 }
 
 fn index_path(output_root: &Path, gallery_files: &GalleryFiles) -> Option<PathBuf> {
@@ -291,12 +383,9 @@ pub fn list_output_images(
     working_dir: String,
     gallery_files: State<'_, GalleryFiles>,
 ) -> Result<Vec<OutputImage>, String> {
-    let output_root = comfy_dir(&working_dir).join("output");
+    let output_root = comfy_dir(&working_dir)?.join("output");
     if !output_root.is_dir() {
-        return Err(format!(
-            "ComfyUI output folder does not exist: {}",
-            output_root.display()
-        ));
+        return Ok(Vec::new());
     }
     if let Some((cached_root, images)) = gallery_files
         .index
@@ -357,12 +446,9 @@ fn prepare_output_gallery_blocking(
     working_dir: String,
     gallery_files: GalleryFiles,
 ) -> Result<Vec<OutputImage>, String> {
-    let output_root = comfy_dir(&working_dir).join("output");
+    let output_root = comfy_dir(&working_dir)?.join("output");
     if !output_root.is_dir() {
-        return Err(format!(
-            "ComfyUI output folder does not exist: {}",
-            output_root.display()
-        ));
+        return Ok(Vec::new());
     }
     app_handle
         .emit(
@@ -481,12 +567,9 @@ pub fn refresh_output_images(
     working_dir: String,
     gallery_files: State<'_, GalleryFiles>,
 ) -> Result<Vec<OutputImage>, String> {
-    let output_root = comfy_dir(&working_dir).join("output");
+    let output_root = comfy_dir(&working_dir)?.join("output");
     if !output_root.is_dir() {
-        return Err(format!(
-            "ComfyUI output folder does not exist: {}",
-            output_root.display()
-        ));
+        return Ok(Vec::new());
     }
     scan_output_images(output_root, &gallery_files)
 }
@@ -677,7 +760,7 @@ pub fn read_output_image_metadata(
     working_dir: String,
     path: String,
 ) -> Result<ImageMetadata, String> {
-    let output_root = comfy_dir(&working_dir)
+    let output_root = comfy_dir(&working_dir)?
         .join("output")
         .canonicalize()
         .map_err(|error| error.to_string())?;
@@ -701,6 +784,52 @@ pub fn read_output_image_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serves_history_locally_and_rejects_paths_outside_root() {
+        assert!(comfy_dir("").is_err());
+        assert!(comfy_dir(" \"\" ").is_err());
+        let root = std::env::temp_dir().join(format!("history-test-{}", std::process::id()));
+        fs::create_dir_all(root.join("output/nested")).unwrap();
+        assert!(comfy_dir(root.to_str().unwrap()).is_err());
+        fs::write(root.join("main.py"), b"").unwrap();
+        assert_eq!(comfy_dir(root.to_str().unwrap()).unwrap(), root);
+        fs::write(root.join("output/nested/image.png"), b"local image").unwrap();
+        fs::write(root.join("outside.png"), b"outside").unwrap();
+        let output = root.join("output");
+        let path = history_image_path(&output, "nested", "image.png").unwrap();
+        assert!(history_image_path(&output, "..", "outside.png").is_none());
+        assert!(history_image_path(&output, "", "../outside.png").is_none());
+        assert!(history_image_path(&output, "", "missing.png").is_none());
+        let files = GalleryFiles::default();
+        files
+            .history_files
+            .write()
+            .unwrap()
+            .insert("history-test".into(), path);
+        files.files.write().unwrap().clear();
+        assert_eq!(
+            files.read("history-test", false).unwrap(),
+            (b"local image".to_vec(), "image/png")
+        );
+        assert_eq!(
+            directory_argument(
+                &["--output-directory".into(), "custom".into()],
+                "--output-directory",
+                &root
+            ),
+            Some(root.join("custom"))
+        );
+        assert_eq!(
+            directory_argument(
+                &["--output-directory=custom".into()],
+                "--output-directory",
+                &root
+            ),
+            Some(root.join("custom"))
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn extracts_comfy_prompt_fields() {

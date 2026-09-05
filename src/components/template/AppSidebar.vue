@@ -29,12 +29,6 @@ const launcherStore = useLauncherStore();
 
 const navItems = [
   {
-    id: 'danbooru-wiki',
-    label: 'Danbooru Tag Wiki',
-    icon: BookOpen,
-    route: '/danbooru-wiki'
-  },
-  {
     id: 'workflow',
     label: 'Workflow Generator',
     icon: Image,
@@ -172,6 +166,26 @@ function navigate(path: string) {
         </TooltipContent>
       </Tooltip>
 
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <button
+            type="button"
+            aria-label="Danbooru Tag Wiki"
+            class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg transition-all duration-150"
+            :class="
+              route.path.startsWith('/danbooru-wiki')
+                ? 'border-primary/30 bg-accent text-primary border shadow-xs'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            "
+            @click="navigate('/danbooru-wiki')"
+          >
+            <BookOpen class="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" :side-offset="10"
+          ><p class="font-medium">Danbooru Tag Wiki</p></TooltipContent
+        >
+      </Tooltip>
       <DownloadManagerPopover />
     </div>
   </aside>

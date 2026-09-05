@@ -1,24 +1,78 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import {
   deleteAppData,
   loadAppData,
   saveAppData
 } from '../services/appStorage';
+import { localImageUrl, resolveHistoryImages } from '../services/imageGallery';
 import type { HistoryItem, WorkflowState } from '../types/workflow';
+import { parseLauncherArgs, useLauncherStore } from './launcherStore';
 
 const STORAGE_KEY = 'session_history';
+const PANEL_OPEN_STORAGE_KEY = 'workflow_history_panel_open';
+
+function getInitialPanelOpen(): boolean {
+  try {
+    const saved = localStorage.getItem(PANEL_OPEN_STORAGE_KEY);
+    if (saved !== null) {
+      return saved === 'true';
+    }
+  } catch {
+    // fallback to default
+  }
+  return true;
+}
 
 export const useHistoryStore = defineStore('history', () => {
+  const launcherStore = useLauncherStore();
   const items = ref<HistoryItem[]>([]);
-  const isPanelOpen = ref(true);
+  const isPanelOpen = ref(getInitialPanelOpen());
   const isDrawerOpen = ref(false);
+
+  async function resolveLocalImages(historyItems = items.value) {
+    const { workingDir, args } = launcherStore.config;
+    if (!workingDir || historyItems.length === 0) return;
+    try {
+      const resolved = await resolveHistoryImages(
+        workingDir,
+        parseLauncherArgs(args),
+        historyItems
+      );
+      if (
+        workingDir !== launcherStore.config.workingDir ||
+        args !== launcherStore.config.args
+      )
+        return;
+      for (const item of historyItems) {
+        if (resolved[item.id]) item.imageUrl = localImageUrl(resolved[item.id]);
+      }
+    } catch (error) {
+      console.warn('Could not resolve local history images', error);
+    }
+  }
+
+  watch(
+    () => [launcherStore.config.workingDir, launcherStore.config.args],
+    () => {
+      void resolveLocalImages();
+    }
+  );
+
+  watch(isPanelOpen, (val) => {
+    try {
+      localStorage.setItem(PANEL_OPEN_STORAGE_KEY, String(val));
+    } catch {
+      // ignore storage error
+    }
+  });
 
   async function loadHistory() {
     try {
       const saved = await loadAppData<HistoryItem[]>(STORAGE_KEY);
       if (saved) {
         items.value = saved;
+        await resolveLocalImages();
       }
     } catch {
       // ignore parse error
@@ -55,6 +109,7 @@ export const useHistoryStore = defineStore('history', () => {
       items.value.pop();
     }
     void saveHistory();
+    void resolveLocalImages([items.value[0]]);
   }
 
   function removeHistory(id: string) {

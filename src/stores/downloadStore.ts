@@ -9,6 +9,7 @@ import {
   resumeDownload,
   type DownloadRecord
 } from '../services/downloadManager';
+import { cleanPath } from './launcherStore';
 
 export const useDownloadStore = defineStore('downloads', () => {
   const items = ref<DownloadRecord[]>([]);
@@ -43,6 +44,12 @@ export const useDownloadStore = defineStore('downloads', () => {
     workingDir: string;
     apiKey: string;
   }) {
+    if (!cleanPath(options.workingDir))
+      throw new Error(
+        'Choose your ComfyUI folder in Settings before downloading models.'
+      );
+    if (!Number.isSafeInteger(options.versionId) || options.versionId <= 0)
+      throw new Error('Select a valid model version before downloading.');
     const record = await queueCivitaiDownload(options);
     const index = items.value.findIndex((item) => item.gid === record.gid);
     if (index === -1) items.value.unshift(record);

@@ -377,6 +377,8 @@ pub fn run() {
             download_manager::cancel,
             download_manager::clear_history,
             image_gallery::list_output_images,
+            image_gallery::resolve_history_images,
+            process_manager::discover_local_models,
             image_gallery::prepare_output_gallery,
             image_gallery::clear_gallery_cache,
             image_gallery::gallery_cache_directory,

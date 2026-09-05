@@ -66,6 +66,37 @@ describe('promptTools', () => {
     );
   });
 
+  test('supports formatting options without damaging grouped or escaped tags', () => {
+    expect(formatAndCleanPrompt(' , \r\n , ')).toBe('');
+    expect(
+      formatAndCleanPrompt('blue_hair, blue hair, __hair_color__', {
+        replaceUnderscores: true
+      })
+    ).toBe('blue hair, __hair_color__');
+    expect(formatAndCleanPrompt('a, a', { deduplicate: false })).toBe('a, a');
+    expect(
+      formatAndCleanPrompt('a,\r\n\r\n b, b', { keepNewlines: true })
+    ).toBe('a\n\nb');
+    expect(
+      formatAndCleanPrompt('long   hair, blue\t eyes', {
+        collapseWhitespace: true
+      })
+    ).toBe('long hair, blue eyes');
+    expect(
+      formatAndCleanPrompt('(a, a:1.2), [b, b], {c|c}, BREAK, BREAK')
+    ).toBe('(a, a:1.2), [b, b], {c|c}, BREAK, BREAK');
+    const escaped = formatAndCleanPrompt(
+      String.raw`name_(series), already\(escaped\), (weighted:1.2)`,
+      { escapeParentheses: true, replaceUnderscores: true }
+    );
+    expect(escaped).toBe(
+      String.raw`name \(series\), already\(escaped\), \(weighted:1.2\)`
+    );
+    expect(formatAndCleanPrompt(escaped, { escapeParentheses: true })).toBe(
+      escaped
+    );
+  });
+
   test('estimates tokens', () => {
     const tokens = estimateClipTokens('1girl, masterpiece, best quality, solo');
     expect(tokens.count).toBeGreaterThan(0);

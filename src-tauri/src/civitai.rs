@@ -139,6 +139,9 @@ pub async fn model_by_id(id: u64, api_key: String) -> Result<Value, String> {
 
 fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
+    if path.as_os_str().is_empty() {
+        return Err("Select a ComfyUI directory in Settings first.".into());
+    }
     if path.join("main.py").is_file() {
         Ok(path)
     } else if path.join("ComfyUI").join("main.py").is_file() {
@@ -261,6 +264,10 @@ fn download_blocking(
     working_dir: String,
     api_key: String,
 ) -> Result<DownloadRecord, String> {
+    let root = comfy_dir(&working_dir)?;
+    if version_id == 0 {
+        return Err("Select a valid model version before downloading.".into());
+    }
     let client = client()?;
     let metadata_url = format!("{API_BASE}/model-versions/{version_id}");
     let metadata = response_json(
@@ -312,7 +319,7 @@ fn download_blocking(
     }
     let download_url = response.url().to_string();
 
-    let directory = comfy_dir(&working_dir)?
+    let directory = root
         .join("models")
         .join(model_folder(model_type, base_model, file_type)?);
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
@@ -408,6 +415,12 @@ mod tests {
     use super::{
         is_civitai_host, is_image_item, model_folder, preview_extension, safe_filename,
     };
+
+    #[test]
+    fn rejects_unconfigured_download_directory() {
+        assert!(super::comfy_dir("").is_err());
+        assert!(super::comfy_dir(" \"\" ").is_err());
+    }
 
     #[test]
     fn maps_supported_types_and_sanitizes_filenames() {

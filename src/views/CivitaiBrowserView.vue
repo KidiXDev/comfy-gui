@@ -58,6 +58,7 @@ import { loadAppData } from '../services/appStorage';
 import { useCivitaiStore } from '../stores/civitaiStore';
 import { useComfyStore } from '../stores/comfyStore';
 import { useDownloadStore } from '../stores/downloadStore';
+import { useLauncherStore } from '../stores/launcherStore';
 
 defineOptions({ name: 'CivitaiBrowserView' });
 
@@ -91,6 +92,7 @@ function modelFileSet(...groups: (string[] | undefined)[]) {
 const router = useRouter();
 const route = useRoute();
 const comfyStore = useComfyStore();
+const launcherStore = useLauncherStore();
 const downloadStore = useDownloadStore();
 const civitaiStore = useCivitaiStore();
 const { query, modelType, baseModel, sort, period, baseModels } =
@@ -119,7 +121,9 @@ const downloaded = computed<Record<number, DownloadRecord>>(() =>
   )
 );
 const discoveredModelFiles = computed(() => {
-  const bridge = comfyStore.bridgeModels;
+  const bridge =
+    civitaiStore.localModels ??
+    (launcherStore.hasComfyDirectory ? comfyStore.bridgeModels : null);
   return {
     checkpoints: modelFileSet(bridge?.checkpoints, bridge?.unets),
     loras: modelFileSet(bridge?.loras),
@@ -245,7 +249,7 @@ function isModelDownloaded(model: CivitaiModel): boolean {
 }
 
 function refreshModels() {
-  void comfyStore.refreshModels();
+  void civitaiStore.refreshLocalModels();
   void loadModels(false);
 }
 
@@ -366,6 +370,7 @@ function deactivateView() {
 }
 
 onMounted(async () => {
+  void civitaiStore.refreshLocalModels();
   if (!civitaiStore.isLoaded) {
     await civitaiStore.init();
   }
@@ -377,7 +382,6 @@ onMounted(async () => {
   );
   apiKey.value = settings?.apiKey ?? '';
   nsfw.value = settings?.nsfw ?? false;
-  void comfyStore.fetchDiscovery();
   await loadModels();
   resizeObserver = new ResizeObserver(([entry]) => {
     if (entry) gridWidth.value = entry.contentRect.width;
@@ -612,6 +616,26 @@ onUnmounted(() => {
       @scroll.passive="handleScroll"
     >
       <!-- Error Message Banner -->
+      <p
+        v-if="civitaiStore.discoveryError"
+        class="text-destructive mb-4 text-xs"
+        role="alert"
+      >
+        {{ civitaiStore.discoveryError }}
+      </p>
+      <div
+        v-if="launcherStore.localSetupMessage"
+        class="bg-muted text-muted-foreground mb-4 flex items-center justify-between gap-3 rounded-lg p-3 text-xs"
+        role="status"
+      >
+        <span
+          >{{ launcherStore.localSetupMessage }} You can still browse
+          Civitai.</span
+        >
+        <Button variant="outline" size="sm" @click="router.push('/settings')"
+          >Open Settings</Button
+        >
+      </div>
       <div
         v-if="errorMessage"
         class="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center justify-between rounded-lg border px-4 py-3 text-xs shadow-xs"

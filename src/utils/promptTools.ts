@@ -13,7 +13,19 @@ export interface WeightAdjustResult {
 
 export interface FormatOptions {
   deduplicate?: boolean;
+  escapeParentheses?: boolean;
+  replaceUnderscores?: boolean;
+  keepNewlines?: boolean;
+  collapseWhitespace?: boolean;
 }
+
+export const DEFAULT_FORMAT_OPTIONS: Required<FormatOptions> = {
+  deduplicate: true,
+  escapeParentheses: false,
+  replaceUnderscores: false,
+  keepNewlines: false,
+  collapseWhitespace: false
+};
 
 /**
  * Parses a single tag string into its base text and numerical weight.
@@ -172,19 +184,58 @@ export function formatAndCleanPrompt(
   options?: FormatOptions
 ): string {
   if (!prompt.trim()) return '';
-  const deduplicate = options?.deduplicate ?? true;
-
-  const rawTags = prompt.split(/[,，\n]+/u);
+  const settings = { ...DEFAULT_FORMAT_OPTIONS, ...options };
+  const rawTags: string[] = [];
+  let tag = '';
+  const groups: string[] = [];
+  const closing: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
+  const source = prompt.replaceAll(/\r\n?/gu, '\n');
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (char === '\\' && index + 1 < source.length) {
+      tag += char + source[++index];
+      continue;
+    }
+    if (closing[char]) groups.push(closing[char]);
+    else if (char === groups.at(-1)) groups.pop();
+    if (
+      groups.length === 0 &&
+      (char === ',' || char === '，' || char === '\n')
+    ) {
+      rawTags.push(tag);
+      if (char === '\n' && settings.keepNewlines) rawTags.push('\n');
+      tag = '';
+    } else {
+      tag += char === '\n' && !settings.keepNewlines ? ' ' : char;
+    }
+  }
+  rawTags.push(tag);
   const seen = new Set<string>();
   const cleaned: string[] = [];
 
   for (const raw of rawTags) {
-    const trimmed = raw.trim();
+    if (raw === '\n') {
+      cleaned.push('\n');
+      continue;
+    }
+    let trimmed = raw.trim();
+    if (settings.replaceUnderscores) {
+      trimmed = trimmed.replaceAll(/__[^\s]+?__|_/gu, (match) =>
+        match === '_' ? ' ' : match
+      );
+    }
+    if (settings.collapseWhitespace)
+      trimmed = trimmed.replaceAll(/[^\S\n]+/gu, ' ');
+    if (settings.escapeParentheses)
+      trimmed = trimmed.replaceAll(/\\.|[()]/gu, (match) =>
+        match.length === 1 ? `\\${match}` : match
+      );
+    trimmed = trimmed.trim();
     if (!trimmed) continue;
 
     // Normalizing for duplicate detection (case-insensitive on base text)
     const normalizedKey = trimmed.toLowerCase();
-    if (deduplicate) {
+    if (settings.deduplicate && !/^(BREAK|AND)$/u.test(trimmed)) {
       if (seen.has(normalizedKey)) continue;
       seen.add(normalizedKey);
     }
@@ -192,7 +243,15 @@ export function formatAndCleanPrompt(
     cleaned.push(trimmed);
   }
 
-  return cleaned.join(', ');
+  return cleaned
+    .reduce(
+      (result, value) =>
+        result +
+        (value === '\n' || !result || result.endsWith('\n') ? '' : ', ') +
+        value,
+      ''
+    )
+    .trim();
 }
 
 /**

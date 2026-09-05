@@ -1,4 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { BridgeModelsResponse } from '../types/comfy';
+
+export function discoverLocalModels(
+  workingDir: string,
+  pythonPath: string,
+  args: string[]
+) {
+  return invoke<Partial<BridgeModelsResponse>>('discover_local_models', {
+    workingDir,
+    pythonPath,
+    args
+  });
+}
 
 export interface CivitaiFile {
   id: number;
