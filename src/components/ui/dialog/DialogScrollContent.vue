@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { DialogContentEmits, DialogContentProps } from 'reka-ui';
+import type {
+  DialogContentEmits,
+  DialogContentProps,
+  FocusOutsideEvent,
+  PointerDownOutsideEvent
+} from 'reka-ui';
 import type { HTMLAttributes } from 'vue';
 import { X } from '@lucide/vue';
 import { reactiveOmit } from '@vueuse/core';
@@ -24,12 +29,24 @@ const emits = defineEmits<DialogContentEmits>();
 const delegatedProps = reactiveOmit(props, 'class');
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+
+function preventTitlebarDismiss(
+  event: FocusOutsideEvent | PointerDownOutsideEvent
+) {
+  const target = event.detail.originalEvent.target;
+  if (
+    target instanceof Node &&
+    !document.querySelector('#app-content')?.contains(target)
+  ) {
+    event.preventDefault();
+  }
+}
 </script>
 
 <template>
-  <DialogPortal>
+  <DialogPortal defer to="#app-content">
     <DialogOverlay
-      class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/80"
+      class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 absolute inset-0 z-50 grid place-items-center overflow-y-auto bg-black/80"
     >
       <DialogContent
         :class="
@@ -39,6 +56,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
           )
         "
         v-bind="{ ...$attrs, ...forwarded }"
+        @interact-outside="preventTitlebarDismiss"
         @pointer-down-outside="
           (event) => {
             const originalEvent = event.detail.originalEvent;

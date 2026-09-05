@@ -103,7 +103,7 @@ onUnmounted(() => {
 <template>
   <header
     data-tauri-drag-region
-    class="border-border bg-card/95 text-foreground flex h-10 shrink-0 items-center justify-between border-b pl-2 backdrop-blur-md select-none"
+    class="border-border bg-card/95 text-foreground pointer-events-auto flex h-10 shrink-0 items-center justify-between border-b pl-2 backdrop-blur-md select-none"
     @dblclick="handleToggleMaximize"
   >
     <!-- Left: App Brand & View Breadcrumb -->

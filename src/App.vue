@@ -95,7 +95,10 @@ onUnmounted(() => {
       <AppTitlebar />
 
       <!-- Main Application Body: Sidebar + Active Router View -->
-      <div class="flex min-h-0 w-full flex-1 overflow-hidden">
+      <div
+        id="app-content"
+        class="relative flex min-h-0 w-full flex-1 overflow-hidden"
+      >
         <!-- Icon-only Sidebar Rail -->
         <AppSidebar />
 
@@ -110,49 +113,48 @@ onUnmounted(() => {
             </KeepAlive>
           </RouterView>
         </main>
+        <!-- Global Terminal Slide-over Drawer -->
+        <TerminalDrawer />
+
+        <!-- Global AI Assistant Slide-over Drawer -->
+        <AiAssistantDrawer />
+
+        <Dialog
+          :open="shutdownDialogOpen"
+          @update:open="(open) => !open && cancelShutdown()"
+        >
+          <DialogContent>
+            <DialogHeader>
+              <div class="flex items-center gap-2">
+                <AlertTriangle class="h-5 w-5 text-amber-400" />
+                <DialogTitle>ComfyUI is still running</DialogTitle>
+              </div>
+              <DialogDescription>
+                Cancel generation and shut down ComfyUI?
+              </DialogDescription>
+            </DialogHeader>
+
+            <p v-if="shutdownError" class="text-destructive text-xs">
+              {{ shutdownError }}
+            </p>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                :disabled="isShuttingDown"
+                @click="cancelShutdown"
+              >
+                Cancel
+              </Button>
+              <Button :disabled="isShuttingDown" @click="continueShutdown">
+                <Loader2 v-if="isShuttingDown" class="h-4 w-4 animate-spin" />
+                {{ isShuttingDown ? 'Shutting down...' : 'Continue' }}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Toaster position="bottom-right" richColors />
       </div>
-
-      <!-- Global Terminal Slide-over Drawer -->
-      <TerminalDrawer />
-
-      <!-- Global AI Assistant Slide-over Drawer -->
-      <AiAssistantDrawer />
-
-      <Dialog
-        :open="shutdownDialogOpen"
-        @update:open="(open) => !open && cancelShutdown()"
-      >
-        <DialogContent>
-          <DialogHeader>
-            <div class="flex items-center gap-2">
-              <AlertTriangle class="h-5 w-5 text-amber-400" />
-              <DialogTitle>ComfyUI is still running</DialogTitle>
-            </div>
-            <DialogDescription>
-              Cancel generation and shut down ComfyUI?
-            </DialogDescription>
-          </DialogHeader>
-
-          <p v-if="shutdownError" class="text-destructive text-xs">
-            {{ shutdownError }}
-          </p>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              :disabled="isShuttingDown"
-              @click="cancelShutdown"
-            >
-              Cancel
-            </Button>
-            <Button :disabled="isShuttingDown" @click="continueShutdown">
-              <Loader2 v-if="isShuttingDown" class="h-4 w-4 animate-spin" />
-              {{ isShuttingDown ? 'Shutting down...' : 'Continue' }}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Toaster position="bottom-right" richColors />
     </div>
   </TooltipProvider>
 </template>

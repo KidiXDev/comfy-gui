@@ -30,7 +30,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
 </script>
 
 <template>
-  <DropdownMenuPortal>
+  <DropdownMenuPortal defer to="#app-content">
     <DropdownMenuContent
       data-slot="dropdown-menu-content"
       v-bind="{ ...$attrs, ...forwarded }"

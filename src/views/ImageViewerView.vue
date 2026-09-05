@@ -1021,7 +1021,7 @@ onUnmounted(() => {
       </div>
 
       <!-- High-End Detail Lightbox & Generation Data Inspector Modal -->
-      <Teleport to="body">
+      <Teleport defer to="#app-content">
         <!-- Pure Fade Transition for Backdrop / Modal -->
         <Transition
           enter-active-class="transition-opacity duration-250 ease-out"
@@ -1033,7 +1033,7 @@ onUnmounted(() => {
         >
           <div
             v-if="selectedImage"
-            class="fixed inset-0 z-100 flex overflow-hidden bg-black/70 backdrop-blur-md"
+            class="absolute inset-0 z-100 flex overflow-hidden bg-black/70 backdrop-blur-md"
             @click.self="selectedImage = undefined"
           >
             <!-- Center Canvas Viewport -->

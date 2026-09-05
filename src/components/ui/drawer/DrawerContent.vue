@@ -26,14 +26,14 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
 </script>
 
 <template>
-  <DrawerPortal>
+  <DrawerPortal defer to="#app-content">
     <DrawerOverlay />
     <DrawerContent
       data-slot="drawer-content"
       v-bind="{ ...$attrs, ...forwarded }"
       :class="
         cn(
-          'group/drawer-content bg-background fixed z-50 flex h-auto flex-col',
+          'group/drawer-content bg-background absolute z-50 flex h-auto flex-col',
           'transform-[translate3d(var(--drawer-swipe-movement-x,0px),var(--drawer-swipe-movement-y,0px),0)] will-change-transform',
           'transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] data-swiping:duration-0 data-swiping:select-none',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',

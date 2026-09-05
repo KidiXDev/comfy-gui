@@ -24,7 +24,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
 </script>
 
 <template>
-  <MenubarPortal>
+  <MenubarPortal defer to="#app-content">
     <MenubarSubContent
       data-slot="menubar-sub-content"
       v-bind="{ ...$attrs, ...forwarded }"

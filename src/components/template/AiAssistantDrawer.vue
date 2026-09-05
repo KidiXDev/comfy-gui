@@ -392,13 +392,13 @@ function renderMarkdown(content: string): string {
     <!-- Backdrop Overlay (allows clicking to dismiss) -->
     <div
       v-if="aiStore.isDrawerOpen"
-      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs transition-opacity duration-300"
+      class="absolute inset-0 z-40 bg-black/40 backdrop-blur-xs transition-opacity duration-300"
       @click="aiStore.isDrawerOpen = false"
     />
 
     <!-- Slide-over Drawer -->
     <aside
-      class="border-border bg-sidebar fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-xl"
+      class="border-border bg-sidebar absolute top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-xl"
       :class="aiStore.isDrawerOpen ? 'translate-x-0' : 'translate-x-full'"
     >
       <!-- Hidden File Input for Image Attachments -->

@@ -129,7 +129,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport defer to="#app-content">
     <Transition
       enter-active-class="transition-opacity duration-250 ease-out"
       enter-from-class="opacity-0"
@@ -140,7 +140,7 @@ onUnmounted(() => {
     >
       <div
         v-if="open && src"
-        class="fixed inset-0 z-100 flex items-center justify-center overflow-hidden bg-black/70 backdrop-blur-md select-none"
+        class="absolute inset-0 z-100 flex items-center justify-center overflow-hidden bg-black/70 backdrop-blur-md select-none"
         @click="handleBackdropClick"
         @wheel.prevent.stop="handleZoom"
       >
