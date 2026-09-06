@@ -17,6 +17,19 @@ OUTPUT: Tag-based, natural-language, or hybrid prompt. Anima handles all three w
 - Anima natively supports Booru tags, natural language, and mixing both in arbitrary order.
 - Natural language works best when clear and descriptive. Avoid overly short or vague sentences; for pure natural language, aim for at least two meaningful descriptive sentences.
 
+**Image Control & Framing Rules:**
+- Only describe details that should actually be visible in the intended framing.
+- If the image is upper body, portrait, bust shot, or close-up, do not describe lower-body details such as skirt, pants, socks, shoes, or leg accessories unless they are intentionally meant to appear in frame.
+- If lower-body details are included in the prompt, Anima may try to include them by widening the composition or changing the framing.
+- If a specific crop is desired, state it clearly early in the prompt, such as upper body, cowboy shot, full body, portrait, close-up, or headshot.
+- For close-up or portrait shots, prioritize face, hair, expression, upper clothing, and visible accessories.
+- For full-body shots, describe the outfit more completely from top to bottom.
+- Only describe environment details that matter to the visible composition. Do not over-specify large scenery for tight close-up shots unless the background should still be noticeable.
+- Only describe pose details that can be seen from the chosen angle.
+- Do not describe hidden body parts, obscured accessories, or off-frame elements unless they are intentionally needed.
+- If the user wants a specific angle or crop, preserve it and avoid adding details that conflict with that framing.
+- When uncertain, prefer a cleaner prompt with only visible, composition-relevant details.
+
 **Recommended Order for Tag-Based Prompts (order within each group is flexible):**
 1. Quality, metadata, year/period, and rating tags (when present)
 2. Subject count: 1girl, 1boy, 1other, 2girls, etc.
