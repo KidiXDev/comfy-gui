@@ -627,7 +627,7 @@ export const useAiStore = defineStore('ai', () => {
 
         inject_positive_prompt: tool({
           description:
-            'Propose or inject a new or enhanced positive prompt into the studio. Never request generation in the same step. If the user also wants generation, wait until this change is approved and completed, then request generation in a later step.',
+            'Propose or inject a new or enhanced positive prompt into the studio.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced positive prompt text'),
             reason: z
@@ -641,7 +641,7 @@ export const useAiStore = defineStore('ai', () => {
 
         inject_negative_prompt: tool({
           description:
-            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use the positive prompt capability and preserve the current negative prompt. Never request generation in the same step; wait until this change is approved and completed first.',
+            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use the positive prompt capability and preserve the current negative prompt.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced negative prompt text'),
             reason: z
@@ -655,7 +655,7 @@ export const useAiStore = defineStore('ai', () => {
 
         queue_generation: tool({
           description:
-            'Delegate the already-approved current workflow to ComfyUI and wait for that exact job to finish. Use this only when no prompt change is pending or awaiting approval, and never request it in parallel with a prompt update. The completed result includes the generated image; use it to report completion and discuss the result with the user.',
+            'Delegate the current workflow to ComfyUI and wait for that exact job to finish. The completed result includes the generated image so you can report completion and discuss the result with the user.',
           inputSchema: z.object({
             reason: z
               .string()
@@ -668,7 +668,7 @@ export const useAiStore = defineStore('ai', () => {
 
         search_character_library: tool({
           description:
-            'Search the user\'s local Character Library for custom, user-verified character definitions. Results here are always more reliable than Animadex for clothing, accessories, and detailed appearance tags. Prefer these results over Animadex when both are available for the same character.',
+            "Search the user's local Character Library for custom, user-verified character definitions. Results here are always more reliable than Animadex for clothing, accessories, and detailed appearance tags. Prefer these results over Animadex when both are available for the same character.",
           inputSchema: z.object({
             query: z
               .string()
@@ -679,9 +679,8 @@ export const useAiStore = defineStore('ai', () => {
           }),
           execute: async ({ query }) => {
             try {
-              const { LibraryService } = await import(
-                '../services/libraryService'
-              );
+              const { LibraryService } =
+                await import('../services/libraryService');
               const entries = await LibraryService.listItems('characters');
               const q = query.toLowerCase();
               const matches = entries
