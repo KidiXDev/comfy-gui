@@ -9,6 +9,7 @@ import {
   HardDriveDownload,
   Image,
   Images,
+  Library,
   Scaling,
   ScanFace,
   Settings,
@@ -47,6 +48,12 @@ const navItems = [
     label: 'Image Viewer',
     icon: Images,
     route: '/viewer'
+  },
+  {
+    id: 'library',
+    label: 'Preset Library',
+    icon: Library,
+    route: '/library'
   },
   {
     id: 'booru',

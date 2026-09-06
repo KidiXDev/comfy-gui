@@ -36,7 +36,8 @@ type ApprovalDecision = {
 const READ_ONLY_TOOLS: ToolName[] = [
   'inspect_current_prompt',
   'search_animadex',
-  'retrieve_animadex_tag_by_id'
+  'retrieve_animadex_tag_by_id',
+  'search_character_library'
 ];
 const NOOP = () => {};
 
@@ -663,6 +664,77 @@ export const useAiStore = defineStore('ai', () => {
           }),
           execute: (input, { toolCallId }) =>
             executeStudioTool('queue_generation', input, toolCallId)
+        }),
+
+        search_character_library: tool({
+          description:
+            'Search the user\'s local Character Library for custom, user-verified character definitions. Results here are always more reliable than Animadex for clothing, accessories, and detailed appearance tags. Prefer these results over Animadex when both are available for the same character.',
+          inputSchema: z.object({
+            query: z
+              .string()
+              .min(1)
+              .describe(
+                'Character name, series, trigger tag, or any tag keyword to search for'
+              )
+          }),
+          execute: async ({ query }) => {
+            try {
+              const { LibraryService } = await import(
+                '../services/libraryService'
+              );
+              const entries = await LibraryService.listItems('characters');
+              const q = query.toLowerCase();
+              const matches = entries
+                .filter((e) => {
+                  return (
+                    e.name.toLowerCase().includes(q) ||
+                    e.description?.toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 8);
+
+              if (matches.length === 0) {
+                return {
+                  found: false,
+                  message:
+                    'No characters found in your local library for that query. Try searching Animadex instead.'
+                };
+              }
+
+              // Fetch full data for top matches
+              const results = await Promise.all(
+                matches.map(async (e) => {
+                  try {
+                    const item = await LibraryService.getItem<{
+                      trigger: string;
+                      tags: string[];
+                      series?: string;
+                      source?: string;
+                    }>(e.id, 'characters');
+                    return {
+                      name: item.name,
+                      series: item.data.series,
+                      trigger: item.data.trigger,
+                      tags: item.data.tags,
+                      source: item.data.source ?? 'local',
+                      description: item.description
+                    };
+                  } catch {
+                    return null;
+                  }
+                })
+              );
+
+              return {
+                found: true,
+                source: 'local_character_library',
+                note: 'These are user-verified character definitions. Tags here are considered more complete and accurate than Animadex.',
+                results: results.filter(Boolean)
+              };
+            } catch (err) {
+              return { found: false, error: String(err) };
+            }
+          }
         })
       };
 

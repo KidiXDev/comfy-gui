@@ -41,6 +41,7 @@ export type ToolName =
   | 'inspect_current_prompt'
   | 'search_animadex'
   | 'retrieve_animadex_tag_by_id'
+  | 'search_character_library'
   | 'inject_positive_prompt'
   | 'inject_negative_prompt'
   | 'queue_generation';

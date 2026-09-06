@@ -1,13 +1,41 @@
+use crate::network_cache;
 use reqwest::blocking::Client;
 use serde_json::Value;
 use std::time::Duration;
+use tauri::AppHandle;
+
+const DANBOORU_WIKI_TTL_SECONDS: u64 = 7 * 24 * 3600; // 7 days
 
 #[tauri::command]
 pub async fn danbooru_wiki_request(
+    app_handle: AppHandle,
     title: Option<String>,
     post_ids: Option<Vec<u64>>,
+    force_refresh: Option<bool>,
 ) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    // Construct unique cache key
+    let cache_key = if let Some(ref t) = title {
+        format!("wiki:{}", t.trim().to_lowercase())
+    } else {
+        let mut ids = post_ids.clone().unwrap_or_default();
+        ids.sort_unstable();
+        format!(
+            "posts:{}",
+            ids.iter().map(u64::to_string).collect::<Vec<_>>().join(",")
+        )
+    };
+
+    let bypass_cache = force_refresh.unwrap_or(false);
+
+    // 1. Check disk cache if not forcing refresh
+    if !bypass_cache {
+        if let Some(cached) = network_cache::read_cache(&app_handle, "danbooru_wiki", &cache_key) {
+            return Ok(cached);
+        }
+    }
+
+    // 2. Fetch from network
+    let fetched = tauri::async_runtime::spawn_blocking(move || {
         let client = Client::builder()
             .user_agent("ComfyGUI/1.0 (Danbooru Tag Wiki)")
             .timeout(Duration::from_secs(30))
@@ -42,5 +70,16 @@ pub async fn danbooru_wiki_request(
         response.json().map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+
+    // 3. Save to disk cache
+    let _ = network_cache::write_cache(
+        &app_handle,
+        "danbooru_wiki",
+        &cache_key,
+        &fetched,
+        DANBOORU_WIKI_TTL_SECONDS,
+    );
+
+    Ok(fetched)
 }

@@ -1,0 +1,166 @@
+import { invoke } from '@tauri-apps/api/core';
+import type {
+  LibraryCategory,
+  LibraryItem,
+  LibraryListEntry,
+  MigrationReport,
+  SaveLibraryItemPayload
+} from '../types/library';
+
+// ---------------------------------------------------------------------------
+// Internal raw shape returned by Rust (camelCase from serde rename_all)
+// ---------------------------------------------------------------------------
+
+interface RawListEntry {
+  id: string;
+  category: string;
+  name: string;
+  description?: string;
+  thumbnailId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface RawItem<T = unknown> extends RawListEntry {
+  data: T;
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail URL builder
+// ---------------------------------------------------------------------------
+
+function thumbnailUrl(thumbnailId: string): string {
+  const id = encodeURIComponent(thumbnailId);
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows')
+    ? `http://comfygui-library.localhost/thumb/${id}`
+    : `comfygui-library://localhost/thumb/${id}`;
+}
+
+function hydrateThumbnail(entry: { thumbnailId?: string; thumbnailUrl?: string }) {
+  if (entry.thumbnailId) {
+    entry.thumbnailUrl = thumbnailUrl(entry.thumbnailId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LibraryService
+// ---------------------------------------------------------------------------
+
+export const LibraryService = {
+  /**
+   * List all items in a category (lightweight — no data payload).
+   * thumbnailUrl is resolved automatically.
+   */
+  async listItems(category: LibraryCategory): Promise<LibraryListEntry[]> {
+    try {
+      const raw = await invoke<RawListEntry[]>('library_list_items', { category });
+      return raw.map((entry) => {
+        const item: LibraryListEntry = { ...entry };
+        hydrateThumbnail(item);
+        return item;
+      });
+    } catch (err) {
+      console.warn(`[LibraryService] listItems(${category}) error:`, err);
+      return [];
+    }
+  },
+
+  /**
+   * Fetch a single item by id (includes full data payload).
+   */
+  async getItem<T>(id: string, category: LibraryCategory): Promise<LibraryItem<T>> {
+    const raw = await invoke<RawItem<T>>('library_get_item', { id, category });
+    const item: LibraryItem<T> = { ...raw } as LibraryItem<T>;
+    hydrateThumbnail(item);
+    return item;
+  },
+
+  /**
+   * Create or update a library item. Pass id='' or omit to let the backend generate one.
+   */
+  async saveItem<T>(
+    item: SaveLibraryItemPayload<T>
+  ): Promise<LibraryItem<T>> {
+    const payload = {
+      id: item.id ?? '',
+      category: item.category,
+      name: item.name,
+      description: item.description,
+      thumbnailId: item.thumbnailId,
+      data: item.data,
+      createdAt: item.createdAt ?? 0,
+      updatedAt: item.updatedAt ?? 0
+    };
+    const raw = await invoke<RawItem<T>>('library_save_item', { item: payload });
+    const saved: LibraryItem<T> = { ...raw } as LibraryItem<T>;
+    hydrateThumbnail(saved);
+    return saved;
+  },
+
+  /** Permanently delete a library item. */
+  async deleteItem(id: string, category: LibraryCategory): Promise<void> {
+    await invoke('library_delete_item', { id, category });
+  },
+
+  /**
+   * Copy an image file from disk into the thumbnails folder (re-encoded as JPEG).
+   * Returns the thumbnail_id which should be stored on the LibraryItem.
+   */
+  async saveThumbnailFromPath(itemId: string, sourcePath: string): Promise<string> {
+    return await invoke<string>('library_save_thumbnail_from_path', {
+      itemId,
+      sourcePath
+    });
+  },
+
+  /**
+   * Save a base64 data-URL image as the thumbnail for an item.
+   * Returns the thumbnail_id.
+   */
+  async saveThumbnailFromDataUrl(itemId: string, dataUrl: string): Promise<string> {
+    return await invoke<string>('library_save_thumbnail_from_data_url', {
+      itemId,
+      dataUrl
+    });
+  },
+
+  /**
+   * Fetch an image from a URL and store as item thumbnail.
+   * Uses native Rust download to bypass any browser CORS restrictions.
+   * Returns the thumbnail_id.
+   */
+  async saveThumbnailFromUrl(itemId: string, url: string): Promise<string> {
+    if (url.startsWith('data:')) {
+      return this.saveThumbnailFromDataUrl(itemId, url);
+    }
+    return await invoke<string>('library_save_thumbnail_from_url', {
+      itemId,
+      url
+    });
+  },
+
+  /** Open the library folder (or a specific category sub-folder) in Explorer. */
+  async openFolder(category?: LibraryCategory): Promise<void> {
+    try {
+      await invoke('library_open_folder', {
+        category: category ?? null
+      });
+    } catch (err) {
+      console.warn('[LibraryService] openFolder error:', err);
+    }
+  },
+
+  /**
+   * Run the one-time migration: scans old `presets/prompts` and `presets/loras`
+   * directories, imports each entry into the Library, then renames the original
+   * to `.json.migrated`.
+   */
+  async migrateLegacyPresets(): Promise<MigrationReport> {
+    return await invoke<MigrationReport>('library_migrate_legacy_presets');
+  },
+
+  /** Build a comfygui-library:// thumbnail URL without fetching. */
+  getThumbnailUrl(thumbnailId: string): string {
+    return thumbnailUrl(thumbnailId);
+  }
+};

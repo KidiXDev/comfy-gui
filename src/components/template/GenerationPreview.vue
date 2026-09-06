@@ -359,9 +359,9 @@ const durationText = computed(() => {
           comfyStore.currentPreviewUrl
         "
       >
-        <ContextMenuTrigger as-child>
+        <ContextMenuTrigger as-child @click="isZoomModalOpen = true">
           <div
-            class="relative flex h-full min-h-0 w-full min-w-0 items-center justify-center overflow-hidden p-3 pb-12"
+            class="relative flex h-full min-h-0 w-full min-w-0 cursor-pointer items-center justify-center overflow-hidden p-3 pb-12"
           >
             <img
               :src="

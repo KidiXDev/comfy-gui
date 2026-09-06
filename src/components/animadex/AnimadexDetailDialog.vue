@@ -4,10 +4,12 @@ import { useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   ArrowUpRight,
+  BookOpen,
   Check,
   Copy,
   ExternalLink,
   Layers,
+  Loader2,
   Palette,
   Plus,
   Replace,
@@ -26,12 +28,16 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { resolveAnimadexMediaUrl } from '@/services/animadexApi';
+import { LibraryService } from '@/services/libraryService';
+import { useLibraryStore } from '@/stores/libraryStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import type {
   AnimaDexArtist,
   AnimaDexCharacter,
   AnimaDexCopyright
 } from '@/types/animadex';
+import type { CharacterData } from '@/types/library';
 
 const props = defineProps<{
   open: boolean;
@@ -202,6 +208,57 @@ function handleFilterBySeries() {
 function handleFilterByTag(tag: string) {
   emit('filter-by-tag', tag);
   emit('update:open', false);
+}
+
+const isSavingToLibrary = ref(false);
+
+async function handleSaveToCharacterLibrary() {
+  if (!character.value) return;
+  isSavingToLibrary.value = true;
+  try {
+    const char = character.value;
+    const tempId = `char-${Date.now()}`;
+    let thumbnailId: string | undefined;
+
+    const rawUrl = char.img_url || char.thumb_url;
+    const imageUrl = resolveAnimadexMediaUrl(rawUrl);
+    if (imageUrl) {
+      try {
+        thumbnailId = await LibraryService.saveThumbnailFromUrl(tempId, imageUrl);
+      } catch (err) {
+        console.warn('[Animadex] Could not save thumbnail for character:', err);
+      }
+    }
+
+    const seriesName = char.copyright_name || char.copyright || undefined;
+    const item = await LibraryService.saveItem<CharacterData>({
+      category: 'characters',
+      name: char.name,
+      description: seriesName ? `From ${seriesName}` : undefined,
+      thumbnailId,
+      data: {
+        trigger: char.trigger || char.name.toLowerCase().replaceAll(' ', '_'),
+        tags: char.tags || [],
+        series: seriesName,
+        source: 'animadex',
+        animadexSlug: char.slug
+      }
+    });
+
+    const libraryStore = useLibraryStore();
+    void libraryStore.fetchCategory('characters');
+
+    toast.success(`Saved "${item.name}" to Character Library!`, {
+      action: {
+        label: 'Open Library',
+        onClick: () => router.push('/library')
+      }
+    });
+  } catch (err) {
+    toast.error(`Failed to save to Library: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    isSavingToLibrary.value = false;
+  }
 }
 </script>
 
@@ -404,6 +461,19 @@ function handleFilterByTag(tag: string) {
                   >
                     <Replace class="h-3.5 w-3.5" />
                     <span>Replace Prompt</span>
+                  </Button>
+
+                  <Button
+                    v-if="props.type === 'character'"
+                    size="sm"
+                    variant="outline"
+                    class="border-primary/30 hover:bg-primary/10 text-primary h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
+                    :disabled="isSavingToLibrary"
+                    @click="handleSaveToCharacterLibrary"
+                  >
+                    <Loader2 v-if="isSavingToLibrary" class="h-3.5 w-3.5 animate-spin" />
+                    <BookOpen v-else class="h-3.5 w-3.5" />
+                    <span>Save to Character Library</span>
                   </Button>
 
                   <Button

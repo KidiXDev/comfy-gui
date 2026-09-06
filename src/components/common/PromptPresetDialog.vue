@@ -1,17 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import {
+  ArrowUpRight,
   Bookmark,
   Check,
   Clock,
   Copy,
   FileText,
   FolderOpen,
+  Library,
+  Loader2,
   Plus,
   PlusCircle,
   RefreshCw,
   RotateCcw,
   Search,
+  Sparkles,
   Trash2,
   X
 } from '@lucide/vue';
@@ -23,18 +27,25 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { formatShortDate } from '@/utils/formatters';
-import {
-  PresetService,
-  type PromptPresetFile
-} from '../../services/presetService';
+import { LibraryService } from '../../services/libraryService';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type { PromptPreset } from '../../types/workflow';
+import type { LibraryItem, LibraryListEntry, PromptData } from '../../types/library';
 
 const props = defineProps<{
   open: boolean;
@@ -47,12 +58,12 @@ const emit = defineEmits<{
 const workflowStore = useWorkflowStore();
 
 const activeTab = ref<'load' | 'save'>('load');
-const presets = ref<PromptPresetFile[]>([]);
+const entries = ref<LibraryListEntry[]>([]);
+const failedThumbnails = ref<Set<string>>(new Set());
 const isLoading = ref(false);
 const searchQuery = ref('');
-const filterType = ref<'all' | 'both' | 'positive' | 'negative'>('all');
 const appendMode = ref(false);
-const copiedPresetId = ref<string | null>(null);
+const copiedEntryId = ref<string | null>(null);
 
 // Form state for saving
 const saveName = ref('');
@@ -67,9 +78,10 @@ function resetToCurrentPrompt() {
   editNegativePrompt.value = workflowStore.negativePrompt;
 }
 
-async function fetchPresets() {
+async function fetchEntries() {
   isLoading.value = true;
-  presets.value = await PresetService.listPresets<PromptPreset>('prompts');
+  failedThumbnails.value.clear();
+  entries.value = await LibraryService.listItems('prompts');
   isLoading.value = false;
 }
 
@@ -77,7 +89,7 @@ watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      void fetchPresets();
+      void fetchEntries();
       saveSuccessMessage.value = '';
       resetToCurrentPrompt();
       if (!saveName.value) {
@@ -89,46 +101,42 @@ watch(
 
 onMounted(() => {
   if (props.open) {
-    void fetchPresets();
+    void fetchEntries();
   }
 });
 
-const filteredPresets = computed(() => {
+const filteredEntries = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  return presets.value.filter((p) => {
-    // Type filter
-    if (filterType.value !== 'all' && p.data.type !== filterType.value) {
-      return false;
-    }
-    // Search query filter
+  return entries.value.filter((e) => {
     if (q) {
-      const matchName = p.data.name.toLowerCase().includes(q);
-      const matchPos = p.data.positive?.toLowerCase().includes(q) ?? false;
-      const matchNeg = p.data.negative?.toLowerCase().includes(q) ?? false;
-      const matchDesc = p.data.description?.toLowerCase().includes(q) ?? false;
-      return matchName || matchPos || matchNeg || matchDesc;
+      const inName = e.name.toLowerCase().includes(q);
+      const inDesc = e.description?.toLowerCase().includes(q) ?? false;
+      return inName || inDesc;
     }
     return true;
   });
 });
 
-function applyPrompt(
-  preset: PromptPreset,
+async function applyPrompt(
+  entry: LibraryListEntry,
   applyMode: 'both' | 'positive' | 'negative' = 'both'
 ) {
-  if ((applyMode === 'both' || applyMode === 'positive') && preset.positive) {
+  const item = await LibraryService.getItem<PromptData>(entry.id, 'prompts');
+  const data = item.data;
+
+  if ((applyMode === 'both' || applyMode === 'positive') && data.positive) {
     if (appendMode.value && workflowStore.positivePrompt.trim()) {
-      workflowStore.positivePrompt += `, ${preset.positive}`;
+      workflowStore.positivePrompt += `, ${data.positive}`;
     } else {
-      workflowStore.positivePrompt = preset.positive;
+      workflowStore.positivePrompt = data.positive;
     }
   }
 
-  if ((applyMode === 'both' || applyMode === 'negative') && preset.negative) {
+  if ((applyMode === 'both' || applyMode === 'negative') && data.negative) {
     if (appendMode.value && workflowStore.negativePrompt.trim()) {
-      workflowStore.negativePrompt += `, ${preset.negative}`;
+      workflowStore.negativePrompt += `, ${data.negative}`;
     } else {
-      workflowStore.negativePrompt = preset.negative;
+      workflowStore.negativePrompt = data.negative;
     }
   }
 
@@ -138,49 +146,66 @@ function applyPrompt(
 async function handleSavePreset() {
   if (!saveName.value.trim()) return;
 
-  const data: PromptPreset = {
-    id: `prompt-${Date.now()}`,
-    name: saveName.value.trim(),
+  const data: PromptData = {
     type: saveType.value,
-    description: saveDescription.value.trim() || undefined,
-    createdAt: Date.now()
+    positive: saveType.value === 'negative' ? undefined : editPositivePrompt.value,
+    negative: saveType.value === 'positive' ? undefined : editNegativePrompt.value
   };
 
-  if (saveType.value === 'both' || saveType.value === 'positive') {
-    data.positive = editPositivePrompt.value;
-  }
-  if (saveType.value === 'both' || saveType.value === 'negative') {
-    data.negative = editNegativePrompt.value;
-  }
+  const payload: Omit<LibraryItem<PromptData>, 'thumbnailUrl'> = {
+    id: '',
+    category: 'prompts',
+    name: saveName.value.trim(),
+    description: saveDescription.value.trim() || undefined,
+    data,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
 
-  await PresetService.savePreset('prompts', saveName.value.trim(), data);
-  saveSuccessMessage.value = `Saved "${saveName.value.trim()}" to file!`;
+  await LibraryService.saveItem(payload);
+  saveSuccessMessage.value = `Saved "${saveName.value.trim()}" to Library!`;
   saveName.value = '';
   saveDescription.value = '';
-  await fetchPresets();
+  await fetchEntries();
   setTimeout(() => {
     activeTab.value = 'load';
     saveSuccessMessage.value = '';
   }, 900);
 }
 
-async function handleDeletePreset(filename: string) {
-  await PresetService.deletePreset('prompts', filename);
-  await fetchPresets();
+const itemToDelete = ref<LibraryListEntry | null>(null);
+const isDeleteDialogOpen = ref(false);
+const isDeleting = ref(false);
+
+function requestDelete(entry: LibraryListEntry) {
+  itemToDelete.value = entry;
+  isDeleteDialogOpen.value = true;
 }
 
-function handleOpenFolder() {
-  void PresetService.openFolder('prompts');
+async function confirmDelete() {
+  if (!itemToDelete.value) return;
+  isDeleting.value = true;
+  try {
+    await LibraryService.deleteItem(itemToDelete.value.id, 'prompts');
+    await fetchEntries();
+    isDeleteDialogOpen.value = false;
+    itemToDelete.value = null;
+  } catch (err) {
+    console.error('Failed to delete prompt preset:', err);
+  } finally {
+    isDeleting.value = false;
+  }
 }
 
-function copyPromptText(preset: PromptPreset, id: string) {
-  const text = [preset.positive, preset.negative]
+async function copyPromptText(entry: LibraryListEntry) {
+  const item = await LibraryService.getItem<PromptData>(entry.id, 'prompts');
+  const text = [item.data.positive, item.data.negative]
     .filter(Boolean)
     .join('\n\nNegative:\n');
   void navigator.clipboard.writeText(text);
-  copiedPresetId.value = id;
+  copiedEntryId.value = entry.id;
   setTimeout(() => {
-    if (copiedPresetId.value === id) copiedPresetId.value = null;
+    if (copiedEntryId.value === entry.id) copiedEntryId.value = null;
   }, 1500);
 }
 </script>
@@ -207,20 +232,31 @@ function copyPromptText(preset: PromptPreset, id: string) {
               Prompt Presets
             </DialogTitle>
             <DialogDescription class="text-muted-foreground text-xs">
-              Save, load, and manage prompt presets stored as real JSON files on
-              disk.
+              Save, load, and manage prompt presets from your Library.
             </DialogDescription>
           </div>
         </div>
 
-        <!-- Header Actions: Open Folder in Explorer & Refresh -->
+        <!-- Header Actions -->
         <div class="flex items-center gap-2 pr-6">
           <Button
             size="sm"
             variant="outline"
-            title="Open Presets Folder in File Explorer"
+            title="Open full Library"
             class="border-border bg-secondary hover:bg-accent h-7.5 gap-1 px-2.5 text-xs"
-            @click="handleOpenFolder"
+            @click="emit('update:open', false); $router.push('/library?tab=prompts')"
+          >
+            <Library class="h-3.5 w-3.5" />
+            <span>Open Library</span>
+            <ArrowUpRight class="h-3 w-3" />
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            title="Open library folder in file explorer"
+            class="border-border bg-secondary hover:bg-accent h-7.5 gap-1 px-2.5 text-xs"
+            @click="LibraryService.openFolder('prompts')"
           >
             <FolderOpen class="h-3.5 w-3.5" />
             <span>Open Folder</span>
@@ -232,7 +268,7 @@ function copyPromptText(preset: PromptPreset, id: string) {
             :disabled="isLoading"
             title="Refresh presets from disk"
             class="border-border bg-secondary hover:bg-accent h-7.5 w-7.5"
-            @click="fetchPresets"
+            @click="fetchEntries"
           >
             <RefreshCw
               class="h-3.5 w-3.5"
@@ -251,7 +287,7 @@ function copyPromptText(preset: PromptPreset, id: string) {
               class="data-[state=active]:bg-background data-[state=active]:text-foreground flex items-center gap-2 rounded-md px-4 py-2 text-xs font-semibold transition-all data-[state=active]:shadow-xs"
             >
               <FileText class="h-3.5 w-3.5" />
-              Load Preset ({{ presets.length }})
+              Load Preset ({{ entries.length }})
             </TabsTrigger>
             <TabsTrigger
               value="save"
@@ -278,7 +314,7 @@ function copyPromptText(preset: PromptPreset, id: string) {
               />
               <Input
                 v-model="searchQuery"
-                placeholder="Search preset name or prompt text..."
+                placeholder="Search preset name or description..."
                 class="bg-background/80 focus:ring-primary/30 h-8 w-full pr-8 pl-8.5 text-xs"
               />
               <button
@@ -288,32 +324,6 @@ function copyPromptText(preset: PromptPreset, id: string) {
                 @click="searchQuery = ''"
               >
                 <X class="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <!-- Scope Tabs -->
-            <div class="flex items-center gap-1">
-              <span class="text-muted-foreground mr-1 text-xs font-medium"
-                >Scope:</span
-              >
-              <button
-                v-for="st in [
-                  { label: 'All', val: 'all' },
-                  { label: 'Both', val: 'both' },
-                  { label: 'Positive', val: 'positive' },
-                  { label: 'Negative', val: 'negative' }
-                ]"
-                :key="st.val"
-                type="button"
-                class="cursor-pointer rounded-md px-2 py-0.5 font-mono text-xs font-semibold transition-colors"
-                :class="
-                  filterType === st.val
-                    ? 'bg-primary text-primary-foreground shadow-xs'
-                    : 'border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-accent border'
-                "
-                @click="filterType = st.val as any"
-              >
-                {{ st.label }}
               </button>
             </div>
 
@@ -336,7 +346,7 @@ function copyPromptText(preset: PromptPreset, id: string) {
           <ScrollArea class="h-[52vh] px-5 py-4">
             <!-- Empty State -->
             <div
-              v-if="filteredPresets.length === 0"
+              v-if="filteredEntries.length === 0"
               class="flex h-56 flex-col items-center justify-center gap-2 text-center"
             >
               <div
@@ -351,8 +361,7 @@ function copyPromptText(preset: PromptPreset, id: string) {
                 {{
                   searchQuery
                     ? `No presets match "${searchQuery}".`
-                    : `No prompt preset files saved yet. Click "Save Current Prompt" to create your first real JSON preset
-                file.`
+                    : `No prompt presets in your Library yet. Click "Save Current Prompt" to create one.`
                 }}
               </p>
             </div>
@@ -360,121 +369,85 @@ function copyPromptText(preset: PromptPreset, id: string) {
             <!-- Presets Grid / Cards -->
             <div v-else class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
               <div
-                v-for="item in filteredPresets"
-                :key="item.filename"
-                class="group/item border-border bg-card hover:border-primary/50 relative flex flex-col justify-between rounded-xl border p-3.5 transition-all hover:shadow-md"
+                v-for="entry in filteredEntries"
+                :key="entry.id"
+                class="border-border bg-card hover:border-primary/50 relative flex min-h-36 flex-row overflow-hidden rounded-xl border transition-all hover:shadow-md"
               >
-                <div class="flex flex-col gap-2">
-                  <!-- Header: Name, Scope Badge, Timestamp -->
-                  <div class="flex items-start justify-between gap-2">
-                    <div class="flex flex-col gap-0.5">
-                      <h4 class="text-foreground text-xs font-bold">
-                        {{ item.data.name }}
+                <!-- Left: Content & Actions -->
+                <div class="flex min-w-0 flex-1 flex-col justify-between p-3.5">
+                  <!-- Top: Badge + Date + Title + Desc -->
+                  <div>
+                    <div class="flex items-center justify-between gap-2">
+                      <span
+                        class="border-emerald-500/30 bg-emerald-500/15 text-emerald-400 rounded-md border px-1.5 py-0.5 font-mono text-xs font-bold uppercase"
+                      >
+                        Prompt
+                      </span>
+
+                      <div
+                        class="text-muted-foreground/70 flex items-center gap-1 font-mono text-xs"
+                      >
+                        <Clock class="h-2.5 w-2.5" />
+                        <span>{{ formatShortDate(entry.updatedAt) }}</span>
+                      </div>
+                    </div>
+
+                    <div class="mt-2">
+                      <h4
+                        class="text-foreground truncate text-sm leading-snug font-bold"
+                        :title="entry.name"
+                      >
+                        {{ entry.name }}
                       </h4>
                       <p
-                        v-if="item.data.description"
-                        class="text-muted-foreground text-xs"
+                        v-if="entry.description"
+                        class="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed"
+                        :title="entry.description"
                       >
-                        {{ item.data.description }}
+                        {{ entry.description }}
                       </p>
                     </div>
+                  </div>
 
-                    <!-- Type Tag Badge -->
-                    <div class="flex items-center gap-1.5">
-                      <span
-                        class="rounded px-1.5 py-0.5 font-mono text-xs font-bold uppercase"
-                        :class="
-                          item.data.type === 'both'
-                            ? 'border border-purple-500/20 bg-purple-500/10 text-purple-400'
-                            : item.data.type === 'positive'
-                              ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                              : 'border border-rose-500/20 bg-rose-500/10 text-rose-400'
-                        "
+                  <!-- Bottom: Action Buttons -->
+                  <div
+                    class="border-border/60 mt-3 flex items-center justify-between gap-2 border-t pt-2.5"
+                  >
+                    <!-- Left: Copy & Delete -->
+                    <div class="flex shrink-0 items-center gap-1">
+                      <Button
+                        size="iconSm"
+                        variant="ghost"
+                        class="text-muted-foreground hover:text-foreground h-7 w-7"
+                        title="Copy Prompt Text"
+                        @click="copyPromptText(entry)"
                       >
-                        {{ item.data.type }}
-                      </span>
+                        <Check
+                          v-if="copiedEntryId === entry.id"
+                          class="h-3.5 w-3.5 text-emerald-400"
+                        />
+                        <Copy v-else class="h-3.5 w-3.5" />
+                      </Button>
+
+                      <Button
+                        size="iconSm"
+                        variant="ghost"
+                        class="text-muted-foreground hover:text-destructive h-7 w-7"
+                        title="Delete Preset"
+                        @click="requestDelete(entry)"
+                      >
+                        <Trash2 class="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                  </div>
 
-                  <!-- Positive Preview Text -->
-                  <div
-                    v-if="item.data.positive"
-                    class="bg-muted/40 border-border/60 flex flex-col gap-1 rounded-md border p-2 text-xs"
-                  >
-                    <span
-                      class="font-mono text-xs font-bold tracking-wider text-emerald-400 uppercase"
-                      >Positive</span
-                    >
-                    <p
-                      class="text-foreground/90 line-clamp-2 font-mono text-xs leading-relaxed"
-                    >
-                      {{ item.data.positive }}
-                    </p>
-                  </div>
-
-                  <!-- Negative Preview Text -->
-                  <div
-                    v-if="item.data.negative"
-                    class="bg-muted/40 border-border/60 flex flex-col gap-1 rounded-md border p-2 text-xs"
-                  >
-                    <span
-                      class="font-mono text-xs font-bold tracking-wider text-rose-400 uppercase"
-                      >Negative</span
-                    >
-                    <p
-                      class="text-muted-foreground line-clamp-2 font-mono text-xs leading-relaxed"
-                    >
-                      {{ item.data.negative }}
-                    </p>
-                  </div>
-                </div>
-
-                <!-- Footer Actions: Apply Buttons & Delete -->
-                <div
-                  class="border-border/60 mt-3 flex items-center justify-between border-t pt-2.5"
-                >
-                  <div
-                    class="text-muted-foreground/70 flex items-center gap-1 font-mono text-xs"
-                  >
-                    <Clock class="h-2.5 w-2.5" />
-                    <span>{{ formatShortDate(item.updatedAt) }}</span>
-                  </div>
-
-                  <div class="flex items-center gap-1.5">
-                    <!-- Copy text -->
-                    <Button
-                      size="iconSm"
-                      variant="ghost"
-                      class="text-muted-foreground hover:text-foreground h-7 w-7"
-                      title="Copy Prompt Text"
-                      @click="copyPromptText(item.data, item.id)"
-                    >
-                      <Check
-                        v-if="copiedPresetId === item.id"
-                        class="h-3.5 w-3.5 text-emerald-400"
-                      />
-                      <Copy v-else class="h-3.5 w-3.5" />
-                    </Button>
-
-                    <!-- Delete file -->
-                    <Button
-                      size="iconSm"
-                      variant="ghost"
-                      class="text-muted-foreground hover:text-destructive h-7 w-7"
-                      title="Delete Preset File"
-                      @click="handleDeletePreset(item.filename)"
-                    >
-                      <Trash2 class="h-3.5 w-3.5" />
-                    </Button>
-
-                    <!-- Apply Actions -->
-                    <template v-if="item.data.type === 'both'">
+                    <!-- Right: Apply Buttons -->
+                    <div class="flex flex-wrap items-center justify-end gap-1.5">
                       <Button
                         size="sm"
                         variant="outline"
                         class="h-7 px-2 text-xs"
-                        title="Apply only Positive prompt"
-                        @click="applyPrompt(item.data, 'positive')"
+                        title="Apply positive only"
+                        @click="applyPrompt(entry, 'positive')"
                       >
                         + Pos
                       </Button>
@@ -482,30 +455,38 @@ function copyPromptText(preset: PromptPreset, id: string) {
                         size="sm"
                         variant="outline"
                         class="h-7 px-2 text-xs"
-                        title="Apply only Negative prompt"
-                        @click="applyPrompt(item.data, 'negative')"
+                        title="Apply negative only"
+                        @click="applyPrompt(entry, 'negative')"
                       >
-                        + Neg
+                        − Neg
                       </Button>
                       <Button
                         size="sm"
                         class="bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-2.5 text-xs font-semibold"
-                        @click="applyPrompt(item.data, 'both')"
-                      >
-                        Apply Both
-                      </Button>
-                    </template>
-
-                    <template v-else>
-                      <Button
-                        size="sm"
-                        class="bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-2.5 text-xs font-semibold"
-                        @click="applyPrompt(item.data, item.data.type)"
+                        @click="applyPrompt(entry, 'both')"
                       >
                         Apply
-                        {{ item.data.type === 'positive' ? 'Pos' : 'Neg' }}
                       </Button>
-                    </template>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right: Portrait Thumbnail -->
+                <div
+                  class="bg-muted/40 border-border/50 relative w-24 shrink-0 self-stretch overflow-hidden border-l sm:w-28"
+                >
+                  <img
+                    v-if="entry.thumbnailUrl && !failedThumbnails.has(entry.id)"
+                    :src="entry.thumbnailUrl"
+                    :alt="entry.name"
+                    class="h-full w-full object-cover object-center"
+                    @error="failedThumbnails.add(entry.id)"
+                  />
+                  <div
+                    v-else
+                    class="from-primary/5 to-primary/20 flex h-full w-full items-center justify-center bg-linear-to-br"
+                  >
+                    <Sparkles class="text-primary/25 h-7 w-7" />
                   </div>
                 </div>
               </div>
@@ -541,7 +522,19 @@ function copyPromptText(preset: PromptPreset, id: string) {
                 />
               </div>
 
-              <!-- Scope Selection: Both, Positive Only, Negative Only -->
+              <!-- Optional Description -->
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-foreground text-xs font-bold"
+                  >Description (Optional)</Label
+                >
+                <Input
+                  v-model="saveDescription"
+                  placeholder="e.g. Optimized for anime SDXL checkpoints"
+                  class="text-xs"
+                />
+              </div>
+
+              <!-- Scope Selection -->
               <div class="flex flex-col gap-1.5">
                 <Label class="text-foreground text-xs font-bold"
                   >Preset Scope / Target</Label
@@ -585,19 +578,7 @@ function copyPromptText(preset: PromptPreset, id: string) {
                 </div>
               </div>
 
-              <!-- Optional Description -->
-              <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold"
-                  >Description (Optional)</Label
-                >
-                <Input
-                  v-model="saveDescription"
-                  placeholder="e.g. Optimized for anime SDXL checkpoints"
-                  class="text-xs"
-                />
-              </div>
-
-              <!-- Editable Prompt Content Preview -->
+              <!-- Editable Prompt Content -->
               <div class="border-border flex flex-col gap-3 border-t pt-3.5">
                 <div class="flex items-center justify-between">
                   <span
@@ -666,9 +647,8 @@ function copyPromptText(preset: PromptPreset, id: string) {
             class="border-border bg-muted/30 flex items-center justify-between border-t px-6 py-3"
           >
             <span class="text-muted-foreground text-xs">
-              Will be saved as a readable
-              <code class="text-foreground font-mono font-semibold">.json</code>
-              file in your presets directory.
+              Saved to your
+              <code class="text-foreground font-mono font-semibold">Library / Prompts</code>.
             </span>
 
             <Button
@@ -677,11 +657,43 @@ function copyPromptText(preset: PromptPreset, id: string) {
               @click="handleSavePreset"
             >
               <Plus class="h-3.5 w-3.5" />
-              <span>Save Preset to File</span>
+              <span>Save to Library</span>
             </Button>
           </div>
         </TabsContent>
       </Tabs>
     </DialogContent>
   </Dialog>
+
+  <!-- Delete Confirmation Dialog -->
+  <AlertDialog
+    :open="isDeleteDialogOpen"
+    @update:open="(v) => (isDeleteDialogOpen = v)"
+  >
+    <AlertDialogContent class="border-border bg-card sm:max-w-md">
+      <AlertDialogHeader>
+        <AlertDialogTitle class="text-foreground text-base font-bold">
+          Delete Prompt Preset?
+        </AlertDialogTitle>
+        <AlertDialogDescription class="text-muted-foreground text-xs leading-relaxed">
+          Are you sure you want to delete
+          <span class="text-foreground font-semibold">"{{ itemToDelete?.name }}"</span>?
+          This will permanently remove this preset from your prompt library.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter class="gap-2 sm:gap-2">
+        <AlertDialogCancel class="h-8 text-xs">
+          Cancel
+        </AlertDialogCancel>
+        <AlertDialogAction
+          class="bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 text-xs font-semibold"
+          :disabled="isDeleting"
+          @click="confirmDelete"
+        >
+          <Loader2 v-if="isDeleting" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          Delete
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>

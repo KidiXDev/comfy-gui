@@ -3,6 +3,8 @@ mod civitai;
 mod danbooru_wiki;
 mod download_manager;
 mod image_gallery;
+mod library_manager;
+mod network_cache;
 mod preset_manager;
 mod process_manager;
 mod prompt_suggestions;
@@ -292,6 +294,27 @@ pub fn run() {
             },
         )
         .register_asynchronous_uri_scheme_protocol(
+            "comfygui-library",
+            move |context, request, responder| {
+                let path = request.uri().path().to_string();
+                let app = context.app_handle().clone();
+                std::thread::spawn(move || {
+                    let response = match library_manager::handle_library_uri(&app, &path) {
+                        Some((bytes, content_type)) => tauri::http::Response::builder()
+                            .header(tauri::http::header::CONTENT_TYPE, content_type)
+                            .header(tauri::http::header::CACHE_CONTROL, "private, max-age=3600")
+                            .body(bytes)
+                            .unwrap(),
+                        None => tauri::http::Response::builder()
+                            .status(404)
+                            .body(Vec::new())
+                            .unwrap(),
+                    };
+                    responder.respond(response);
+                });
+            },
+        )
+        .register_asynchronous_uri_scheme_protocol(
             "danbooru-image",
             move |_context, request, responder| {
                 let path = request.uri().path().trim_matches('/').to_string();
@@ -388,9 +411,21 @@ pub fn run() {
             preset_manager::save_preset_file,
             preset_manager::delete_preset_file,
             preset_manager::open_presets_folder,
+            library_manager::library_list_items,
+            library_manager::library_get_item,
+            library_manager::library_save_item,
+            library_manager::library_delete_item,
+            library_manager::library_save_thumbnail_from_path,
+            library_manager::library_save_thumbnail_from_data_url,
+            library_manager::library_save_thumbnail_from_url,
+            library_manager::library_read_thumbnail,
+            library_manager::library_open_folder,
+            library_manager::library_migrate_legacy_presets,
             prompt_suggestions::load_prompt_suggestions,
             prompt_suggestions::open_prompt_suggestions_folder,
-            animadex::animadex_request
+            animadex::animadex_request,
+            network_cache::clear_network_cache,
+            network_cache::get_network_cache_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
