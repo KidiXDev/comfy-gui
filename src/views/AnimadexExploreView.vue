@@ -9,7 +9,6 @@ import {
   ref,
   watch
 } from 'vue';
-import { useDebounceFn } from '@vueuse/core';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import {
   AlertCircle,
@@ -357,17 +356,8 @@ watch(virtualRows, (rows) => {
   }
 });
 
-const debouncedSearch = useDebounceFn(() => {
-  void performSearch(true);
-}, 350);
-
-function handleSearchInput() {
-  debouncedSearch();
-}
-
 function clearSearch() {
   searchQuery.value = '';
-  void performSearch(true);
 }
 
 function rerollSeed() {
@@ -582,7 +572,6 @@ watch(
             class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 text-xs transition-colors"
             autocomplete="off"
             spellcheck="false"
-            @input="handleSearchInput"
           />
           <button
             v-if="searchQuery"

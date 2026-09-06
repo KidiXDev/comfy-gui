@@ -226,7 +226,8 @@ function openCreateCharacterFromBooru() {
   const cpTag = copyrightTags.value[0] || '';
   charSeries.value = cpTag ? formatTitle(cpTag) : '';
   charTags.value = generalTags.value.map(formatTag).join(', ');
-  charThumbnailUrl.value = detailActiveImgUrl.value || detail.value?.previewUrl || '';
+  charThumbnailUrl.value =
+    detailActiveImgUrl.value || detail.value?.previewUrl || '';
 
   if (detailOpen.value) {
     reopenDetailOnCharClose.value = true;
@@ -252,7 +253,10 @@ async function handleSaveCharacterToLibrary() {
 
     if (charThumbnailUrl.value) {
       try {
-        thumbnailId = await LibraryService.saveThumbnailFromUrl(tempId, charThumbnailUrl.value);
+        thumbnailId = await LibraryService.saveThumbnailFromUrl(
+          tempId,
+          charThumbnailUrl.value
+        );
       } catch (err) {
         console.warn('[Booru] Could not save thumbnail for character:', err);
       }
@@ -261,11 +265,18 @@ async function handleSaveCharacterToLibrary() {
     const item = await LibraryService.saveItem<CharacterData>({
       category: 'characters',
       name: charName.value.trim(),
-      description: charSeries.value.trim() ? `From ${charSeries.value.trim()}` : undefined,
+      description: charSeries.value.trim()
+        ? `From ${charSeries.value.trim()}`
+        : undefined,
       thumbnailId,
       data: {
-        trigger: charTrigger.value.trim() || charName.value.trim().toLowerCase().replaceAll(' ', '_'),
-        tags: charTags.value.split(',').map((t) => t.trim()).filter(Boolean),
+        trigger:
+          charTrigger.value.trim() ||
+          charName.value.trim().toLowerCase().replaceAll(' ', '_'),
+        tags: charTags.value
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
         series: charSeries.value.trim() || undefined,
         source: 'manual'
       }
@@ -282,7 +293,9 @@ async function handleSaveCharacterToLibrary() {
       }
     });
   } catch (err) {
-    toast.error(`Failed to save character: ${err instanceof Error ? err.message : String(err)}`);
+    toast.error(
+      `Failed to save character: ${err instanceof Error ? err.message : String(err)}`
+    );
   } finally {
     isSavingChar.value = false;
   }
@@ -883,13 +896,11 @@ watch(virtualRows, (rows) => {
 function applySuggestion(suggestedQuery: string) {
   query.value = suggestedQuery;
   closeAutocomplete();
-  void runSearch(true);
 }
 
 function clearQuery() {
   query.value = '';
   closeAutocomplete();
-  void runSearch(true);
 }
 
 const detailActiveImgUrl = computed(() => {
@@ -1904,7 +1915,7 @@ onUnmounted(deactivateView);
                   v-if="characterTags.length > 0"
                   size="sm"
                   variant="outline"
-                  class="border-primary/30 hover:bg-primary/10 text-primary text-xs font-semibold gap-1.5"
+                  class="border-primary/30 hover:bg-primary/10 text-primary gap-1.5 text-xs font-semibold"
                   @click="openCreateCharacterFromBooru"
                 >
                   <BookOpen class="h-3.5 w-3.5" />
@@ -1965,7 +1976,7 @@ onUnmounted(deactivateView);
                     >
                       \( \)
                     </button>
-                    <span class="text-muted-foreground font-mono text-xs ml-1">
+                    <span class="text-muted-foreground ml-1 font-mono text-xs">
                       {{ tagCountTotal }} tags
                     </span>
                   </div>
@@ -2120,53 +2131,100 @@ onUnmounted(deactivateView);
     --------------------------------------------------------------- -->
     <Dialog
       :open="charModalOpen"
-      @update:open="(v) => { if (!v) closeCharModal(); else charModalOpen = true; }"
+      @update:open="
+        (v) => {
+          if (!v) closeCharModal();
+          else charModalOpen = true;
+        }
+      "
     >
-      <DialogContent class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader class="border-border bg-background/50 shrink-0 border-b px-5 py-4">
-          <DialogTitle class="text-foreground flex items-center gap-2 text-sm font-bold">
+      <DialogContent
+        class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogHeader
+          class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
+        >
+          <DialogTitle
+            class="text-foreground flex items-center gap-2 text-sm font-bold"
+          >
             <BookOpen class="text-primary h-4 w-4" />
             <span>Save to Character Library</span>
           </DialogTitle>
         </DialogHeader>
 
-        <div class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
             <!-- Left (2 cols): Character Inputs -->
-            <div class="md:col-span-2 flex flex-col gap-4">
+            <div class="flex flex-col gap-4 md:col-span-2">
               <!-- Character Name -->
               <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold">Character Name <span class="text-destructive">*</span></Label>
-                <Input v-model="charName" placeholder="e.g. Hatsune Miku" class="text-xs" />
+                <Label class="text-foreground text-xs font-bold"
+                  >Character Name <span class="text-destructive">*</span></Label
+                >
+                <Input
+                  v-model="charName"
+                  placeholder="e.g. Hatsune Miku"
+                  class="text-xs"
+                />
               </div>
 
               <!-- Trigger Tag -->
               <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold">Trigger Tag <span class="text-destructive">*</span></Label>
-                <Input v-model="charTrigger" placeholder="e.g. hatsune_miku" class="font-mono text-xs" />
+                <Label class="text-foreground text-xs font-bold"
+                  >Trigger Tag <span class="text-destructive">*</span></Label
+                >
+                <Input
+                  v-model="charTrigger"
+                  placeholder="e.g. hatsune_miku"
+                  class="font-mono text-xs"
+                />
               </div>
 
               <!-- Series / Copyright -->
               <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold">Series / Copyright (optional)</Label>
-                <Input v-model="charSeries" placeholder="e.g. Vocaloid" class="text-xs" />
+                <Label class="text-foreground text-xs font-bold"
+                  >Series / Copyright (optional)</Label
+                >
+                <Input
+                  v-model="charSeries"
+                  placeholder="e.g. Vocaloid"
+                  class="text-xs"
+                />
               </div>
 
               <!-- Tags -->
               <div class="flex flex-col gap-1.5">
                 <Label class="text-foreground text-xs font-bold">
-                  Tags & Features <span class="text-muted-foreground font-normal">(comma-separated)</span>
+                  Tags & Features
+                  <span class="text-muted-foreground font-normal"
+                    >(comma-separated)</span
+                  >
                 </Label>
-                <Textarea v-model="charTags" rows="4" placeholder="twin tails, sleeveless shirt, necktie..." class="font-mono text-xs bg-background" />
+                <Textarea
+                  v-model="charTags"
+                  rows="4"
+                  placeholder="twin tails, sleeveless shirt, necktie..."
+                  class="bg-background font-mono text-xs"
+                />
               </div>
             </div>
 
             <!-- Right (1 col): Portrait Thumbnail Preview -->
-            <div class="md:col-span-1 flex flex-col gap-2">
+            <div class="flex flex-col gap-2 md:col-span-1">
               <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
-              <div class="relative aspect-3/4 w-full overflow-hidden rounded-xl border border-border bg-muted/30">
-                <img v-if="charThumbnailUrl" :src="charThumbnailUrl" alt="Character thumbnail" class="h-full w-full object-cover object-center" />
-                <div v-else class="flex h-full w-full items-center justify-center text-muted-foreground text-xs">
+              <div
+                class="border-border bg-muted/30 relative aspect-3/4 w-full overflow-hidden rounded-xl border"
+              >
+                <img
+                  v-if="charThumbnailUrl"
+                  :src="charThumbnailUrl"
+                  alt="Character thumbnail"
+                  class="h-full w-full object-cover object-center"
+                />
+                <div
+                  v-else
+                  class="text-muted-foreground flex h-full w-full items-center justify-center text-xs"
+                >
                   No image selected
                 </div>
               </div>
@@ -2174,8 +2232,15 @@ onUnmounted(deactivateView);
           </div>
         </div>
 
-        <DialogFooter class="border-border bg-muted/30 shrink-0 border-t px-5 py-3">
-          <Button variant="outline" size="sm" class="text-xs" @click="closeCharModal">
+        <DialogFooter
+          class="border-border bg-muted/30 shrink-0 border-t px-5 py-3"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            class="text-xs"
+            @click="closeCharModal"
+          >
             Cancel
           </Button>
           <Button
