@@ -11,6 +11,7 @@ import {
   Eye,
   History,
   ImagePlus,
+  Library,
   Loader2,
   MessageSquare,
   Pencil,
@@ -287,22 +288,27 @@ function handleDrop(event: DragEvent) {
 }
 
 function getChronologicalParts(msg: ChatMessage): ChatMessagePart[] {
+  let parts: ChatMessagePart[] = [];
   if (msg.parts && msg.parts.length > 0) {
-    return msg.parts;
-  }
-  const parts: ChatMessagePart[] = [];
-  if (msg.reasoning) {
-    parts.push({ type: 'reasoning', text: msg.reasoning, isComplete: true });
-  }
-  if (msg.toolInvocations && msg.toolInvocations.length > 0) {
-    for (const inv of msg.toolInvocations) {
-      parts.push({ type: 'tool', invocation: inv });
+    parts = msg.parts;
+  } else {
+    if (msg.reasoning) {
+      parts.push({ type: 'reasoning', text: msg.reasoning, isComplete: true });
+    }
+    if (msg.toolInvocations && msg.toolInvocations.length > 0) {
+      for (const inv of msg.toolInvocations) {
+        parts.push({ type: 'tool', invocation: inv });
+      }
+    }
+    if (msg.content) {
+      parts.push({ type: 'text', text: msg.content });
     }
   }
-  if (msg.content) {
-    parts.push({ type: 'text', text: msg.content });
-  }
-  return parts;
+  return parts.filter((part) => {
+    if (part.type === 'text' && !part.text?.trim()) return false;
+    if (part.type === 'reasoning' && !part.text?.trim() && part.isComplete) return false;
+    return true;
+  });
 }
 
 watch(
@@ -1228,6 +1234,75 @@ function renderMarkdown(content: string): string {
                                   : part.invocation.state === 'rejected'
                                     ? 'Search cancelled'
                                     : 'Searching...'
+                              }}
+                            </span>
+                          </Transition>
+                        </div>
+
+                        <!-- Character Library search -->
+                        <div
+                          v-else-if="
+                            part.invocation.name === 'search_character_library'
+                          "
+                          class="flex items-center gap-2 text-sm"
+                        >
+                          <div
+                            class="flex h-5 w-5 items-center justify-center rounded-md border transition-colors duration-200"
+                            :class="
+                              part.invocation.result
+                                ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+                                : part.invocation.state === 'rejected'
+                                  ? 'border-muted bg-muted/40 text-muted-foreground'
+                                  : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
+                            "
+                          >
+                            <Transition
+                              mode="out-in"
+                              enter-active-class="transition duration-200 ease-out"
+                              enter-from-class="scale-75 opacity-0"
+                              leave-active-class="transition duration-100 ease-in"
+                              leave-to-class="scale-75 opacity-0"
+                            >
+                              <Library
+                                v-if="part.invocation.result"
+                                key="done"
+                                class="h-3 w-3"
+                              />
+                              <X
+                                v-else-if="part.invocation.state === 'rejected'"
+                                key="cancelled"
+                                class="h-3 w-3"
+                              />
+                              <Loader2
+                                v-else
+                                key="searching"
+                                class="h-3 w-3 animate-spin"
+                              />
+                            </Transition>
+                          </div>
+                          <Transition
+                            mode="out-in"
+                            enter-active-class="transition duration-200 ease-out"
+                            enter-from-class="translate-y-0.5 opacity-0"
+                            leave-active-class="transition duration-100 ease-in"
+                            leave-to-class="-translate-y-0.5 opacity-0"
+                          >
+                            <span
+                              :key="
+                                part.invocation.result
+                                  ? 'done'
+                                  : part.invocation.state === 'rejected'
+                                    ? 'cancelled'
+                                    : 'searching'
+                              "
+                              class="text-foreground font-medium"
+                            >
+                              {{
+                                part.invocation.result
+                                  ? 'Character Library Inspected'
+                                  : part.invocation.state === 'rejected'
+                                    ? 'Library search cancelled'
+                                    : 'Searching Character Library...'
                               }}
                             </span>
                           </Transition>

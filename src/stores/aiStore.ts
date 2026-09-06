@@ -790,7 +790,8 @@ export const useAiStore = defineStore('ai', () => {
             toolName === 'inspect_current_prompt'
               ? 'inspecting'
               : toolName === 'search_animadex' ||
-                  toolName === 'retrieve_animadex_tag_by_id'
+                  toolName === 'retrieve_animadex_tag_by_id' ||
+                  toolName === 'search_character_library'
                 ? 'searching'
                 : toolName === 'queue_generation'
                   ? 'queueing'

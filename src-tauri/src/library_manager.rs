@@ -376,16 +376,48 @@ fn save_thumbnail_bytes(
     let thumb_dir = thumbnails_dir(app_handle)?;
     let dest = thumb_dir.join(format!("{thumb_id}.jpg"));
 
-    // Decode with image crate and re-encode as JPEG (max 512px on longest side)
+    // Decode with image crate
     let img = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?
         .decode()
         .map_err(|e| format!("Cannot decode image: {e}"))?;
 
-    let img = img.thumbnail(512, 512);
-    img.save_with_format(&dest, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Cannot save JPEG: {e}"))?;
+    // Handle alpha channel transparency by compositing over clean white background
+    let img = if img.color().has_alpha() {
+        let rgba = img.to_rgba8();
+        let mut rgb = image::RgbImage::new(rgba.width(), rgba.height());
+        for (x, y, pixel) in rgba.enumerate_pixels() {
+            let a = pixel[3] as f32 / 255.0;
+            let r = ((pixel[0] as f32 * a) + (255.0 * (1.0 - a))) as u8;
+            let g = ((pixel[1] as f32 * a) + (255.0 * (1.0 - a))) as u8;
+            let b = ((pixel[2] as f32 * a) + (255.0 * (1.0 - a))) as u8;
+            rgb.put_pixel(x, y, image::Rgb([r, g, b]));
+        }
+        image::DynamicImage::ImageRgb8(rgb)
+    } else {
+        img
+    };
+
+    // High-quality downsampling with Lanczos3:
+    // Only downscale if the image exceeds 1024px on any side, preserving crisp line art,
+    // hair details, and textures without blurry bilinear scaling.
+    let (w, h) = (img.width(), img.height());
+    let resized = if w > 1024 || h > 1024 {
+        img.resize(1024, 1024, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+
+    // Encode as high-quality JPEG (Quality 90):
+    // Preserves near-original visual fidelity with imperceptible compression while keeping file size compact (~80-160 KB).
+    let mut out_bytes = Vec::with_capacity(128 * 1024);
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out_bytes, 90);
+    encoder
+        .encode_image(&resized)
+        .map_err(|e| format!("Cannot encode JPEG: {e}"))?;
+
+    fs::write(&dest, out_bytes).map_err(|e| format!("Cannot save JPEG: {e}"))?;
 
     Ok(thumb_id)
 }
