@@ -24,9 +24,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { resolveAnimadexMediaUrl } from '@/services/animadexApi';
 import { LibraryService } from '@/services/libraryService';
@@ -210,60 +214,112 @@ function handleFilterByTag(tag: string) {
   emit('update:open', false);
 }
 
-const isSavingToLibrary = ref(false);
+const charModalOpen = ref(false);
+const charName = ref('');
+const charTrigger = ref('');
+const charSeries = ref('');
+const charTags = ref('');
+const charThumbnailUrl = ref('');
+const isSavingChar = ref(false);
 
-async function handleSaveToCharacterLibrary() {
+function formatTitle(str: string): string {
+  return str
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function closeCharModal() {
+  charModalOpen.value = false;
+}
+
+function handleDetailOpenChange(val: boolean) {
+  if (charModalOpen.value) return;
+  emit('update:open', val);
+}
+
+function openCreateCharacterFromAnimadex() {
   if (!character.value) return;
-  isSavingToLibrary.value = true;
+  const char = character.value;
+  charName.value = char.name ? formatTitle(char.name) : '';
+  charTrigger.value =
+    char.trigger || char.name.toLowerCase().replaceAll(' ', '_');
+  const series = char.copyright_name || char.copyright || '';
+  charSeries.value = series ? formatTitle(series) : '';
+  charTags.value = (char.tags || []).join(', ');
+  const rawUrl = char.img_url || char.thumb_url;
+  charThumbnailUrl.value = resolveAnimadexMediaUrl(rawUrl) || '';
+  charModalOpen.value = true;
+}
+
+async function handleSaveCharacterToLibrary() {
+  if (!charName.value.trim()) return;
+  isSavingChar.value = true;
   try {
     const char = character.value;
-    const tempId = `char-${Date.now()}`;
+    const tempId = `animadex-char-${Date.now()}`;
     let thumbnailId: string | undefined;
 
-    const rawUrl = char.img_url || char.thumb_url;
-    const imageUrl = resolveAnimadexMediaUrl(rawUrl);
-    if (imageUrl) {
+    if (charThumbnailUrl.value) {
       try {
-        thumbnailId = await LibraryService.saveThumbnailFromUrl(tempId, imageUrl);
+        thumbnailId = await LibraryService.saveThumbnailFromUrl(
+          tempId,
+          charThumbnailUrl.value
+        );
       } catch (err) {
         console.warn('[Animadex] Could not save thumbnail for character:', err);
       }
     }
 
-    const seriesName = char.copyright_name || char.copyright || undefined;
     const item = await LibraryService.saveItem<CharacterData>({
       category: 'characters',
-      name: char.name,
-      description: seriesName ? `From ${seriesName}` : undefined,
+      name: charName.value.trim(),
+      description: charSeries.value.trim()
+        ? `From ${charSeries.value.trim()}`
+        : undefined,
       thumbnailId,
       data: {
-        trigger: char.trigger || char.name.toLowerCase().replaceAll(' ', '_'),
-        tags: char.tags || [],
-        series: seriesName,
+        trigger:
+          charTrigger.value.trim() ||
+          charName.value.trim().toLowerCase().replaceAll(' ', '_'),
+        tags: charTags.value
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+        series: charSeries.value.trim() || undefined,
         source: 'animadex',
-        animadexSlug: char.slug
+        animadexSlug: char?.slug
       }
     });
 
     const libraryStore = useLibraryStore();
     void libraryStore.fetchCategory('characters');
 
+    closeCharModal();
     toast.success(`Saved "${item.name}" to Character Library!`, {
       action: {
         label: 'Open Library',
-        onClick: () => router.push('/library')
+        onClick: () => {
+          emit('update:open', false);
+          router.push('/library');
+        }
       }
     });
   } catch (err) {
-    toast.error(`Failed to save to Library: ${err instanceof Error ? err.message : String(err)}`);
+    toast.error(
+      `Failed to save character: ${err instanceof Error ? err.message : String(err)}`
+    );
   } finally {
-    isSavingToLibrary.value = false;
+    isSavingChar.value = false;
   }
 }
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(val) => emit('update:open', val)">
+  <Dialog
+    :open="open && !charModalOpen"
+    @update:open="handleDetailOpenChange"
+  >
     <DialogContent
       class="border-border/60 bg-background/95 min-w-[60vw] overflow-hidden p-0 shadow-2xl backdrop-blur-xl sm:rounded-2xl"
     >
@@ -468,11 +524,9 @@ async function handleSaveToCharacterLibrary() {
                     size="sm"
                     variant="outline"
                     class="border-primary/30 hover:bg-primary/10 text-primary h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
-                    :disabled="isSavingToLibrary"
-                    @click="handleSaveToCharacterLibrary"
+                    @click="openCreateCharacterFromAnimadex"
                   >
-                    <Loader2 v-if="isSavingToLibrary" class="h-3.5 w-3.5 animate-spin" />
-                    <BookOpen v-else class="h-3.5 w-3.5" />
+                    <BookOpen class="h-3.5 w-3.5" />
                     <span>Save to Character Library</span>
                   </Button>
 
@@ -603,6 +657,130 @@ async function handleSaveToCharacterLibrary() {
           </ScrollArea>
         </div>
       </div>
+    </DialogContent>
+  </Dialog>
+
+  <!-- Save Character to Library Modal -->
+  <Dialog
+    :open="charModalOpen"
+    @update:open="(v) => { if (!v) closeCharModal(); else charModalOpen = true; }"
+  >
+    <DialogContent
+      class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0 shadow-2xl"
+    >
+      <DialogHeader
+        class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
+      >
+        <DialogTitle
+          class="text-foreground flex items-center gap-2 text-sm font-bold"
+        >
+          <BookOpen class="text-primary h-4 w-4" />
+          <span>Save to Character Library</span>
+        </DialogTitle>
+      </DialogHeader>
+
+      <div class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+          <!-- Left (2 cols): Character Inputs -->
+          <div class="md:col-span-2 flex flex-col gap-4">
+            <!-- Character Name -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold">
+                Character Name <span class="text-destructive">*</span>
+              </Label>
+              <Input
+                v-model="charName"
+                placeholder="e.g. Hatsune Miku"
+                class="text-xs"
+              />
+            </div>
+
+            <!-- Trigger Tag -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold">
+                Trigger Tag <span class="text-destructive">*</span>
+              </Label>
+              <Input
+                v-model="charTrigger"
+                placeholder="e.g. hatsune_miku"
+                class="font-mono text-xs"
+              />
+            </div>
+
+            <!-- Series / Copyright -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold">
+                Series / Copyright (optional)
+              </Label>
+              <Input
+                v-model="charSeries"
+                placeholder="e.g. Vocaloid"
+                class="text-xs"
+              />
+            </div>
+
+            <!-- Tags -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold">
+                Tags & Features
+                <span class="text-muted-foreground font-normal"
+                  >(comma-separated)</span
+                >
+              </Label>
+              <Textarea
+                v-model="charTags"
+                rows="4"
+                placeholder="twin tails, sleeveless shirt, necktie..."
+                class="font-mono text-xs bg-background"
+              />
+            </div>
+          </div>
+
+          <!-- Right (1 col): Portrait Thumbnail Preview -->
+          <div class="md:col-span-1 flex flex-col gap-2">
+            <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
+            <div
+              class="relative aspect-3/4 w-full overflow-hidden rounded-xl border border-border bg-muted/30"
+            >
+              <img
+                v-if="charThumbnailUrl"
+                :src="charThumbnailUrl"
+                alt="Character thumbnail"
+                class="h-full w-full object-cover object-center"
+              />
+              <div
+                v-else
+                class="flex h-full w-full items-center justify-center text-muted-foreground text-xs"
+              >
+                No image selected
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <DialogFooter
+        class="border-border bg-muted/30 shrink-0 border-t px-5 py-3"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          class="text-xs"
+          @click="closeCharModal"
+        >
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          class="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-xs font-semibold"
+          :disabled="!charName.trim() || isSavingChar"
+          @click="handleSaveCharacterToLibrary"
+        >
+          <Loader2 v-if="isSavingChar" class="h-3.5 w-3.5 animate-spin" />
+          <Check v-else class="h-3.5 w-3.5" />
+          {{ isSavingChar ? 'Saving…' : 'Save to Library' }}
+        </Button>
+      </DialogFooter>
     </DialogContent>
   </Dialog>
 </template>

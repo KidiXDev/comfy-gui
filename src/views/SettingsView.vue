@@ -200,8 +200,28 @@ async function clearCivitaiApiKey() {
   }
 }
 
+async function loadBooruPromptFormatOptions() {
+  try {
+    const saved = await loadAppData<{
+      replaceUnderscores?: boolean;
+      escapeParentheses?: boolean;
+    }>('booru_prompt_format_options');
+    if (saved) {
+      if (typeof saved.replaceUnderscores === 'boolean') {
+        booruReplaceUnderscores.value = saved.replaceUnderscores;
+      }
+      if (typeof saved.escapeParentheses === 'boolean') {
+        booruEscapeParentheses.value = saved.escapeParentheses;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load booru prompt format options:', error);
+  }
+}
+
 onMounted(() => {
   void loadCivitaiSettings();
+  void loadBooruPromptFormatOptions();
   loadAiSettings();
 });
 
@@ -553,6 +573,13 @@ watch(
   },
   { deep: true, flush: 'sync' }
 );
+
+watch([booruReplaceUnderscores, booruEscapeParentheses], ([rep, esc]) => {
+  void saveAppData('booru_prompt_format_options', {
+    replaceUnderscores: rep,
+    escapeParentheses: esc
+  }).catch(console.error);
+});
 
 watch([civitaiApiKey, civitaiNsfw], () => {
   if (!applyingCivitaiSettings) autosaveCivitaiSettings();
@@ -1359,10 +1386,7 @@ void loadNetworkCacheStats();
                 <span class="text-foreground text-xs font-medium">
                   Replace underscores with spaces
                 </span>
-                <Switch
-                  v-model="booruReplaceUnderscores"
-                  :disabled="!booruAvailable"
-                />
+                <Switch v-model="booruReplaceUnderscores" />
               </div>
               <div
                 class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
@@ -1370,10 +1394,7 @@ void loadNetworkCacheStats();
                 <span class="text-foreground text-xs font-medium">
                   Escape prompt parentheses
                 </span>
-                <Switch
-                  v-model="booruEscapeParentheses"
-                  :disabled="!booruAvailable"
-                />
+                <Switch v-model="booruEscapeParentheses" />
               </div>
             </div>
           </div>

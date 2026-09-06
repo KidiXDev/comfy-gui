@@ -21,7 +21,6 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Loader2,
-  RefreshCw,
   RotateCw,
   Search,
   Sparkles,
@@ -53,6 +52,7 @@ import { LibraryService } from '../services/libraryService';
 import { useLibraryStore } from '../stores/libraryStore';
 import type { CharacterData } from '../types/library';
 import { Input } from '@/components/ui/input';
+import { loadAppData, saveAppData } from '../services/appStorage';
 import {
   Select,
   SelectContent,
@@ -119,6 +119,57 @@ const isViewActive = ref(true);
 const router = useRouter();
 
 // ---------------------------------------------------------------------------
+// Booru Prompt Formatting Preferences (Persisted locally)
+// ---------------------------------------------------------------------------
+interface BooruPromptFormatOptions {
+  replaceUnderscores: boolean;
+  escapeParentheses: boolean;
+}
+
+const BOORU_FORMAT_OPTIONS_KEY = 'booru_prompt_format_options';
+
+const promptFormatOptions = ref<BooruPromptFormatOptions>({
+  replaceUnderscores: false,
+  escapeParentheses: false
+});
+
+onMounted(async () => {
+  try {
+    const saved = await loadAppData<BooruPromptFormatOptions>(
+      BOORU_FORMAT_OPTIONS_KEY
+    );
+    if (saved) {
+      if (typeof saved.replaceUnderscores === 'boolean') {
+        promptFormatOptions.value.replaceUnderscores = saved.replaceUnderscores;
+      }
+      if (typeof saved.escapeParentheses === 'boolean') {
+        promptFormatOptions.value.escapeParentheses = saved.escapeParentheses;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load booru prompt format options:', err);
+  }
+});
+
+watch(
+  promptFormatOptions,
+  (options) => {
+    void saveAppData(BOORU_FORMAT_OPTIONS_KEY, options).catch(console.error);
+  },
+  { deep: true }
+);
+
+function formatTag(tag: string): string {
+  let value = promptFormatOptions.value.replaceUnderscores
+    ? tag.replaceAll('_', ' ')
+    : tag;
+  if (promptFormatOptions.value.escapeParentheses) {
+    value = value.replaceAll('(', '\\(').replaceAll(')', '\\)');
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
 // Character Library Integration from Booru
 // ---------------------------------------------------------------------------
 const charModalOpen = ref(false);
@@ -166,15 +217,30 @@ function formatTitle(str: string): string {
     .join(' ');
 }
 
+const reopenDetailOnCharClose = ref(false);
+
 function openCreateCharacterFromBooru() {
   const cTag = characterTags.value[0] || '';
   charName.value = cTag ? formatTitle(cTag) : '';
   charTrigger.value = cTag || '';
   const cpTag = copyrightTags.value[0] || '';
   charSeries.value = cpTag ? formatTitle(cpTag) : '';
-  charTags.value = generalTags.value.join(', ');
+  charTags.value = generalTags.value.map(formatTag).join(', ');
   charThumbnailUrl.value = detailActiveImgUrl.value || detail.value?.previewUrl || '';
+
+  if (detailOpen.value) {
+    reopenDetailOnCharClose.value = true;
+    detailOpen.value = false;
+  }
   charModalOpen.value = true;
+}
+
+function closeCharModal() {
+  charModalOpen.value = false;
+  if (reopenDetailOnCharClose.value) {
+    reopenDetailOnCharClose.value = false;
+    detailOpen.value = true;
+  }
 }
 
 async function handleSaveCharacterToLibrary() {
@@ -208,7 +274,7 @@ async function handleSaveCharacterToLibrary() {
     const libraryStore = useLibraryStore();
     void libraryStore.fetchCategory('characters');
 
-    charModalOpen.value = false;
+    closeCharModal();
     toast.success(`Saved "${item.name}" to Character Library!`, {
       action: {
         label: 'Open Library',
@@ -600,10 +666,14 @@ const prompt = computed(() => {
   if (!detail.value) return '';
   return buildBooruPrompt(
     detail.value.tags,
-    settings.value?.promptDefaults ?? {
-      categories: ['copyright', 'character', 'general'],
-      replaceUnderscores: false,
-      escapeParentheses: false
+    {
+      categories: settings.value?.promptDefaults?.categories ?? [
+        'copyright',
+        'character',
+        'general'
+      ],
+      replaceUnderscores: promptFormatOptions.value.replaceUnderscores,
+      escapeParentheses: promptFormatOptions.value.escapeParentheses
     },
     settings.value?.outputFilterTags
   );
@@ -917,7 +987,8 @@ async function copyPrompt() {
 }
 
 async function copyTag(tag: string) {
-  await navigator.clipboard.writeText(tag);
+  const text = formatTag(tag);
+  await navigator.clipboard.writeText(text);
   copiedTag.value = tag;
   setTimeout(() => {
     if (copiedTag.value === tag) copiedTag.value = null;
@@ -1257,8 +1328,8 @@ onUnmounted(deactivateView);
         </Button>
       </form>
 
-      <!-- Rating Filters & Refresh Action Row -->
-      <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+      <!-- Rating Filters -->
+      <div class="flex flex-wrap items-center gap-2 pt-0.5">
         <div
           v-if="activeSource?.ratings.length"
           class="flex flex-wrap items-center gap-2"
@@ -1290,23 +1361,6 @@ onUnmounted(deactivateView);
             <span>{{ rating }}</span>
           </button>
         </div>
-        <div v-else class="flex-1" />
-
-        <!-- Refresh Button (Icon Only, Aligned with Ratings) -->
-        <Button
-          variant="outline"
-          size="sm"
-          :disabled="!comfyStore.isConnected || isLoading || isSetupLoading"
-          class="border-border bg-secondary/80 text-foreground hover:bg-accent h-7 w-7 shrink-0 p-0 shadow-xs"
-          title="Refresh results"
-          @click="runSearch(true)"
-        >
-          <RefreshCw
-            class="h-3.5 w-3.5"
-            :class="{ 'animate-spin': isLoading && posts.length === 0 }"
-          />
-          <span class="sr-only">Refresh</span>
-        </Button>
       </div>
     </header>
 
@@ -1871,16 +1925,50 @@ onUnmounted(deactivateView);
               <div
                 class="border-border/80 bg-secondary/30 flex flex-col gap-2 rounded-xl border p-3.5"
               >
-                <div class="flex items-center justify-between">
+                <div class="flex flex-wrap items-center justify-between gap-2">
                   <span
                     class="text-muted-foreground flex items-center gap-1.5 text-xs font-bold tracking-wider uppercase"
                   >
                     <Sparkles class="h-3.5 w-3.5 text-amber-400" />
                     <span>Extracted Prompt</span>
                   </span>
-                  <span class="text-muted-foreground font-mono text-[10px]">
-                    {{ tagCountTotal }} tags
-                  </span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      class="h-6 cursor-pointer rounded border px-2 font-mono text-xs transition-colors select-none"
+                      :class="
+                        promptFormatOptions.replaceUnderscores
+                          ? 'border-primary/40 bg-primary/20 text-primary font-semibold shadow-2xs'
+                          : 'border-border/60 bg-background/50 text-muted-foreground hover:text-foreground'
+                      "
+                      title="Replace underscores with spaces in extracted prompt and tags"
+                      @click="
+                        promptFormatOptions.replaceUnderscores =
+                          !promptFormatOptions.replaceUnderscores
+                      "
+                    >
+                      _ &rarr; space
+                    </button>
+                    <button
+                      type="button"
+                      class="h-6 cursor-pointer rounded border px-2 font-mono text-xs transition-colors select-none"
+                      :class="
+                        promptFormatOptions.escapeParentheses
+                          ? 'border-primary/40 bg-primary/20 text-primary font-semibold shadow-2xs'
+                          : 'border-border/60 bg-background/50 text-muted-foreground hover:text-foreground'
+                      "
+                      title="Escape parentheses (\( \)) in extracted prompt and tags"
+                      @click="
+                        promptFormatOptions.escapeParentheses =
+                          !promptFormatOptions.escapeParentheses
+                      "
+                    >
+                      \( \)
+                    </button>
+                    <span class="text-muted-foreground font-mono text-xs ml-1">
+                      {{ tagCountTotal }} tags
+                    </span>
+                  </div>
                 </div>
                 <p
                   class="text-foreground border-border/50 bg-background/50 rounded-lg border p-3 font-mono text-xs leading-relaxed wrap-break-word select-text"
@@ -1914,7 +2002,7 @@ onUnmounted(deactivateView);
                       <Tag class="h-3 w-3" />
                       <span>{{ category }}</span>
                     </h3>
-                    <span class="text-muted-foreground font-mono text-[10px]">
+                    <span class="text-muted-foreground font-mono text-xs">
                       {{ tags.length }}
                     </span>
                   </div>
@@ -1929,13 +2017,13 @@ onUnmounted(deactivateView);
                         categoryBadgeClass(category),
                         copiedTag === tag ? 'ring-primary scale-105 ring-2' : ''
                       ]"
-                      :title="`Click to copy: ${tag}`"
+                      :title="`Click to copy: ${formatTag(tag)}`"
                       @click="copyTag(tag)"
                     >
                       <span v-if="copiedTag === tag" class="font-bold"
-                        >✓ {{ tag }}</span
+                        >✓ {{ formatTag(tag) }}</span
                       >
-                      <span v-else>{{ tag }}</span>
+                      <span v-else>{{ formatTag(tag) }}</span>
                     </button>
                   </div>
                 </section>
@@ -2030,7 +2118,10 @@ onUnmounted(deactivateView);
     <!-- ---------------------------------------------------------------
          Save Character to Library Modal
     --------------------------------------------------------------- -->
-    <Dialog :open="charModalOpen" @update:open="(v) => (charModalOpen = v)">
+    <Dialog
+      :open="charModalOpen"
+      @update:open="(v) => { if (!v) closeCharModal(); else charModalOpen = true; }"
+    >
       <DialogContent class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader class="border-border bg-background/50 shrink-0 border-b px-5 py-4">
           <DialogTitle class="text-foreground flex items-center gap-2 text-sm font-bold">
@@ -2084,7 +2175,7 @@ onUnmounted(deactivateView);
         </div>
 
         <DialogFooter class="border-border bg-muted/30 shrink-0 border-t px-5 py-3">
-          <Button variant="outline" size="sm" class="text-xs" @click="charModalOpen = false">
+          <Button variant="outline" size="sm" class="text-xs" @click="closeCharModal">
             Cancel
           </Button>
           <Button

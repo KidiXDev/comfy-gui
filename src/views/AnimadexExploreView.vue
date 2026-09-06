@@ -227,6 +227,9 @@ async function performSearch(reset = true) {
     currentPage.value = 1;
     isLoading.value = true;
     errorMessage.value = '';
+    if (activeTab.value === 'characters') charactersList.value = [];
+    else if (activeTab.value === 'artists') artistsList.value = [];
+    else copyrightsList.value = [];
     if (scrollViewport.value) {
       scrollViewport.value.scrollTop = 0;
       savedScrollTop = 0;
@@ -571,10 +574,10 @@ watch(
             type="text"
             :placeholder="
               activeTab === 'characters'
-                ? 'Search characters or tags (e.g. hatsune miku, blue hair)...'
+                ? 'Search characters or tags'
                 : activeTab === 'artists'
-                  ? 'Search artists (e.g. kantoku, wlop)...'
-                  : 'Search series / copyright franchise...'
+                  ? 'Search artists'
+                  : 'Search series / copyright franchise'
             "
             class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 text-xs transition-colors"
             autocomplete="off"

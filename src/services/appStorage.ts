@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 type AppDataName =
   | 'ai_config'
+  | 'booru_prompt_format_options'
   | 'chat_sessions'
   | 'civitai_browser_state'
   | 'civitai_settings'
@@ -20,6 +21,7 @@ type DataContainer = Partial<Record<AppDataName, unknown>>;
 
 const dataFiles: Record<AppDataName, DataFile> = {
   ai_config: 'ai_config',
+  booru_prompt_format_options: 'state',
   chat_sessions: 'chat',
   civitai_browser_state: 'state',
   civitai_settings: 'config',
