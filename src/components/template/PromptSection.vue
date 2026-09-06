@@ -94,6 +94,7 @@ const defaultTextareaSizes: PromptTextareaSizes = {
   negative: 80
 };
 const textareaSizes = ref<Partial<PromptTextareaSizes>>({});
+const textareaSizesReady = ref(false);
 const formatOptions = ref({ ...DEFAULT_FORMAT_OPTIONS });
 let formatOptionsLoaded = false;
 onMounted(async () => {
@@ -135,6 +136,9 @@ async function loadTextareaSizes() {
     }
   } catch (error) {
     console.warn('Failed to load prompt textarea sizes:', error);
+  } finally {
+    await nextTick();
+    textareaSizesReady.value = true;
   }
 }
 
@@ -200,7 +204,7 @@ function getTextareaElement(field: PromptField): HTMLTextAreaElement | null {
   if (!comp) return null;
   return (
     (comp.$el instanceof HTMLTextAreaElement ? comp.$el : null) ??
-    ((comp as unknown) as HTMLTextAreaElement)
+    (comp as unknown as HTMLTextAreaElement)
   );
 }
 
@@ -280,7 +284,9 @@ function getCaretCoordinates(
   const coordinates = {
     top: span.offsetTop - element.scrollTop,
     left: span.offsetLeft - element.scrollLeft,
-    height: span.offsetHeight || (Number.isNaN(parsedLineHeight) ? 18 : parsedLineHeight)
+    height:
+      span.offsetHeight ||
+      (Number.isNaN(parsedLineHeight) ? 18 : parsedLineHeight)
   };
 
   return coordinates;
@@ -1069,14 +1075,18 @@ const negativeTokenInfo = computed(() =>
 
 <template>
   <TooltipProvider>
-    <div class="flex flex-col gap-3.5" @keydown="handleContainerKeydown">
+    <div
+      class="flex flex-col gap-3.5"
+      :class="{ invisible: !textareaSizesReady }"
+      @keydown="handleContainerKeydown"
+    >
       <!-- Prompt In-Editor Find Bar (Ctrl+F) -->
       <div
         v-if="isFindBarOpen"
         class="border-border/80 bg-card/95 flex items-center justify-between gap-2 rounded-lg border p-1.5 px-2.5 shadow-md backdrop-blur-md transition-all"
       >
         <!-- Left: Target Selector + Input -->
-        <div class="flex flex-1 items-center gap-2 min-w-0">
+        <div class="flex min-w-0 flex-1 items-center gap-2">
           <div
             class="border-border/80 bg-secondary/70 flex shrink-0 items-center rounded-md border p-0.5 text-xs"
           >
@@ -1106,7 +1116,7 @@ const negativeTokenInfo = computed(() =>
             </button>
           </div>
 
-          <div class="relative flex flex-1 items-center min-w-36">
+          <div class="relative flex min-w-36 flex-1 items-center">
             <Search
               class="text-muted-foreground pointer-events-none absolute left-2 h-3.5 w-3.5"
             />

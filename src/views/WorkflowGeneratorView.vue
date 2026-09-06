@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Folder, History, Images } from '@lucide/vue';
+import { Folder, History, Images, Loader2 } from '@lucide/vue';
 import ModelSection from '@/components/template/ModelSection.vue';
 import AdvancedSettingsSection from '@/components/template/AdvancedSettingsSection.vue';
 import PromptSection from '@/components/template/PromptSection.vue';
@@ -40,7 +40,10 @@ async function openOutputFolder() {
 </script>
 
 <template>
-  <div class="bg-background flex h-full flex-col overflow-hidden">
+  <div
+    v-if="workflowStore.isLoaded"
+    class="bg-background flex h-full flex-col overflow-hidden"
+  >
     <!-- Top Studio Toolbar / Tab Strip -->
     <header
       class="border-border bg-card/60 flex h-10 shrink-0 items-center justify-between border-b px-4 backdrop-blur-xs select-none"
@@ -243,5 +246,14 @@ async function openOutputFolder() {
         </section>
       </ResizablePanel>
     </ResizablePanelGroup>
+  </div>
+  <div
+    v-else
+    class="bg-background text-muted-foreground flex h-full items-center justify-center"
+    role="status"
+    aria-live="polite"
+  >
+    <Loader2 class="text-primary h-5 w-5 animate-spin" />
+    <span class="ml-2 text-xs">Loading workspace…</span>
   </div>
 </template>
