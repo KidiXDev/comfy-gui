@@ -420,7 +420,6 @@ pub fn run() {
             library_manager::library_save_thumbnail_from_url,
             library_manager::library_read_thumbnail,
             library_manager::library_open_folder,
-            library_manager::library_migrate_legacy_presets,
             prompt_suggestions::load_prompt_suggestions,
             prompt_suggestions::open_prompt_suggestions_folder,
             animadex::animadex_request,

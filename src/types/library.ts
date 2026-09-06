@@ -78,14 +78,6 @@ export interface LibraryListEntry {
   updatedAt: number;
 }
 
-// ---------------------------------------------------------------------------
-// Migration report
-// ---------------------------------------------------------------------------
-
-export interface MigrationReport {
-  migrated: number;
-  failed: number;
-}
 
 // ---------------------------------------------------------------------------
 // Convenience aliases that keep backward-compatibility with old preset types

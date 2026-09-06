@@ -8,7 +8,6 @@ import {
   Check,
   CheckCircle2,
   Cpu,
-  Download,
   Eye,
   EyeOff,
   ExternalLink,
@@ -63,7 +62,6 @@ import {
 } from '../services/booruGallery';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
-import { LibraryService } from '../services/libraryService';
 import { useComfyStore } from '../stores/comfyStore';
 import {
   cleanPath,
@@ -705,27 +703,6 @@ async function checkForUpdates() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Library — Legacy preset migration
-// ---------------------------------------------------------------------------
-
-const isMigrating = ref(false);
-const migrationResult = ref<{ migrated: number; failed: number } | null>(null);
-
-async function runLegacyMigration() {
-  if (isMigrating.value) return;
-  isMigrating.value = true;
-  migrationResult.value = null;
-  try {
-    const report = await LibraryService.migrateLegacyPresets();
-    migrationResult.value = report;
-  } catch (error) {
-    migrationResult.value = { migrated: 0, failed: 1 };
-    console.error('Migration error:', error);
-  } finally {
-    isMigrating.value = false;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Network Disk Cache (Danbooru & Animadex)
@@ -1967,65 +1944,6 @@ void loadNetworkCacheStats();
           </Field>
         </section>
 
-        <!-- Library Migration Section -->
-        <section
-          class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
-        >
-          <div class="border-border/80 flex items-center gap-2.5 border-b pb-3">
-            <div
-              class="border-border bg-secondary flex h-7 w-7 items-center justify-center rounded-md border text-amber-400"
-            >
-              <Download class="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <span class="text-xs font-bold tracking-wider uppercase">
-                Library Migration
-              </span>
-              <p class="text-muted-foreground text-xs">
-                Import legacy preset files into the new Library system
-              </p>
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-3">
-            <p class="text-muted-foreground text-xs leading-relaxed">
-              If you had prompt or LoRA presets created before the Library system was
-              introduced, click below to import them. Each migrated file is renamed
-              to <code class="text-foreground font-mono">.json.migrated</code> so you
-              can verify the import before deleting the originals.
-            </p>
-
-            <div class="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="isMigrating"
-                class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
-                @click="runLegacyMigration"
-              >
-                <Loader2 v-if="isMigrating" class="h-3.5 w-3.5 animate-spin" />
-                <Download v-else class="h-3.5 w-3.5" />
-                {{ isMigrating ? 'Migrating…' : 'Migrate Legacy Presets' }}
-              </Button>
-
-              <span
-                v-if="migrationResult"
-                class="font-mono text-xs"
-                :class="
-                  migrationResult.failed > 0
-                    ? 'text-amber-400'
-                    : 'text-emerald-400'
-                "
-              >
-                {{ migrationResult.migrated }} imported
-                <template v-if="migrationResult.failed > 0">
-                  · {{ migrationResult.failed }} failed
-                </template>
-              </span>
-            </div>
-          </div>
-        </section>
 
         <!-- Network Disk Cache Section -->
         <section
@@ -2041,32 +1959,19 @@ void loadNetworkCacheStats();
               <span class="text-xs font-bold tracking-wider uppercase">
                 Network Disk Cache
               </span>
-              <p class="text-muted-foreground text-xs">
-                Local file cache for Danbooru Wiki and Animadex Explore
-              </p>
             </div>
           </div>
 
           <div class="flex flex-col gap-3">
-            <p class="text-muted-foreground text-xs leading-relaxed">
-              Wiki pages and taxonomy entries are automatically cached as JSON files on your local disk
-              (<code class="text-foreground font-mono">AppData\Local\io.github.kidixdev.comfygui\network_cache</code>)
-              for fast, offline-friendly access with expiration checks.
-            </p>
-
             <div class="flex flex-wrap items-center gap-4">
               <div
                 v-if="cacheStats"
                 class="text-muted-foreground flex items-center gap-2 font-mono text-xs"
               >
-                <span class="text-foreground font-semibold">{{
-                  cacheStats.totalEntries
-                }}</span>
-                cached files
-                <span>·</span>
-                <span class="text-foreground font-semibold">{{
-                  formatBytes(cacheStats.totalSizeBytes)
-                }}</span>
+                <span class="text-foreground font-semibold">
+                  Size in disk:
+                  {{ formatBytes(cacheStats.totalSizeBytes) }}</span
+                >
               </div>
               <div v-else class="text-muted-foreground text-xs">
                 Loading cache statistics…
@@ -2084,14 +1989,17 @@ void loadNetworkCacheStats();
                 class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
                 @click="clearNetworkDiskCache"
               >
-                <Loader2 v-if="isClearingCache" class="h-3.5 w-3.5 animate-spin" />
+                <Loader2
+                  v-if="isClearingCache"
+                  class="h-3.5 w-3.5 animate-spin"
+                />
                 <Trash2 v-else class="h-3.5 w-3.5 text-rose-400" />
                 {{ isClearingCache ? 'Clearing…' : 'Clear Network Cache' }}
               </Button>
 
               <span
                 v-if="cacheMessage"
-                class="text-emerald-400 font-mono text-xs"
+                class="font-mono text-xs text-emerald-400"
               >
                 {{ cacheMessage }}
               </span>
@@ -2109,12 +2017,7 @@ void loadNetworkCacheStats();
               <Info class="h-3.5 w-3.5" />
             </div>
             <div>
-              <span class="text-xs font-bold tracking-wider uppercase">
-                About ComfyGUI
-              </span>
-              <p class="text-muted-foreground text-xs">
-                Application version and release updates
-              </p>
+              <Label> About ComfyGUI </Label>
             </div>
           </div>
 

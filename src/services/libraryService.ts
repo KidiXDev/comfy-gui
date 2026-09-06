@@ -3,7 +3,6 @@ import type {
   LibraryCategory,
   LibraryItem,
   LibraryListEntry,
-  MigrationReport,
   SaveLibraryItemPayload
 } from '../types/library';
 
@@ -150,14 +149,6 @@ export const LibraryService = {
     }
   },
 
-  /**
-   * Run the one-time migration: scans old `presets/prompts` and `presets/loras`
-   * directories, imports each entry into the Library, then renames the original
-   * to `.json.migrated`.
-   */
-  async migrateLegacyPresets(): Promise<MigrationReport> {
-    return await invoke<MigrationReport>('library_migrate_legacy_presets');
-  },
 
   /** Build a comfygui-library:// thumbnail URL without fetching. */
   getThumbnailUrl(thumbnailId: string): string {

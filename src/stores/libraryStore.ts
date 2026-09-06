@@ -7,7 +7,6 @@ import type {
   LibraryItem,
   LibraryListEntry,
   LoraData,
-  MigrationReport,
   PromptData,
   SaveLibraryItemPayload
 } from '../types/library';
@@ -71,26 +70,6 @@ export const useLibraryStore = defineStore('library', () => {
   const saveThumbnailFromPath = LibraryService.saveThumbnailFromPath.bind(LibraryService);
   const saveThumbnailFromDataUrl = LibraryService.saveThumbnailFromDataUrl.bind(LibraryService);
 
-  // ---------------------------------------------------------------------------
-  // Migration
-  // ---------------------------------------------------------------------------
-
-  const isMigrating = ref(false);
-  const lastMigrationReport = ref<MigrationReport | null>(null);
-
-  async function migrateLegacyPresets(): Promise<MigrationReport> {
-    isMigrating.value = true;
-    try {
-      const report = await LibraryService.migrateLegacyPresets();
-      lastMigrationReport.value = report;
-      // Refresh prompts and loras after migration
-      await fetchCategory('prompts');
-      await fetchCategory('loras');
-      return report;
-    } finally {
-      isMigrating.value = false;
-    }
-  }
 
   // ---------------------------------------------------------------------------
   // Typed convenience getters
@@ -118,9 +97,6 @@ export const useLibraryStore = defineStore('library', () => {
     deleteItem,
     saveThumbnailFromPath,
     saveThumbnailFromDataUrl,
-    migrateLegacyPresets,
-    isMigrating,
-    lastMigrationReport,
     getPromptEntries,
     getLoraEntries,
     getCharacterEntries
