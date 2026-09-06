@@ -5,6 +5,7 @@ import {
   Bookmark,
   Check,
   ChevronDown,
+  ChevronUp,
   Code2,
   Copy,
   Copyright,
@@ -188,9 +189,159 @@ const negativeTextarea = ref<TextareaRef>();
 const suggestions = ref<AutocompleteItem[]>([]);
 const activeIndex = ref(0);
 const activeField = ref<PromptField>();
+const autocompleteListRef = ref<HTMLElement | null>(null);
 let activeRange: PromptTokenRange | null = null;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchController: AbortController | undefined;
+
+function getTextareaElement(field: PromptField): HTMLTextAreaElement | null {
+  const comp =
+    field === 'positive' ? positiveTextarea.value : negativeTextarea.value;
+  if (!comp) return null;
+  return (
+    (comp.$el instanceof HTMLTextAreaElement ? comp.$el : null) ??
+    ((comp as unknown) as HTMLTextAreaElement)
+  );
+}
+
+const caretPropertiesToCopy = [
+  'direction',
+  'boxSizing',
+  'width',
+  'overflowX',
+  'overflowY',
+  'borderTopWidth',
+  'borderRightWidth',
+  'borderBottomWidth',
+  'borderLeftWidth',
+  'borderStyle',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'fontStyle',
+  'fontVariant',
+  'fontWeight',
+  'fontStretch',
+  'fontSize',
+  'fontSizeAdjust',
+  'lineHeight',
+  'fontFamily',
+  'textAlign',
+  'textTransform',
+  'textIndent',
+  'textDecoration',
+  'letterSpacing',
+  'wordSpacing',
+  'tabSize'
+] as const;
+
+let mirrorDiv: HTMLDivElement | null = null;
+
+function getCaretCoordinates(
+  element: HTMLTextAreaElement,
+  position: number
+): { top: number; left: number; height: number } {
+  if (typeof document === 'undefined') {
+    return { top: 0, left: 0, height: 20 };
+  }
+
+  if (!mirrorDiv) {
+    mirrorDiv = document.createElement('div');
+    mirrorDiv.id = 'prompt-textarea-caret-position-mirror';
+    document.body.append(mirrorDiv);
+  }
+
+  const style = mirrorDiv.style;
+  const computedStyle = window.getComputedStyle(element);
+
+  style.whiteSpace = 'pre-wrap';
+  style.wordWrap = 'break-word';
+  style.overflowWrap = 'break-word';
+  style.position = 'absolute';
+  style.top = '-9999px';
+  style.left = '-9999px';
+  style.visibility = 'hidden';
+
+  for (const prop of caretPropertiesToCopy) {
+    style[prop] = computedStyle[prop];
+  }
+
+  style.width = `${element.clientWidth}px`;
+  mirrorDiv.textContent = element.value.slice(0, position);
+
+  const span = document.createElement('span');
+  span.textContent = element.value.slice(position) || '.';
+  mirrorDiv.append(span);
+
+  const parsedLineHeight = Math.trunc(
+    Number(computedStyle.lineHeight.replace('px', ''))
+  );
+  const coordinates = {
+    top: span.offsetTop - element.scrollTop,
+    left: span.offsetLeft - element.scrollLeft,
+    height: span.offsetHeight || (Number.isNaN(parsedLineHeight) ? 18 : parsedLineHeight)
+  };
+
+  return coordinates;
+}
+
+const caretCoords = ref<{ top: number; left: number; height: number }>({
+  top: 0,
+  left: 0,
+  height: 20
+});
+
+function getAutocompleteDropdownStyle(field: PromptField) {
+  const input = getTextareaElement(field);
+  const containerWidth = input?.clientWidth ?? 400;
+  const dropdownWidth = 320;
+
+  let left = caretCoords.value.left;
+  let top = caretCoords.value.top + caretCoords.value.height + 4;
+
+  if (left + dropdownWidth > containerWidth - 8) {
+    left = Math.max(8, containerWidth - dropdownWidth - 8);
+  }
+  if (left < 8) {
+    left = 8;
+  }
+  if (top < 4) {
+    top = 4;
+  }
+
+  return {
+    top: `${top}px`,
+    left: `${left}px`,
+    width: `${Math.min(dropdownWidth, containerWidth - 16)}px`
+  };
+}
+
+function handleTextareaScroll(field: PromptField, event: Event) {
+  if (activeField.value === field) {
+    const input = event.target as HTMLTextAreaElement;
+    caretCoords.value = getCaretCoordinates(input, input.selectionStart);
+  }
+}
+
+function scrollToActiveSuggestion() {
+  void nextTick(() => {
+    const list = autocompleteListRef.value;
+    if (!list) return;
+    const activeEl = list.querySelector<HTMLElement>(
+      `[data-index="${activeIndex.value}"]`
+    );
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+watch(activeIndex, () => {
+  if (activeField.value && suggestions.value.length > 0) {
+    scrollToActiveSuggestion();
+  }
+});
 
 // View modes
 const isPositiveChipsMode = ref(false);
@@ -435,6 +586,9 @@ function updateCursor(field: PromptField, event: Event) {
   if (el) {
     if (field === 'positive') lastPositiveCursorPos.value = el.selectionStart;
     else lastNegativeCursorPos.value = el.selectionStart;
+    if (activeField.value === field) {
+      caretCoords.value = getCaretCoordinates(el, el.selectionStart);
+    }
   }
 }
 
@@ -469,6 +623,7 @@ function scheduleAutocomplete(field: PromptField, event: Event) {
   }
 
   const input = event.target as HTMLTextAreaElement;
+  caretCoords.value = getCaretCoordinates(input, input.selectionStart);
   const range = getPromptTokenRange(input.value, input.selectionStart);
   if (!range) return closeAutocomplete();
   activeRange = range;
@@ -495,10 +650,7 @@ function scheduleAutocomplete(field: PromptField, event: Event) {
 
 function selectSuggestion(field: PromptField, item: AutocompleteItem) {
   if (!activeRange) return;
-  const input =
-    field === 'positive'
-      ? positiveTextarea.value?.$el
-      : negativeTextarea.value?.$el;
+  const input = getTextareaElement(field);
   if (!input) return;
   const current =
     field === 'positive'
@@ -536,10 +688,7 @@ function handleKeydown(field: PromptField, event: KeyboardEvent) {
     (event.key === 'ArrowUp' || event.key === 'ArrowDown')
   ) {
     event.preventDefault();
-    const input =
-      field === 'positive'
-        ? positiveTextarea.value?.$el
-        : negativeTextarea.value?.$el;
+    const input = getTextareaElement(field);
     if (!input) return;
 
     const delta = event.key === 'ArrowUp' ? 0.05 : -0.05;
@@ -570,7 +719,14 @@ function handleKeydown(field: PromptField, event: KeyboardEvent) {
     return;
   }
 
-  // 2. Autocomplete suggestions navigation
+  // 2. Shortcut: Ctrl+F to open Find in Prompt
+  if (isCtrlOrMeta && (event.key === 'f' || event.key === 'F')) {
+    event.preventDefault();
+    openFindBar(field);
+    return;
+  }
+
+  // 3. Autocomplete suggestions navigation
   if (
     !isCtrlOrMeta &&
     !isAlt &&
@@ -583,6 +739,21 @@ function handleKeydown(field: PromptField, event: KeyboardEvent) {
       activeIndex.value =
         (activeIndex.value + direction + suggestions.value.length) %
         suggestions.value.length;
+    } else if (event.key === 'PageDown') {
+      event.preventDefault();
+      activeIndex.value = Math.min(
+        suggestions.value.length - 1,
+        activeIndex.value + 5
+      );
+    } else if (event.key === 'PageUp') {
+      event.preventDefault();
+      activeIndex.value = Math.max(0, activeIndex.value - 5);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      activeIndex.value = 0;
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      activeIndex.value = suggestions.value.length - 1;
     } else if (event.key === 'Enter' || event.key === 'Tab') {
       const chosen = suggestions.value[activeIndex.value];
       if (chosen) {
@@ -592,6 +763,158 @@ function handleKeydown(field: PromptField, event: KeyboardEvent) {
     } else if (event.key === 'Escape') {
       closeAutocomplete();
     }
+  }
+}
+
+// In-prompt search state (Ctrl+F)
+interface FindMatch {
+  start: number;
+  end: number;
+}
+
+const isFindBarOpen = ref(false);
+const findQuery = ref('');
+const findTarget = ref<PromptField>('positive');
+const findCaseSensitive = ref(false);
+const currentMatchIndex = ref(0);
+const findInputRef = ref<HTMLInputElement | null>(null);
+
+const findMatches = computed<FindMatch[]>(() => {
+  const query = findQuery.value;
+  if (!query) return [];
+
+  const text =
+    findTarget.value === 'positive'
+      ? workflowStore.positivePrompt
+      : workflowStore.negativePrompt;
+
+  if (!text) return [];
+
+  const matches: FindMatch[] = [];
+  const searchPattern = findCaseSensitive.value ? query : query.toLowerCase();
+  const searchContent = findCaseSensitive.value ? text : text.toLowerCase();
+
+  let startIndex = 0;
+  while (startIndex < searchContent.length) {
+    const foundIndex = searchContent.indexOf(searchPattern, startIndex);
+    if (foundIndex === -1) break;
+    matches.push({
+      start: foundIndex,
+      end: foundIndex + query.length
+    });
+    startIndex = foundIndex + Math.max(1, query.length);
+  }
+
+  return matches;
+});
+
+watch(findMatches, (newMatches) => {
+  if (newMatches.length === 0) {
+    currentMatchIndex.value = 0;
+  } else if (currentMatchIndex.value >= newMatches.length) {
+    currentMatchIndex.value = 0;
+    highlightCurrentMatch();
+  } else {
+    highlightCurrentMatch();
+  }
+});
+
+function highlightCurrentMatch() {
+  const matches = findMatches.value;
+  if (matches.length === 0) return;
+
+  const match = matches[currentMatchIndex.value];
+  if (!match) return;
+
+  const input = getTextareaElement(findTarget.value);
+  if (!input) return;
+
+  input.setSelectionRange(match.start, match.end);
+
+  // Center match vertically
+  const coords = getCaretCoordinates(input, match.start);
+  const targetScrollTop = coords.top + input.scrollTop - input.clientHeight / 2;
+  input.scrollTop = Math.max(0, targetScrollTop);
+}
+
+function findNext() {
+  const matches = findMatches.value;
+  if (matches.length === 0) return;
+  currentMatchIndex.value = (currentMatchIndex.value + 1) % matches.length;
+  highlightCurrentMatch();
+}
+
+function findPrev() {
+  const matches = findMatches.value;
+  if (matches.length === 0) return;
+  currentMatchIndex.value =
+    (currentMatchIndex.value - 1 + matches.length) % matches.length;
+  highlightCurrentMatch();
+}
+
+function openFindBar(target?: PromptField) {
+  if (target) {
+    findTarget.value = target;
+  }
+  if (findTarget.value === 'positive' && isPositiveChipsMode.value) {
+    isPositiveChipsMode.value = false;
+  } else if (findTarget.value === 'negative' && isNegativeChipsMode.value) {
+    isNegativeChipsMode.value = false;
+  }
+
+  const input = getTextareaElement(findTarget.value);
+  if (input) {
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    if (start !== end) {
+      const selection = input.value.slice(start, end).trim();
+      if (selection && selection.length < 100) {
+        findQuery.value = selection;
+      }
+    }
+  }
+
+  isFindBarOpen.value = true;
+  void nextTick(() => {
+    findInputRef.value?.focus();
+    findInputRef.value?.select();
+    if (findMatches.value.length > 0) {
+      highlightCurrentMatch();
+    }
+  });
+}
+
+function setFindTarget(target: PromptField) {
+  findTarget.value = target;
+  if (target === 'positive' && isPositiveChipsMode.value) {
+    isPositiveChipsMode.value = false;
+  } else if (target === 'negative' && isNegativeChipsMode.value) {
+    isNegativeChipsMode.value = false;
+  }
+  currentMatchIndex.value = 0;
+  void nextTick(() => {
+    highlightCurrentMatch();
+    findInputRef.value?.focus();
+  });
+}
+
+function closeFindBar() {
+  isFindBarOpen.value = false;
+  const input = getTextareaElement(findTarget.value);
+  input?.focus();
+}
+
+function handleContainerKeydown(event: KeyboardEvent) {
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    (event.key === 'f' || event.key === 'F')
+  ) {
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' && target !== findInputRef.value) {
+      return;
+    }
+    event.preventDefault();
+    openFindBar(findTarget.value);
   }
 }
 
@@ -746,7 +1069,140 @@ const negativeTokenInfo = computed(() =>
 
 <template>
   <TooltipProvider>
-    <div class="flex flex-col gap-3.5">
+    <div class="flex flex-col gap-3.5" @keydown="handleContainerKeydown">
+      <!-- Prompt In-Editor Find Bar (Ctrl+F) -->
+      <div
+        v-if="isFindBarOpen"
+        class="border-border/80 bg-card/95 flex items-center justify-between gap-2 rounded-lg border p-1.5 px-2.5 shadow-md backdrop-blur-md transition-all"
+      >
+        <!-- Left: Target Selector + Input -->
+        <div class="flex flex-1 items-center gap-2 min-w-0">
+          <div
+            class="border-border/80 bg-secondary/70 flex shrink-0 items-center rounded-md border p-0.5 text-xs"
+          >
+            <button
+              type="button"
+              class="cursor-pointer rounded px-2 py-0.5 text-xs font-medium transition-colors select-none"
+              :class="
+                findTarget === 'positive'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+              @click="setFindTarget('positive')"
+            >
+              Positive
+            </button>
+            <button
+              type="button"
+              class="cursor-pointer rounded px-2 py-0.5 text-xs font-medium transition-colors select-none"
+              :class="
+                findTarget === 'negative'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+              @click="setFindTarget('negative')"
+            >
+              Negative
+            </button>
+          </div>
+
+          <div class="relative flex flex-1 items-center min-w-36">
+            <Search
+              class="text-muted-foreground pointer-events-none absolute left-2 h-3.5 w-3.5"
+            />
+            <input
+              ref="findInputRef"
+              v-model="findQuery"
+              type="text"
+              placeholder="Find in prompt... (Enter for next, Shift+Enter for prev)"
+              class="border-border bg-background placeholder:text-muted-foreground/60 focus:border-primary h-7 w-full rounded-md border pr-6 pl-7 font-mono text-xs outline-none"
+              @keydown.enter.exact.prevent="findNext"
+              @keydown.shift.enter.prevent="findPrev"
+              @keydown.down.exact.prevent="findNext"
+              @keydown.up.exact.prevent="findPrev"
+              @keydown.esc.prevent="closeFindBar"
+            />
+            <button
+              v-if="findQuery"
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute right-1.5 cursor-pointer"
+              title="Clear search"
+              @click="
+                findQuery = '';
+                findInputRef?.focus();
+              "
+            >
+              <X class="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Match status + Prev/Next navigators + Case Sensitive + Close -->
+        <div class="flex shrink-0 items-center gap-1">
+          <span
+            class="text-muted-foreground min-w-14 px-1 text-center font-mono text-xs"
+          >
+            {{
+              findQuery
+                ? findMatches.length > 0
+                  ? `${currentMatchIndex + 1} of ${findMatches.length}`
+                  : 'No matches'
+                : ''
+            }}
+          </span>
+
+          <!-- Case sensitive toggle -->
+          <button
+            type="button"
+            class="h-6 cursor-pointer rounded border px-1.5 font-mono text-xs transition-colors"
+            :class="
+              findCaseSensitive
+                ? 'border-primary/40 bg-primary/20 text-primary font-bold'
+                : 'border-border/60 text-muted-foreground hover:text-foreground'
+            "
+            title="Match Case"
+            @click="
+              findCaseSensitive = !findCaseSensitive;
+              highlightCurrentMatch();
+            "
+          >
+            Aa
+          </button>
+
+          <!-- Previous match -->
+          <button
+            type="button"
+            class="border-border/60 hover:bg-secondary text-muted-foreground hover:text-foreground inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="findMatches.length === 0"
+            title="Previous Match (Shift+Enter / Up)"
+            @click="findPrev"
+          >
+            <ChevronUp class="h-3.5 w-3.5" />
+          </button>
+
+          <!-- Next match -->
+          <button
+            type="button"
+            class="border-border/60 hover:bg-secondary text-muted-foreground hover:text-foreground inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="findMatches.length === 0"
+            title="Next Match (Enter / Down)"
+            @click="findNext"
+          >
+            <ChevronDown class="h-3.5 w-3.5" />
+          </button>
+
+          <!-- Close Find Bar -->
+          <button
+            type="button"
+            class="hover:bg-destructive/20 hover:text-destructive text-muted-foreground ml-0.5 inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded transition-colors"
+            title="Close (Escape)"
+            @click="closeFindBar"
+          >
+            <X class="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
       <!-- 1. POSITIVE PROMPT SECTION -->
       <WorkflowField label="Positive Prompt">
         <template #action>
@@ -765,6 +1221,15 @@ const negativeTokenInfo = computed(() =>
               <TooltipContent side="bottom" class="max-w-xs p-2.5 text-xs">
                 <div class="space-y-1.5">
                   <p class="text-primary font-semibold">Prompt Shortcuts</p>
+                  <p
+                    class="text-muted-foreground flex items-center justify-between gap-2"
+                  >
+                    <span>Find in prompt</span>
+                    <kbd
+                      class="bg-muted border-border text-foreground rounded border px-1.5 py-0.5 font-mono text-xs"
+                      >Ctrl + F</kbd
+                    >
+                  </p>
                   <p
                     class="text-muted-foreground flex items-center justify-between gap-2"
                   >
@@ -838,6 +1303,26 @@ const negativeTokenInfo = computed(() =>
               <Sparkles class="h-3 w-3" />
             </button>
 
+            <!-- Find in Prompt Button -->
+            <button
+              type="button"
+              class="hover:text-foreground inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors"
+              :class="
+                isFindBarOpen && findTarget === 'positive'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground'
+              "
+              title="Find in prompt (Ctrl+F)"
+              aria-label="Find in positive prompt"
+              @click="
+                isFindBarOpen && findTarget === 'positive'
+                  ? closeFindBar()
+                  : openFindBar('positive')
+              "
+            >
+              <Search class="h-3 w-3" />
+            </button>
+
             <span class="text-border">|</span>
 
             <!-- Format Button -->
@@ -892,6 +1377,7 @@ const negativeTokenInfo = computed(() =>
                 placeholder="Describe the image you want to generate... (Tip: Select tag and press Ctrl+Up/Down to adjust weight)"
                 class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
                 @input="handleInput('positive', $event)"
+                @scroll="handleTextareaScroll('positive', $event)"
                 @click="updateCursor('positive', $event)"
                 @keyup="updateCursor('positive', $event)"
                 @select="updateCursor('positive', $event)"
@@ -927,12 +1413,15 @@ const negativeTokenInfo = computed(() =>
           <!-- Autocomplete Floating Dropdown -->
           <div
             v-if="activeField === 'positive'"
+            ref="autocompleteListRef"
             role="listbox"
-            class="border-border bg-popover/95 absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
+            :style="getAutocompleteDropdownStyle('positive')"
+            class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
           >
             <button
               v-for="(item, index) in suggestions"
               :key="`${item.label}-${item.category}`"
+              :data-index="index"
               type="button"
               role="option"
               :aria-selected="index === activeIndex"
@@ -1354,6 +1843,26 @@ const negativeTokenInfo = computed(() =>
               <Sparkles class="h-3 w-3" />
             </button>
 
+            <!-- Find in Prompt Button -->
+            <button
+              type="button"
+              class="hover:text-foreground inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-colors"
+              :class="
+                isFindBarOpen && findTarget === 'negative'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground'
+              "
+              title="Find in prompt (Ctrl+F)"
+              aria-label="Find in negative prompt"
+              @click="
+                isFindBarOpen && findTarget === 'negative'
+                  ? closeFindBar()
+                  : openFindBar('negative')
+              "
+            >
+              <Search class="h-3 w-3" />
+            </button>
+
             <span class="text-border">|</span>
 
             <!-- Format Button -->
@@ -1405,6 +1914,7 @@ const negativeTokenInfo = computed(() =>
                 placeholder="Things to avoid in generation... (e.g. worst quality, blurry, bad anatomy)"
                 class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
                 @input="handleInput('negative', $event)"
+                @scroll="handleTextareaScroll('negative', $event)"
                 @click="updateCursor('negative', $event)"
                 @keyup="updateCursor('negative', $event)"
                 @select="updateCursor('negative', $event)"
@@ -1440,12 +1950,15 @@ const negativeTokenInfo = computed(() =>
           <!-- Autocomplete Floating Dropdown for Negative -->
           <div
             v-if="activeField === 'negative'"
+            ref="autocompleteListRef"
             role="listbox"
-            class="border-border bg-popover/95 absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
+            :style="getAutocompleteDropdownStyle('negative')"
+            class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
           >
             <button
               v-for="(item, index) in suggestions"
               :key="`${item.label}-${item.category}`"
+              :data-index="index"
               type="button"
               role="option"
               :aria-selected="index === activeIndex"
