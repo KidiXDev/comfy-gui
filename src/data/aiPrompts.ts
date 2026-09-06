@@ -6,15 +6,16 @@
 export const ANIMA_MODEL_SPECIFICATION = `### Anima Prompting Guide
 
 INPUT: Natural language description or existing tag/prompt string.
-OUTPUT: Comma-separated tag or hybrid prompt string following these formatting rules:
+OUTPUT: Tag-based, natural-language, or hybrid prompt. Anima handles all three well; do not force natural language into tags.
 
 **Syntax & Style Rules:**
-- All tags lowercase (standard capitalization permitted for natural language phrases, character names, or series titles).
+- All tags lowercase (standard capitalization permitted for natural language, character names, or series titles).
 - Spaces separate words (e.g., "blue eyes", "long hair").
 - Underscores only for score tokens: score_9, score_8, score_7, score_6, score_5, score_4, score_3, score_2, score_1.
 - Artist names prefixed with @ and use spaces (e.g., @kedama milk, @nnn yryr).
 - Weight syntax: (tag:2). Anima may need stronger weights than SDXL; use selectively when emphasis is requested, not automatically.
-- Natural Language & Tag Mixing: Anima natively supports mixing Booru tags with natural language descriptions in arbitrary order. Prompts can combine quality/artist tags with descriptive phrases or character depictions.
+- Anima natively supports Booru tags, natural language, and mixing both in arbitrary order.
+- Natural language works best when clear and descriptive. Avoid overly short or vague sentences; for pure natural language, aim for at least two meaningful descriptive sentences.
 
 **Recommended Order for Tag-Based Prompts (order within each group is flexible):**
 1. Quality, metadata, year/period, and rating tags (when present)
@@ -25,10 +26,13 @@ OUTPUT: Comma-separated tag or hybrid prompt string following these formatting r
 6. General tags: appearance, pose, environment, lighting, effects (no required order)
 
 **Editing Preferences:**
-- Rating tags: safe, sensitive, nsfw, explicit. Preserve existing rating tags in their original positive or negative prompt unless the user requests a change. Do not automatically add safe or infer a new rating when none is present.
-- Quality tags are optional. For Base, masterpiece, best quality, score_7 is a useful starting point. For Anima-Aesthetic, quality tags are unnecessary and score_* tags are discouraged in both positive and negative prompts. When adapting to Aesthetic, omit score_* unless explicitly requested. If the variant is unknown, preserve the existing quality choices.
+- Preserve the user's prompting style when possible; do not automatically convert natural language to tags or tags to natural language.
+- Rating tags: safe, sensitive, nsfw, explicit. Preserve existing rating tags in their original positive or negative prompt unless the user requests a change.
+- Quality tags are optional. For Base, masterpiece, best quality, score_7 is a useful starting point.
+- For Anima-Aesthetic, quality tags are unnecessary and score_* tags are discouraged in both positive and negative prompts. When adapting to Aesthetic, omit score_* unless explicitly requested.
+- If the variant is unknown, preserve existing quality choices.
 - Prefer Gelbooru spelling when it differs from Danbooru.
-- For pure natural language, aim for at least two descriptive sentences. Use normal capitalization for names and series; describe each named character's appearance, especially with multiple characters.
+- For natural language, use normal capitalization for names and series and describe named characters clearly, especially with multiple characters.
 - Hybrid prompts may mix tags and sentences freely; do not force them into tag-only field order.
 
 **Tag Vocabulary (Gelbooru/Danbooru standard):**
@@ -150,37 +154,37 @@ export const POSITIVE_ENHANCE_PRESETS: EnhancePreset[] = [
   {
     id: 'clothing',
     label: 'Outfit & Clothing Detailer',
-    desc: 'Hyper-details fabrics, layered garments, embroidery, jewelry, and ornate trims',
+    desc: 'Enhances fabrics, layered garments, accessories, and clothing details',
     instruction:
-      'Insert tags: silk, brocade, leather, organza, satin, velvet, embroidery, frills, lace, buttons. Position in Appearance field. Preserve all existing tags.'
+      'Enhance outfit and clothing details using tags or natural language that match the existing prompt style. Add relevant fabric, layering, embroidery, jewelry, trims, and garment details without introducing unrelated clothing. Preserve existing content.'
   },
   {
     id: 'expand',
     label: 'Expand Anime Scene',
-    desc: 'Adds rich environment, atmospheric lighting, and anime background elements',
+    desc: 'Adds richer environment, atmosphere, lighting, and background details',
     instruction:
-      'Insert tags: detailed background, scenic, floating petals, glowing particles, light rays, volumetric lighting, atmospheric. Position in Environment field. Preserve existing tags.'
+      'Expand the scene with relevant environment, atmosphere, lighting, and background details. Match the existing prompt style: use tags for tag-based prompts, descriptive prose for natural-language prompts, or both for hybrid prompts. Preserve the original subject and intent.'
   },
   {
     id: 'aesthetic',
     label: 'Anima Aesthetic & Artistry',
-    desc: 'Vibrant colors, crisp linework, expressive eyes, and masterpiece quality',
+    desc: 'Enhances colors, linework, rendering, eyes, and overall visual polish',
     instruction:
-      'Add relevant artistry details: vibrant colors, crisp linework, detailed eyes, highres. Quality tags are optional; follow the guide for the known Anima variant. Preserve existing content unless the user requests changes.'
+      'Enhance relevant visual artistry such as color harmony, linework, rendering, eye detail, and overall polish. Quality tags are optional; follow the guide for the known Anima variant. Do not force quality or score tags when unnecessary. Preserve existing content.'
   },
   {
     id: 'artistic',
     label: 'Artistic / Painterly',
-    desc: 'Rich painterly textures, digital illustration, and non-anime art styling',
+    desc: 'Adds painterly textures, expressive brushwork, and illustration styling',
     instruction:
-      'Choose ye-pop or deviantart as the first line followed by an actual newline. Add relevant painterly details: brushwork, textured, oil painting, digital painting. Preserve existing content unless the user requests changes.'
+      'Shift the prompt toward a painterly or illustrative style using relevant details such as expressive brushwork, textured rendering, oil painting, or digital painting. Use ye-pop or deviantart on the first line only when that dataset style is appropriate. Preserve the original subject and composition.'
   },
   {
     id: 'weighting',
-    label: 'Anima Tag Order & Weighting',
-    desc: 'Organizes Anima tags and selectively emphasizes key elements',
+    label: 'Anima Prompt Order & Weighting',
+    desc: 'Improves tag organization and selectively emphasizes important elements',
     instruction:
-      'For tag-based prompts, use [quality/meta/year/rating] [subject] [character] [series] [@artist] [general tags]. Preserve hybrid prose and existing weights; selectively emphasize key elements using weights such as (tag:2). Preserve rating choices.'
+      'For primarily tag-based prompts, organize tags as [quality/meta/year/rating] [subject] [character] [series] [@artist] [general tags]. Do not reorder natural-language or hybrid prompts unnecessarily. Preserve existing weights and rating choices. Use weighting such as (tag:2) only when meaningful emphasis is needed.'
   }
 ];
 
@@ -188,23 +192,23 @@ export const NEGATIVE_ENHANCE_PRESETS: EnhancePreset[] = [
   {
     id: 'anima_standard',
     label: 'Anima Recommended Standard',
-    desc: 'Recommended Base negative tags, adapted for Aesthetic when specified',
+    desc: 'Adds a general Anima negative baseline appropriate for the model variant',
     instruction:
-      'Use the Base negative baseline from the guide; omit score_* for Anima-Aesthetic. Preserve existing negative tags, including rating choices, unless the user requests replacement.'
+      'Add the recommended negative baseline from the Anima guide while preserving useful existing negatives. Omit score_* for Anima-Aesthetic. Do not overwrite existing rating choices unless explicitly requested.'
   },
   {
     id: 'anatomy',
     label: 'Fix Anime Anatomy & Hands',
-    desc: 'Removes bad hands, extra limbs, bad eyes, and facial distortions',
+    desc: 'Reduces anatomy, hand, limb, eye, and facial errors',
     instruction:
-      'Append: bad anatomy, bad hands, missing fingers, extra limbs, mutated, bad eyes, poorly drawn face. Preserve existing tags.'
+      'Add relevant negative concepts for anatomy and hand issues, such as bad anatomy, bad hands, missing fingers, extra limbs, mutated, bad eyes, and poorly drawn face. Avoid adding unrelated negatives. Preserve existing negative content.'
   },
   {
     id: 'clean',
     label: 'Clean & Artifact-Free',
-    desc: 'Removes watermarks, signatures, borders, text, and compression',
+    desc: 'Reduces text, watermarks, borders, cropping, and compression artifacts',
     instruction:
-      'Append: watermark, signature, username, text, logo, border, cropped, jpeg artifacts, compression artifacts. Preserve existing tags.'
+      'Add relevant negative concepts for unwanted overlays and artifacts, such as watermark, signature, username, text, logo, border, cropped, jpeg artifacts, and compression artifacts. Preserve existing negative content.'
   }
 ];
 
@@ -244,7 +248,7 @@ export function buildEnhancerUserPrompt(
       `- Preserve existing content except where the requested operation or modification changes it.\n` +
       `- Preserve existing rating tags unless the user requests a change; do not add a default rating.\n` +
       `- Maintain line breaks.\n` +
-      `- Return only tag string.`
+      `- Return only output string.`
   );
 
   return sections.join('\n\n');
