@@ -1,10 +1,28 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { dragHistoryImage } from '@/services/imageGallery';
-import { History, Images, Maximize2, Trash2, Wand2, X } from '@lucide/vue';
+import {
+  History,
+  Images,
+  Maximize2,
+  Scaling,
+  ScanFace,
+  Trash2,
+  Wand2,
+  WandSparkles,
+  X
+} from '@lucide/vue';
+import { useRouter } from 'vue-router';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
 import {
   Tooltip,
   TooltipContent,
@@ -12,12 +30,15 @@ import {
 } from '@/components/ui/tooltip';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useHistoryStore } from '../../stores/historyStore';
+import { useImageTransferStore } from '../../stores/imageTransferStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import type { HistoryItem } from '../../types/workflow';
 
 const historyStore = useHistoryStore();
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
+const transferStore = useImageTransferStore();
+const router = useRouter();
 
 const isLightboxOpen = ref(false);
 const lightboxSrc = ref('');
@@ -44,6 +65,18 @@ function openLightbox(item: HistoryItem) {
   lightboxSrc.value = item.imageUrl;
   lightboxTitle.value = item.filename || 'Generated Image';
   isLightboxOpen.value = true;
+}
+
+async function transferImage(
+  item: HistoryItem,
+  target: 'upscaler' | 'remove-bg' | 'face-detailer'
+) {
+  if (target === 'upscaler')
+    await transferStore.sendToUpscaler(item.imageUrl, item.filename);
+  else if (target === 'remove-bg')
+    await transferStore.sendToRmbg(item.imageUrl, item.filename);
+  else await transferStore.sendToFaceDetailer(item.imageUrl, item.filename);
+  void router.push(`/${target}`);
 }
 
 function formatTime(timestamp: number) {
@@ -119,72 +152,99 @@ function formatTime(timestamp: number) {
 
     <div v-else class="min-h-0 flex-1 overflow-y-auto pr-1">
       <div class="flex flex-col gap-2 p-0.5">
-        <div
-          v-for="item in historyStore.items"
-          :key="item.id"
-          :draggable="!!item.imageUrl"
-          @dragstart="dragHistoryImage($event, item)"
-          class="group relative aspect-3/4 cursor-pointer overflow-hidden rounded-lg border bg-black/40 transition-all duration-150"
-          :class="
-            comfyStore.lastGeneratedImage?.url === item.imageUrl
-              ? 'border-primary ring-primary/40 shadow-sm ring-2'
-              : 'border-border/60 hover:border-primary/50 hover:shadow-xs'
-          "
-          @click="selectImage(item)"
-        >
-          <img
-            v-if="item.imageUrl"
-            draggable="false"
-            :src="item.imageUrl"
-            :alt="item.filename || 'history image'"
-            class="h-full w-full object-cover"
-            loading="lazy"
-          />
+        <ContextMenu v-for="item in historyStore.items" :key="item.id">
+          <ContextMenuTrigger as-child>
+            <div
+              :draggable="!!item.imageUrl"
+              @dragstart="dragHistoryImage($event, item)"
+              class="group relative aspect-3/4 cursor-pointer overflow-hidden rounded-lg border bg-black/40 transition-all duration-150"
+              :class="
+                comfyStore.lastGeneratedImage?.url === item.imageUrl
+                  ? 'border-primary ring-primary/40 shadow-sm ring-2'
+                  : 'border-border/60 hover:border-primary/50 hover:shadow-xs'
+              "
+              @click="selectImage(item)"
+            >
+              <img
+                v-if="item.imageUrl"
+                draggable="false"
+                :src="item.imageUrl"
+                :alt="item.filename || 'history image'"
+                class="h-full w-full object-cover"
+                loading="lazy"
+              />
 
-          <!-- Hover Overlay -->
-          <div
-            class="absolute inset-0 flex flex-col justify-between bg-linear-to-t from-black/85 via-black/20 to-transparent p-1.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-          >
-            <!-- Top Action Icons -->
-            <div class="flex items-center justify-end gap-1">
-              <Button
-                variant="outline"
-                size="iconXs"
-                class="h-6 w-6 border-white/20 bg-black/60 text-white backdrop-blur-xs hover:bg-black/80 hover:text-white"
-                title="View fullscreen"
-                @click.stop="openLightbox(item)"
+              <!-- Hover Overlay -->
+              <div
+                class="absolute inset-0 flex flex-col justify-between bg-linear-to-t from-black/85 via-black/20 to-transparent p-1.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
               >
-                <Maximize2 class="h-3 w-3" />
-              </Button>
-              <Button
-                variant="outline"
-                size="iconXs"
-                class="hover:bg-destructive h-6 w-6 border-white/20 bg-black/60 text-white backdrop-blur-xs hover:text-white"
-                title="Delete image from history"
-                @click.stop="historyStore.removeHistory(item.id)"
-              >
-                <Trash2 class="h-3 w-3" />
-              </Button>
-            </div>
+                <!-- Top Action Icons -->
+                <div class="flex items-center justify-end gap-1">
+                  <Button
+                    variant="outline"
+                    size="iconXs"
+                    class="h-6 w-6 border-white/20 bg-black/60 text-white backdrop-blur-xs hover:bg-black/80 hover:text-white"
+                    title="View fullscreen"
+                    @click.stop="openLightbox(item)"
+                  >
+                    <Maximize2 class="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="iconXs"
+                    class="hover:bg-destructive h-6 w-6 border-white/20 bg-black/60 text-white backdrop-blur-xs hover:text-white"
+                    title="Delete image from history"
+                    @click.stop="historyStore.removeHistory(item.id)"
+                  >
+                    <Trash2 class="h-3 w-3" />
+                  </Button>
+                </div>
 
-            <!-- Bottom Row: Timestamp and Apply Button -->
-            <div class="flex items-center justify-between gap-1">
-              <span class="truncate font-mono text-xs text-white/80">
-                {{ formatTime(item.timestamp) }}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                class="h-6 cursor-pointer gap-1 px-1.5 text-xs font-medium shadow-xs"
-                title="Apply settings to workflow"
-                @click.stop="applySettings(item)"
-              >
-                <Wand2 class="h-3 w-3" />
-                <span>Apply</span>
-              </Button>
+                <!-- Bottom Row: Timestamp and Apply Button -->
+                <div class="flex items-center justify-between gap-1">
+                  <span class="truncate font-mono text-xs text-white/80">
+                    {{ formatTime(item.timestamp) }}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    class="h-6 cursor-pointer gap-1 px-1.5 text-xs font-medium shadow-xs"
+                    title="Apply settings to workflow"
+                    @click.stop="applySettings(item)"
+                  >
+                    <Wand2 class="h-3 w-3" />
+                    <span>Apply</span>
+                  </Button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent class="w-52">
+            <ContextMenuItem @select="openLightbox(item)">
+              <Maximize2 /> View Fullscreen
+            </ContextMenuItem>
+            <ContextMenuItem @select="applySettings(item)">
+              <Wand2 /> Apply Settings
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem @select="transferImage(item, 'upscaler')">
+              <Scaling /> Send to Upscaler
+            </ContextMenuItem>
+            <ContextMenuItem @select="transferImage(item, 'remove-bg')">
+              <WandSparkles /> Send to RMBG
+            </ContextMenuItem>
+            <ContextMenuItem @select="transferImage(item, 'face-detailer')">
+              <ScanFace /> Send to Face Detailer
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              variant="destructive"
+              @select="historyStore.removeHistory(item.id)"
+            >
+              <Trash2 /> Remove from History
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       </div>
     </div>
 

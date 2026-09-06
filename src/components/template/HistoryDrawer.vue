@@ -26,6 +26,13 @@ import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -297,49 +304,91 @@ function formatModelName(name?: string): string {
             class="border-border bg-card/70 hover:border-primary/50 group flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs transition-all sm:flex-row"
           >
             <!-- Highlight Portrait Image Box -->
-            <div
-              class="border-border bg-background group/img relative h-56 w-full shrink-0 cursor-pointer overflow-hidden rounded-lg border shadow-xs sm:h-56 sm:w-44"
-              @click="inspectingItem = item"
-              :draggable="!!item.imageUrl"
-              @dragstart="dragHistoryImage($event, item)"
-            >
-              <img
-                v-if="item.imageUrl"
-                draggable="false"
-                :src="item.imageUrl"
-                :alt="item.filename"
-                class="h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-105"
-              />
-
-              <!-- Hover Zoom Cue Overlay -->
-              <div
-                class="bg-background/60 absolute inset-0 flex flex-col items-center justify-center gap-1.5 opacity-0 backdrop-blur-xs transition-opacity group-hover/img:opacity-100"
-              >
+            <ContextMenu>
+              <ContextMenuTrigger as-child>
                 <div
-                  class="border-primary/30 bg-primary/20 text-primary flex h-9 w-9 items-center justify-center rounded-full border shadow-sm"
+                  class="border-border bg-background group/img relative h-56 w-full shrink-0 cursor-pointer overflow-hidden rounded-lg border shadow-xs sm:h-56 sm:w-44"
+                  @click="inspectingItem = item"
+                  :draggable="!!item.imageUrl"
+                  @dragstart="dragHistoryImage($event, item)"
                 >
-                  <Eye class="h-4.5 w-4.5" />
+                  <img
+                    v-if="item.imageUrl"
+                    draggable="false"
+                    :src="item.imageUrl"
+                    :alt="item.filename"
+                    class="h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-105"
+                  />
+
+                  <!-- Hover Zoom Cue Overlay -->
+                  <div
+                    class="bg-background/60 absolute inset-0 flex flex-col items-center justify-center gap-1.5 opacity-0 backdrop-blur-xs transition-opacity group-hover/img:opacity-100"
+                  >
+                    <div
+                      class="border-primary/30 bg-primary/20 text-primary flex h-9 w-9 items-center justify-center rounded-full border shadow-sm"
+                    >
+                      <Eye class="h-4.5 w-4.5" />
+                    </div>
+                    <span
+                      class="font-mono text-xs font-bold text-white shadow-xs"
+                    >
+                      Inspect
+                    </span>
+                  </div>
+
+                  <!-- Top Left Aspect/Type Pill -->
+                  <span
+                    class="bg-background/80 text-foreground border-border/60 absolute top-2 left-2 rounded border px-1.5 py-0.5 font-mono text-xs font-semibold shadow-xs backdrop-blur-xs"
+                  >
+                    {{ formatResolution(item) }}
+                  </span>
+
+                  <!-- Bottom Duration Pill -->
+                  <span
+                    v-if="item.durationMs"
+                    class="bg-background/85 text-muted-foreground absolute right-2 bottom-2 rounded px-1.5 py-0.5 font-mono text-xs font-semibold shadow-xs backdrop-blur-xs"
+                  >
+                    ⏱ {{ (item.durationMs / 1000).toFixed(1) }}s
+                  </span>
                 </div>
-                <span class="font-mono text-xs font-bold text-white shadow-xs">
-                  Inspect
-                </span>
-              </div>
-
-              <!-- Top Left Aspect/Type Pill -->
-              <span
-                class="bg-background/80 text-foreground border-border/60 absolute top-2 left-2 rounded border px-1.5 py-0.5 font-mono text-xs font-semibold shadow-xs backdrop-blur-xs"
-              >
-                {{ formatResolution(item) }}
-              </span>
-
-              <!-- Bottom Duration Pill -->
-              <span
-                v-if="item.durationMs"
-                class="bg-background/85 text-muted-foreground absolute right-2 bottom-2 rounded px-1.5 py-0.5 font-mono text-xs font-semibold shadow-xs backdrop-blur-xs"
-              >
-                ⏱ {{ (item.durationMs / 1000).toFixed(1) }}s
-              </span>
-            </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent class="w-52">
+                <ContextMenuItem @select="inspectingItem = item">
+                  <Eye /> Inspect Image
+                </ContextMenuItem>
+                <ContextMenuItem @select="applyHistorySettings(item)">
+                  <RotateCcw /> Apply Settings
+                </ContextMenuItem>
+                <ContextMenuItem @select="downloadHistoryImage(item)">
+                  <Download /> Download Image
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  @select="handleSendToUpscaler(item.imageUrl, item.filename)"
+                >
+                  <Scaling /> Send to Upscaler
+                </ContextMenuItem>
+                <ContextMenuItem
+                  @select="handleSendToRmbg(item.imageUrl, item.filename)"
+                >
+                  <WandSparkles /> Send to RMBG
+                </ContextMenuItem>
+                <ContextMenuItem
+                  @select="
+                    handleSendToFaceDetailer(item.imageUrl, item.filename)
+                  "
+                >
+                  <ScanFace /> Send to Face Detailer
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  variant="destructive"
+                  @select="historyStore.removeHistory(item.id)"
+                >
+                  <Trash2 /> Remove from History
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
 
             <!-- Content Area (Prompt + Meta + Parameter Matrix + Action Bar) -->
             <div class="flex min-w-0 flex-1 flex-col justify-between gap-2.5">

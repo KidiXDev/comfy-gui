@@ -1029,7 +1029,7 @@ onUnmounted(() => {
               </ContextMenuTrigger>
               <ContextMenuContent class="w-48">
                 <ContextMenuItem @select="openImage(image)">
-                  <ZoomIn /> View Image & Metadata
+                  <ZoomIn /> View Image
                 </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem @select="openLocalPath(image.path)">

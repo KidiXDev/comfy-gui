@@ -2,6 +2,7 @@ import { VueQueryPlugin } from '@tanstack/vue-query';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { createPinia } from 'pinia';
 import { createApp } from 'vue';
+import 'vue-sonner/style.css';
 import App from './App.vue';
 import { queryClient } from './lib/queryClient';
 import './main.css';

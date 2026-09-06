@@ -31,6 +31,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -802,6 +809,10 @@ async function copyTag(tag: string) {
   }, 1200);
 }
 
+function copyPostUrl(url: string) {
+  void navigator.clipboard.writeText(url);
+}
+
 function ratingColorClass(rating: string): string {
   switch (rating?.toLowerCase()) {
     case 'general':
@@ -1300,122 +1311,139 @@ onUnmounted(deactivateView);
             }"
           >
             <!-- Card Item -->
-            <div
+            <ContextMenu
               v-for="post in posts.slice(
                 virtualRow.index * columns,
                 (virtualRow.index + 1) * columns
               )"
               :key="`${post.source}:${post.postId}`"
-              role="button"
-              tabindex="0"
-              class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-border relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 [content-visibility:auto]"
-              @click="openDetail(post)"
-              @keydown.enter="openDetail(post)"
-              @keydown.space.prevent="openDetail(post)"
             >
-              <!-- Card Image Viewport with Skeleton Preloader -->
-              <div
-                class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden"
-              >
-                <!-- Skeleton placeholder displayed until image is fully loaded -->
+              <ContextMenuTrigger as-child>
                 <div
-                  v-if="!isImageLoaded(`${post.source}:${post.postId}`)"
-                  class="bg-muted/50 absolute inset-0 flex animate-pulse items-center justify-center"
+                  role="button"
+                  tabindex="0"
+                  class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-border relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 [content-visibility:auto]"
+                  @click="openDetail(post)"
+                  @keydown.enter="openDetail(post)"
+                  @keydown.space.prevent="openDetail(post)"
                 >
-                  <ImageIcon class="text-muted-foreground/30 h-7 w-7" />
-                </div>
+                  <!-- Card Image Viewport with Skeleton Preloader -->
+                  <div
+                    class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden"
+                  >
+                    <!-- Skeleton placeholder displayed until image is fully loaded -->
+                    <div
+                      v-if="!isImageLoaded(`${post.source}:${post.postId}`)"
+                      class="bg-muted/50 absolute inset-0 flex animate-pulse items-center justify-center"
+                    >
+                      <ImageIcon class="text-muted-foreground/30 h-7 w-7" />
+                    </div>
 
-                <!-- High-Performance Lazy Decoded Image -->
-                <img
-                  :src="mediaUrl(post)"
-                  :alt="`${post.source} post ${post.postId}`"
-                  loading="lazy"
-                  decoding="async"
-                  class="h-full w-full object-cover transition-opacity duration-300"
-                  :class="
-                    isImageLoaded(`${post.source}:${post.postId}`)
-                      ? 'opacity-100'
-                      : 'opacity-0'
-                  "
-                  @load="onImageLoad(`${post.source}:${post.postId}`)"
-                />
+                    <!-- High-Performance Lazy Decoded Image -->
+                    <img
+                      :src="mediaUrl(post)"
+                      :alt="`${post.source} post ${post.postId}`"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-full w-full object-cover transition-opacity duration-300"
+                      :class="
+                        isImageLoaded(`${post.source}:${post.postId}`)
+                          ? 'opacity-100'
+                          : 'opacity-0'
+                      "
+                      @load="onImageLoad(`${post.source}:${post.postId}`)"
+                    />
 
-                <!-- Floating Source Badge (Top Left) -->
-                <div
-                  v-if="post.source"
-                  class="absolute top-2 left-2 z-10 flex items-center gap-1 transition-opacity duration-200"
-                >
-                  <Badge
-                    variant="secondary"
-                    class="border-white/10 bg-black/60 font-mono text-[10px] font-medium text-white/90 capitalize shadow-sm backdrop-blur-md"
-                  >
-                    {{ post.source }}
-                  </Badge>
-                </div>
+                    <!-- Floating Source Badge (Top Left) -->
+                    <div
+                      v-if="post.source"
+                      class="absolute top-2 left-2 z-10 flex items-center gap-1 transition-opacity duration-200"
+                    >
+                      <Badge
+                        variant="secondary"
+                        class="border-white/10 bg-black/60 font-mono text-[10px] font-medium text-white/90 capitalize shadow-sm backdrop-blur-md"
+                      >
+                        {{ post.source }}
+                      </Badge>
+                    </div>
 
-                <!-- Floating Rating Badge (Top Right) -->
-                <div class="absolute top-2 right-2 z-10">
-                  <Badge
-                    variant="outline"
-                    :class="ratingColorClass(post.rating)"
-                    class="px-1.5 py-0 text-[10px] font-bold tracking-wider uppercase backdrop-blur-md"
-                  >
-                    {{ post.rating || 'G' }}
-                  </Badge>
-                </div>
+                    <!-- Floating Rating Badge (Top Right) -->
+                    <div class="absolute top-2 right-2 z-10">
+                      <Badge
+                        variant="outline"
+                        :class="ratingColorClass(post.rating)"
+                        class="px-1.5 py-0 text-[10px] font-bold tracking-wider uppercase backdrop-blur-md"
+                      >
+                        {{ post.rating || 'G' }}
+                      </Badge>
+                    </div>
 
-                <!-- Floating Action Overlay on Hover with black-to-transparent gradient to top -->
-                <div
-                  class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1.5 bg-linear-to-t from-black/90 via-black/50 to-transparent px-2.5 pt-6 pb-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                >
-                  <Button
-                    size="iconSm"
-                    variant="secondary"
-                    class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                    title="View Post Details & Tags"
-                    @click.stop="openDetail(post)"
-                  >
-                    <ZoomIn class="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="iconSm"
-                    variant="secondary"
-                    class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                    title="Open in Source Provider"
-                    @click.stop="openUrl(post.postUrl)"
-                  >
-                    <ExternalLink class="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+                    <!-- Floating Action Overlay on Hover with black-to-transparent gradient to top -->
+                    <div
+                      class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1.5 bg-linear-to-t from-black/90 via-black/50 to-transparent px-2.5 pt-6 pb-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                    >
+                      <Button
+                        size="iconSm"
+                        variant="secondary"
+                        class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
+                        title="View Post Details & Tags"
+                        @click.stop="openDetail(post)"
+                      >
+                        <ZoomIn class="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="iconSm"
+                        variant="secondary"
+                        class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
+                        title="Open in Source Provider"
+                        @click.stop="openUrl(post.postUrl)"
+                      >
+                        <ExternalLink class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
 
-              <!-- Card Footer Metadata -->
-              <div class="flex flex-col justify-between p-2.5">
-                <p
-                  class="text-foreground truncate font-mono text-xs font-medium transition-colors"
-                  :title="`Post #${post.postId}`"
-                >
-                  #{{ post.postId }}
-                </p>
-                <div
-                  class="text-muted-foreground mt-1 flex items-center justify-between font-mono text-xs"
-                >
-                  <span class="truncate capitalize">{{ post.source }}</span>
-                  <span
-                    v-if="post.width && post.height"
-                    class="shrink-0 font-mono text-[10px]"
-                  >
-                    {{ post.width }}×{{ post.height }}
-                  </span>
-                  <span
-                    v-else
-                    class="shrink-0 font-mono text-[10px] capitalize"
-                  >
-                    {{ post.rating || 'G' }}
-                  </span>
+                  <!-- Card Footer Metadata -->
+                  <div class="flex flex-col justify-between p-2.5">
+                    <p
+                      class="text-foreground truncate font-mono text-xs font-medium transition-colors"
+                      :title="`Post #${post.postId}`"
+                    >
+                      #{{ post.postId }}
+                    </p>
+                    <div
+                      class="text-muted-foreground mt-1 flex items-center justify-between font-mono text-xs"
+                    >
+                      <span class="truncate capitalize">{{ post.source }}</span>
+                      <span
+                        v-if="post.width && post.height"
+                        class="shrink-0 font-mono text-[10px]"
+                      >
+                        {{ post.width }}×{{ post.height }}
+                      </span>
+                      <span
+                        v-else
+                        class="shrink-0 font-mono text-[10px] capitalize"
+                      >
+                        {{ post.rating || 'G' }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent class="w-48">
+                <ContextMenuItem @select="openDetail(post)">
+                  <ZoomIn /> View Details & Tags
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="openUrl(post.postUrl)">
+                  <ExternalLink /> Open Source Post
+                </ContextMenuItem>
+                <ContextMenuItem @select="copyPostUrl(post.postUrl)">
+                  <Copy /> Copy Post URL
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         </div>
 
