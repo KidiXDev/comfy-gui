@@ -21,6 +21,13 @@ import { useRouter } from 'vue-router';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -276,7 +283,7 @@ const durationText = computed(() => {
 
         <!-- Unified Generate & Interrupt Button Group -->
         <div
-          class="inline-flex h-8 items-stretch overflow-hidden rounded-md shadow-xs transition-all ring-1 ring-white/10"
+          class="inline-flex h-8 items-stretch overflow-hidden rounded-md shadow-xs ring-1 ring-white/10 transition-all"
           :class="!comfyStore.isConnected ? 'opacity-60' : ''"
         >
           <button
@@ -308,7 +315,7 @@ const durationText = computed(() => {
             v-if="comfyStore.isGenerating"
             type="button"
             title="Interrupt current generation"
-            class="bg-rose-600 hover:bg-rose-500 active:bg-rose-700 flex h-full cursor-pointer items-center justify-center border-l border-white/20 px-2.5 text-white transition-colors"
+            class="flex h-full cursor-pointer items-center justify-center border-l border-white/20 bg-rose-600 px-2.5 text-white transition-colors hover:bg-rose-500 active:bg-rose-700"
             @click="comfyStore.interrupt"
           >
             <Square class="h-3.5 w-3.5 fill-current" />
@@ -345,29 +352,55 @@ const durationText = computed(() => {
       </div>
 
       <!-- Live Preview / Rendered Output Image Container -->
-      <div
+      <ContextMenu
         v-if="
           (comfyStore.isGenerating && comfyStore.currentPreviewUrl) ||
           comfyStore.lastGeneratedImage?.url ||
           comfyStore.currentPreviewUrl
         "
-        class="relative flex h-full min-h-0 w-full min-w-0 items-center justify-center overflow-hidden p-3 pb-12"
       >
-        <img
-          :src="
-            comfyStore.isGenerating
-              ? comfyStore.currentPreviewUrl ||
-                comfyStore.lastGeneratedImage?.url ||
-                ''
-              : comfyStore.lastGeneratedImage?.url ||
-                comfyStore.currentPreviewUrl ||
-                ''
-          "
-          alt="Generation Output"
-          draggable="true"
-          class="z-10 h-full w-full object-contain drop-shadow-md transition-all duration-150 select-none"
-        />
-      </div>
+        <ContextMenuTrigger as-child>
+          <div
+            class="relative flex h-full min-h-0 w-full min-w-0 items-center justify-center overflow-hidden p-3 pb-12"
+          >
+            <img
+              :src="
+                comfyStore.isGenerating
+                  ? comfyStore.currentPreviewUrl ||
+                    comfyStore.lastGeneratedImage?.url ||
+                    ''
+                  : comfyStore.lastGeneratedImage?.url ||
+                    comfyStore.currentPreviewUrl ||
+                    ''
+              "
+              alt="Generation Output"
+              draggable="true"
+              class="z-10 h-full w-full object-contain drop-shadow-md transition-all duration-150 select-none"
+            />
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent class="w-48">
+          <ContextMenuItem
+            :disabled="!comfyStore.lastGeneratedImage?.url"
+            @select="isZoomModalOpen = true"
+          >
+            <Maximize2 /> View Fullscreen
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            :disabled="!comfyStore.lastGeneratedImage?.url"
+            @select="copyImageToClipboard"
+          >
+            <Copy /> Copy Image
+          </ContextMenuItem>
+          <ContextMenuItem
+            :disabled="!comfyStore.lastGeneratedImage?.url"
+            @select="downloadImage"
+          >
+            <Download /> Download Image
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       <!-- Clean Pre-Generation Loader (When generating before first preview arrives) -->
       <div

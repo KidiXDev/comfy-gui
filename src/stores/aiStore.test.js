@@ -141,6 +141,22 @@ try {
   // Check both the existing session and sendMessage's empty-session fallback.
   for (const emptySession of [false, true]) {
     if (emptySession) store.sessions = [];
+    else
+      store.activeSession.messages.push({
+        id: 'prior-tool-message',
+        role: 'assistant',
+        content: 'Prior result',
+        createdAt: Date.now(),
+        toolInvocations: [
+          {
+            id: 'prior-tool',
+            name: 'inspect_current_prompt',
+            args: {},
+            state: 'applied',
+            timestamp: Date.now()
+          }
+        ]
+      });
     await store.sendMessage('Hello');
     assert.doesNotMatch(
       requestSystem,
@@ -178,6 +194,12 @@ try {
     assert.equal(store.activeMessages.at(-1).content, 'Hello world');
     assert.equal(store.isGenerating, false);
     assert.equal(store.activeMessages.at(-1).parts.at(-1).isComplete, true);
+    if (!emptySession)
+      assert.equal(
+        JSON.stringify(requestMessages).includes('inspect_current_prompt'),
+        false,
+        'Tool calls must not be replayed as assistant text'
+      );
   }
 
   store.createSession('Context budget');

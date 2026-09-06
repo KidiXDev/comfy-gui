@@ -46,6 +46,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -933,89 +940,103 @@ onUnmounted(() => {
             }"
           >
             <!-- Portrait Card Item -->
-            <div
+            <ContextMenu
               v-for="image in filteredImages.slice(
                 virtualRow.index * columns,
                 (virtualRow.index + 1) * columns
               )"
               :key="image.path"
-              role="button"
-              tabindex="0"
-              class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-border relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 [content-visibility:auto]"
-              @click="openImage(image)"
-              @keydown.enter="openImage(image)"
-              @keydown.space.prevent="openImage(image)"
             >
-              <!-- Portrait Image Viewport (3:4 ratio) -->
-              <div
-                class="bg-muted/50 relative aspect-3/4 w-full overflow-hidden"
-              >
-                <img
-                  :src="imageUrl(image, true)"
-                  :alt="image.filename"
-                  loading="lazy"
-                  decoding="async"
-                  class="h-full w-full object-cover"
-                />
-
-                <!-- Floating Subfolder Badge -->
+              <ContextMenuTrigger as-child>
                 <div
-                  v-if="image.subfolder"
-                  class="absolute top-2 left-2 flex items-center gap-1 transition-opacity duration-200"
+                  role="button"
+                  tabindex="0"
+                  class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-border relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 [content-visibility:auto]"
+                  @click="openImage(image)"
+                  @keydown.enter="openImage(image)"
+                  @keydown.space.prevent="openImage(image)"
                 >
-                  <Badge
-                    variant="secondary"
-                    class="border-white/10 bg-black/60 font-mono text-xs font-medium text-white/90 shadow-sm backdrop-blur-md"
+                  <!-- Portrait Image Viewport (3:4 ratio) -->
+                  <div
+                    class="bg-muted/50 relative aspect-3/4 w-full overflow-hidden"
                   >
-                    {{ image.subfolder }}
-                  </Badge>
-                </div>
+                    <img
+                      :src="imageUrl(image, true)"
+                      :alt="image.filename"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-full w-full object-cover"
+                    />
 
-                <!-- Floating Action Overlay on Hover with black-to-transparent gradient to top -->
-                <div
-                  class="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-linear-to-t from-black/90 via-black/50 to-transparent px-2.5 pt-6 pb-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                >
-                  <Button
-                    size="iconSm"
-                    variant="secondary"
-                    class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                    title="View Fullscreen & Metadata"
-                    @click.stop="openImage(image)"
-                  >
-                    <ZoomIn class="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="iconSm"
-                    variant="secondary"
-                    class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                    title="Open in System Explorer"
-                    @click.stop="openLocalPath(image.path)"
-                  >
-                    <FolderOpen class="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+                    <!-- Floating Subfolder Badge -->
+                    <div
+                      v-if="image.subfolder"
+                      class="absolute top-2 left-2 flex items-center gap-1 transition-opacity duration-200"
+                    >
+                      <Badge
+                        variant="secondary"
+                        class="border-white/10 bg-black/60 font-mono text-xs font-medium text-white/90 shadow-sm backdrop-blur-md"
+                      >
+                        {{ image.subfolder }}
+                      </Badge>
+                    </div>
 
-              <!-- Card Footer Metadata -->
-              <div class="flex flex-col justify-between p-2.5">
-                <p
-                  class="text-foreground truncate font-mono text-xs font-medium transition-colors"
-                  :title="image.filename"
-                >
-                  {{ image.filename }}
-                </p>
-                <div
-                  class="text-muted-foreground mt-1 flex items-center justify-between font-mono text-xs"
-                >
-                  <span class="truncate">{{
-                    image.extension?.toUpperCase() || 'PNG'
-                  }}</span>
-                  <span class="shrink-0">{{
-                    formatFileSize(image.fileSize)
-                  }}</span>
+                    <!-- Floating Action Overlay on Hover with black-to-transparent gradient to top -->
+                    <div
+                      class="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-linear-to-t from-black/90 via-black/50 to-transparent px-2.5 pt-6 pb-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                    >
+                      <Button
+                        size="iconSm"
+                        variant="secondary"
+                        class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
+                        title="View Fullscreen & Metadata"
+                        @click.stop="openImage(image)"
+                      >
+                        <ZoomIn class="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="iconSm"
+                        variant="secondary"
+                        class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
+                        title="Open in System Explorer"
+                        @click.stop="openLocalPath(image.path)"
+                      >
+                        <FolderOpen class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <!-- Card Footer Metadata -->
+                  <div class="flex flex-col justify-between p-2.5">
+                    <p
+                      class="text-foreground truncate font-mono text-xs font-medium transition-colors"
+                      :title="image.filename"
+                    >
+                      {{ image.filename }}
+                    </p>
+                    <div
+                      class="text-muted-foreground mt-1 flex items-center justify-between font-mono text-xs"
+                    >
+                      <span class="truncate">{{
+                        image.extension?.toUpperCase() || 'PNG'
+                      }}</span>
+                      <span class="shrink-0">{{
+                        formatFileSize(image.fileSize)
+                      }}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent class="w-48">
+                <ContextMenuItem @select="openImage(image)">
+                  <ZoomIn /> View Image & Metadata
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem @select="openLocalPath(image.path)">
+                  <FolderOpen /> Show in Explorer
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         </div>
       </div>

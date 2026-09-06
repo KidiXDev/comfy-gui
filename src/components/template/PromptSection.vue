@@ -34,6 +34,13 @@ import {
 import { vDraggable } from 'vue-draggable-plus';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -873,23 +880,49 @@ const negativeTokenInfo = computed(() =>
 
         <!-- Positive Content: Either Textarea or Interactive Chips -->
         <div v-if="!isPositiveChipsMode" class="relative">
-          <Textarea
-            ref="positiveTextarea"
-            v-model="workflowStore.positivePrompt"
-            :rows="4"
-            :style="{
-              height: `${textareaSizes.positive ?? defaultTextareaSizes.positive}px`
-            }"
-            placeholder="Describe the image you want to generate... (Tip: Select tag and press Ctrl+Up/Down to adjust weight)"
-            class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
-            @input="handleInput('positive', $event)"
-            @click="updateCursor('positive', $event)"
-            @keyup="updateCursor('positive', $event)"
-            @select="updateCursor('positive', $event)"
-            @keydown="handleKeydown('positive', $event)"
-            @blur="handleBlur('positive', $event)"
-            @pointerup="saveTextareaSize('positive', $event)"
-          />
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <Textarea
+                ref="positiveTextarea"
+                v-model="workflowStore.positivePrompt"
+                :rows="4"
+                :style="{
+                  height: `${textareaSizes.positive ?? defaultTextareaSizes.positive}px`
+                }"
+                placeholder="Describe the image you want to generate... (Tip: Select tag and press Ctrl+Up/Down to adjust weight)"
+                class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
+                @input="handleInput('positive', $event)"
+                @click="updateCursor('positive', $event)"
+                @keyup="updateCursor('positive', $event)"
+                @select="updateCursor('positive', $event)"
+                @keydown="handleKeydown('positive', $event)"
+                @blur="handleBlur('positive', $event)"
+                @pointerup="saveTextareaSize('positive', $event)"
+              />
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-44">
+              <ContextMenuItem
+                :disabled="!workflowStore.positivePrompt.trim()"
+                @select="formatPrompt('positive')"
+              >
+                <Code2 /> Format Prompt
+              </ContextMenuItem>
+              <ContextMenuItem
+                :disabled="!workflowStore.positivePrompt"
+                @select="copyPrompt('positive')"
+              >
+                <Copy /> Copy Prompt
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                variant="destructive"
+                :disabled="!workflowStore.positivePrompt"
+                @select="workflowStore.positivePrompt = ''"
+              >
+                <Trash2 /> Clear Prompt
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
 
           <!-- Autocomplete Floating Dropdown -->
           <div
@@ -1360,23 +1393,49 @@ const negativeTokenInfo = computed(() =>
 
         <!-- Negative Content: Textarea or Interactive Chips -->
         <div v-if="!isNegativeChipsMode" class="relative">
-          <Textarea
-            ref="negativeTextarea"
-            v-model="workflowStore.negativePrompt"
-            :rows="3"
-            :style="{
-              height: `${textareaSizes.negative ?? defaultTextareaSizes.negative}px`
-            }"
-            placeholder="Things to avoid in generation... (e.g. worst quality, blurry, bad anatomy)"
-            class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
-            @input="handleInput('negative', $event)"
-            @click="updateCursor('negative', $event)"
-            @keyup="updateCursor('negative', $event)"
-            @select="updateCursor('negative', $event)"
-            @keydown="handleKeydown('negative', $event)"
-            @blur="handleBlur('negative', $event)"
-            @pointerup="saveTextareaSize('negative', $event)"
-          />
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <Textarea
+                ref="negativeTextarea"
+                v-model="workflowStore.negativePrompt"
+                :rows="3"
+                :style="{
+                  height: `${textareaSizes.negative ?? defaultTextareaSizes.negative}px`
+                }"
+                placeholder="Things to avoid in generation... (e.g. worst quality, blurry, bad anatomy)"
+                class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
+                @input="handleInput('negative', $event)"
+                @click="updateCursor('negative', $event)"
+                @keyup="updateCursor('negative', $event)"
+                @select="updateCursor('negative', $event)"
+                @keydown="handleKeydown('negative', $event)"
+                @blur="handleBlur('negative', $event)"
+                @pointerup="saveTextareaSize('negative', $event)"
+              />
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-44">
+              <ContextMenuItem
+                :disabled="!workflowStore.negativePrompt.trim()"
+                @select="formatPrompt('negative')"
+              >
+                <Code2 /> Format Prompt
+              </ContextMenuItem>
+              <ContextMenuItem
+                :disabled="!workflowStore.negativePrompt"
+                @select="copyPrompt('negative')"
+              >
+                <Copy /> Copy Prompt
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                variant="destructive"
+                :disabled="!workflowStore.negativePrompt"
+                @select="workflowStore.negativePrompt = ''"
+              >
+                <Trash2 /> Clear Prompt
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
 
           <!-- Autocomplete Floating Dropdown for Negative -->
           <div

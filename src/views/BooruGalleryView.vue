@@ -890,7 +890,7 @@ onUnmounted(deactivateView);
   <div class="bg-background flex h-full flex-col overflow-hidden select-none">
     <!-- Top Header & Search Bar -->
     <header
-      class="border-border/80 bg-card/70 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
+      class="border-border/80 bg-card/70 relative z-20 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
     >
       <div class="flex items-center justify-between gap-4">
         <!-- Title & Stats -->

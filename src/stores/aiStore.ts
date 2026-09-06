@@ -429,48 +429,37 @@ export const useAiStore = defineStore('ai', () => {
       let approvalTail = Promise.resolve();
 
       // Exclude the empty assistant placeholder from history
-      const coreMessages = session.messages.slice(0, -1).map((m) => {
-        if (m.role === 'user') {
-          if (m.attachments && m.attachments.length > 0) {
-            const parts: Array<
-              { type: 'text'; text: string } | { type: 'image'; image: string }
-            > = [];
-            if (m.content) {
-              parts.push({ type: 'text', text: m.content });
-            }
-            for (const att of m.attachments) {
-              parts.push({ type: 'image', image: att.dataUrl });
+      const coreMessages = session.messages
+        .slice(0, -1)
+        .filter((m) => m.role === 'user' || m.content.trim())
+        .map((m) => {
+          if (m.role === 'user') {
+            if (m.attachments && m.attachments.length > 0) {
+              const parts: Array<
+                | { type: 'text'; text: string }
+                | { type: 'image'; image: string }
+              > = [];
+              if (m.content) {
+                parts.push({ type: 'text', text: m.content });
+              }
+              for (const att of m.attachments) {
+                parts.push({ type: 'image', image: att.dataUrl });
+              }
+              return {
+                role: 'user' as const,
+                content: parts
+              };
             }
             return {
               role: 'user' as const,
-              content: parts
+              content: m.content
             };
           }
           return {
-            role: 'user' as const,
+            role: 'assistant' as const,
             content: m.content
           };
-        }
-        return {
-          role: 'assistant' as const,
-          content:
-            m.content +
-            (m.toolInvocations?.length
-              ? '\nTool decisions: ' +
-                JSON.stringify(
-                  m.toolInvocations.map(
-                    ({ name, args, state, result, note }) => ({
-                      name,
-                      args,
-                      state,
-                      result,
-                      note
-                    })
-                  )
-                )
-              : '')
-        };
-      });
+        });
 
       const executeStudioTool = async (
         name:
