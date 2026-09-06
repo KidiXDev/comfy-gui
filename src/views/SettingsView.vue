@@ -703,7 +703,6 @@ async function checkForUpdates() {
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Network Disk Cache (Danbooru & Animadex)
 // ---------------------------------------------------------------------------
@@ -822,11 +821,8 @@ void loadNetworkCacheStats();
               </div>
               <div>
                 <span class="text-xs font-bold tracking-wider uppercase">
-                  ComfyUI Portable Launcher
+                  ComfyUI Configuration
                 </span>
-                <p class="text-muted-foreground text-xs">
-                  Native Python process lifecycle and path definitions
-                </p>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -923,9 +919,6 @@ void loadNetworkCacheStats();
               <span class="text-xs font-bold tracking-wider uppercase">
                 Custom Nodes
               </span>
-              <p class="text-muted-foreground text-xs">
-                Clone a GitHub repository and install its Python requirements
-              </p>
             </div>
           </div>
           <Button
@@ -935,7 +928,6 @@ void loadNetworkCacheStats();
             class="border-border bg-secondary shrink-0 text-xs font-medium"
             @click="isInstallDialogOpen = true"
           >
-            <Download class="h-3.5 w-3.5" />
             Install custom node
           </Button>
         </section>
@@ -957,9 +949,6 @@ void loadNetworkCacheStats();
                 <span class="text-xs font-bold tracking-wider uppercase">
                   Network & Server Connection
                 </span>
-                <p class="text-muted-foreground text-xs">
-                  REST HTTP endpoint and live WebSocket stream URL
-                </p>
               </div>
             </div>
 
@@ -1044,9 +1033,6 @@ void loadNetworkCacheStats();
                 <span class="text-xs font-bold tracking-wider uppercase">
                   Prompt Tag Autocomplete
                 </span>
-                <p class="text-muted-foreground text-xs">
-                  Type normally for tags, $ for wildcards, or @ for artists
-                </p>
               </div>
             </div>
 
@@ -1187,9 +1173,6 @@ void loadNetworkCacheStats();
                 <span class="text-xs font-bold tracking-wider uppercase">
                   Booru Gallery & Provider Credentials
                 </span>
-                <p class="text-muted-foreground text-xs">
-                  Danbooru, Gelbooru, Safebooru, and AI TAG integration settings
-                </p>
               </div>
             </div>
 
@@ -1424,9 +1407,6 @@ void loadNetworkCacheStats();
                     <Label class="text-foreground text-xs font-semibold">
                       Danbooru
                     </Label>
-                    <p class="text-muted-foreground text-xs">
-                      Username & API Key
-                    </p>
                   </div>
                 </div>
                 <Badge
@@ -1625,9 +1605,6 @@ void loadNetworkCacheStats();
                 <span class="text-xs font-bold tracking-wider uppercase">
                   Civitai API
                 </span>
-                <p class="text-muted-foreground text-xs">
-                  Authentication for gated model downloads
-                </p>
               </div>
             </div>
             <Button
@@ -1700,10 +1677,6 @@ void loadNetworkCacheStats();
                 <span class="text-xs font-bold tracking-wider uppercase">
                   AI Assistant (OpenRouter)
                 </span>
-                <p class="text-muted-foreground text-xs">
-                  Prompt engineering, vision multimodal analysis, and agentic
-                  studio control
-                </p>
               </div>
             </div>
             <Button
@@ -1944,7 +1917,6 @@ void loadNetworkCacheStats();
           </Field>
         </section>
 
-
         <!-- Network Disk Cache Section -->
         <section
           class="border-border/80 bg-card/80 flex flex-col gap-4 rounded-xl border p-5 shadow-xs backdrop-blur-xs"
@@ -2120,7 +2092,6 @@ void loadNetworkCacheStats();
               v-if="isInstallingCustomNode"
               class="h-3.5 w-3.5 animate-spin"
             />
-            <Download v-else class="h-3.5 w-3.5" />
             {{ isInstallingCustomNode ? 'Installing…' : 'Install' }}
           </Button>
         </DialogFooter>
