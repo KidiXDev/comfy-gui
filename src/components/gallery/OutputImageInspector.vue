@@ -136,7 +136,11 @@ function handlePointerDown(event: PointerEvent) {
   window.addEventListener('pointerup', onPointerUp);
 }
 function handleBackdropClick(event: MouseEvent) {
-  if (!hasDragged && event.target === event.currentTarget) {
+  if (hasDragged) {
+    hasDragged = false;
+    return;
+  }
+  if (event.target === event.currentTarget) {
     selectedImage.value = undefined;
   }
 }

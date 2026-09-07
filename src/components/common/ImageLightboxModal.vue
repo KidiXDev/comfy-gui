@@ -74,7 +74,11 @@ function handlePointerDown(event: PointerEvent) {
 }
 
 function handleBackdropClick(event: MouseEvent) {
-  if (!hasDragged && event.target === event.currentTarget) {
+  if (hasDragged) {
+    hasDragged = false;
+    return;
+  }
+  if (event.target === event.currentTarget) {
     handleClose();
   }
 }
