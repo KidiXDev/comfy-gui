@@ -554,6 +554,7 @@ export function usePromptTextEditing(
     activeField,
     autocompleteListRef,
     getAutocompleteDropdownStyle,
+    getTextareaElement,
     handleTextareaScroll,
     updateCursor,
     handleInput,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import PromptChips from '@/components/prompt/PromptChips.vue';
+import PromptFindHighlight from '@/components/prompt/PromptFindHighlight.vue';
 import PromptTagCatalog from '@/components/prompt/PromptTagCatalog.vue';
 import {
   usePromptTextEditing,
@@ -169,7 +170,6 @@ const {
   suggestions,
   activeIndex,
   activeField,
-  autocompleteListRef,
   getAutocompleteDropdownStyle,
   handleTextareaScroll,
   updateCursor,
@@ -193,6 +193,21 @@ const {
   handleContainerKeydown,
   insertTagAtCursor
 } = usePromptTextEditing(isPositiveChipsMode, isNegativeChipsMode);
+
+const rawPositiveTextarea = computed<HTMLTextAreaElement | null>(() => {
+  const comp = positiveTextarea.value;
+  if (!comp) return null;
+  return comp.$el instanceof HTMLTextAreaElement
+    ? comp.$el
+    : (comp as unknown as HTMLTextAreaElement);
+});
+const rawNegativeTextarea = computed<HTMLTextAreaElement | null>(() => {
+  const comp = negativeTextarea.value;
+  if (!comp) return null;
+  return comp.$el instanceof HTMLTextAreaElement
+    ? comp.$el
+    : (comp as unknown as HTMLTextAreaElement);
+});
 
 // Copy feedback states
 const copiedPositive = ref(false);
@@ -375,7 +390,7 @@ const negativeTokenInfo = computed(() =>
               ref="findInputRef"
               v-model="findQuery"
               type="text"
-              placeholder="Find in prompt... (Enter for next, Shift+Enter for prev)"
+              placeholder="Find"
               class="border-border bg-background placeholder:text-muted-foreground/60 focus:border-primary h-7 w-full rounded-md border pr-6 pl-7 font-mono text-xs outline-none"
               @keydown.enter.exact.prevent="findNext"
               @keydown.shift.enter.prevent="findPrev"
@@ -637,6 +652,12 @@ const negativeTokenInfo = computed(() =>
                 }"
                 placeholder="Describe the image you want to generate... (Tip: Select tag and press Ctrl+Up/Down to adjust weight)"
                 class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
+                :class="{
+                  'caret-foreground bg-transparent':
+                    isFindBarOpen &&
+                    findTarget === 'positive' &&
+                    findMatches.length > 0
+                }"
                 @input="handleInput('positive', $event)"
                 @scroll="handleTextareaScroll('positive', $event)"
                 @click="updateCursor('positive', $event)"
@@ -670,6 +691,15 @@ const negativeTokenInfo = computed(() =>
               </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
+
+          <!-- Search Match Highlight Overlay -->
+          <PromptFindHighlight
+            :textarea-el="rawPositiveTextarea"
+            :text="workflowStore.positivePrompt"
+            :matches="findMatches"
+            :current-match-index="currentMatchIndex"
+            :active="isFindBarOpen && findTarget === 'positive'"
+          />
 
           <!-- Autocomplete Floating Dropdown -->
           <div
@@ -882,6 +912,12 @@ const negativeTokenInfo = computed(() =>
                 }"
                 placeholder="Things to avoid in generation... (e.g. worst quality, blurry, bad anatomy)"
                 class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
+                :class="{
+                  'caret-foreground bg-transparent':
+                    isFindBarOpen &&
+                    findTarget === 'negative' &&
+                    findMatches.length > 0
+                }"
                 @input="handleInput('negative', $event)"
                 @scroll="handleTextareaScroll('negative', $event)"
                 @click="updateCursor('negative', $event)"
@@ -915,6 +951,15 @@ const negativeTokenInfo = computed(() =>
               </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
+
+          <!-- Search Match Highlight Overlay -->
+          <PromptFindHighlight
+            :textarea-el="rawNegativeTextarea"
+            :text="workflowStore.negativePrompt"
+            :matches="findMatches"
+            :current-match-index="currentMatchIndex"
+            :active="isFindBarOpen && findTarget === 'negative'"
+          />
 
           <!-- Autocomplete Floating Dropdown for Negative -->
           <div
