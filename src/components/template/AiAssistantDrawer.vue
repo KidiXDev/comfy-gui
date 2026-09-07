@@ -306,7 +306,8 @@ function getChronologicalParts(msg: ChatMessage): ChatMessagePart[] {
   }
   return parts.filter((part) => {
     if (part.type === 'text' && !part.text?.trim()) return false;
-    if (part.type === 'reasoning' && !part.text?.trim() && part.isComplete) return false;
+    if (part.type === 'reasoning' && !part.text?.trim() && part.isComplete)
+      return false;
     return true;
   });
 }
@@ -964,7 +965,7 @@ function renderMarkdown(content: string): string {
                             (part.type === 'tool' &&
                               part.invocation.result !== undefined)
                           "
-                          class="text-muted-foreground h-3 w-3"
+                          class="text-muted-foreground h-3 w-3 translate-y-1"
                         />
                         <span
                           v-else
