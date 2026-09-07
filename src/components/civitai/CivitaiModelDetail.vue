@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import CivitaiRichText from './CivitaiRichText.vue';
+import CivitaiSampleMetadata from './CivitaiSampleMetadata.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import DOMPurify from 'dompurify';
 import {
   ArrowLeft,
   Check,
@@ -109,7 +110,6 @@ const activeImageIndex = ref(0);
 const carouselApi = ref<CarouselApi>();
 const isLightboxOpen = ref(false);
 const showAllFiles = ref(false);
-const showRawMeta = ref(false);
 
 // Copy & feedback states
 const copiedKey = ref<string | null>(null);
@@ -205,94 +205,6 @@ function formatSize(sizeKB = 0) {
   return sizeKB >= 1024 * 1024
     ? `${(sizeKB / 1024 / 1024).toFixed(1)} GB`
     : `${(sizeKB / 1024).toFixed(0)} MB`;
-}
-
-function sanitizeCivitaiHtml(rawHtml?: string): string {
-  if (!rawHtml) return '';
-  return DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: [
-      'p',
-      'br',
-      'b',
-      'i',
-      'strong',
-      'em',
-      'u',
-      's',
-      'strike',
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'ul',
-      'ol',
-      'li',
-      'blockquote',
-      'pre',
-      'code',
-      'table',
-      'thead',
-      'tbody',
-      'tr',
-      'th',
-      'td',
-      'a',
-      'img',
-      'span',
-      'div',
-      'hr'
-    ],
-    ALLOWED_ATTR: [
-      'href',
-      'title',
-      'alt',
-      'src',
-      'target',
-      'rel',
-      'class',
-      'style',
-      'width',
-      'height'
-    ],
-    ALLOWED_URI_REGEXP:
-      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/iu,
-    FORBID_TAGS: [
-      'script',
-      'iframe',
-      'object',
-      'embed',
-      'form',
-      'input',
-      'button'
-    ],
-    FORBID_ATTR: [
-      'onerror',
-      'onload',
-      'onclick',
-      'onmouseover',
-      'onfocus',
-      'onblur'
-    ]
-  });
-}
-
-const sanitizedDescription = computed(() => {
-  return sanitizeCivitaiHtml(props.model.description);
-});
-
-const sanitizedVersionNotes = computed(() => {
-  return sanitizeCivitaiHtml(currentVersion.value?.description);
-});
-
-function handleDescriptionClick(event: MouseEvent) {
-  const target = (event.target as HTMLElement).closest('a');
-  if (target && target.href) {
-    event.preventDefault();
-    event.stopPropagation();
-    void openUrl(target.href);
-  }
 }
 
 async function copyText(text: string, key: string) {
@@ -605,184 +517,26 @@ onUnmounted(() => {
           </div>
 
           <!-- Generation Parameters Metadata Card -->
-          <div
-            v-if="activeImage?.meta && Object.keys(activeImage.meta).length > 0"
-            class="border-border/70 bg-card/70 flex flex-col gap-3 rounded-xl border p-4 shadow-xs"
-          >
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5 text-xs font-semibold">
-                <Sparkles class="text-primary h-3.5 w-3.5" />
-                <span>Sample Generation Parameters</span>
-              </div>
-
-              <!-- Action: Apply parameters directly to workflow store -->
-              <Button
-                variant="outline"
-                size="sm"
-                class="border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 h-7 cursor-pointer gap-1.5 text-xs font-medium shadow-xs"
-                @click="applyParametersToWorkflow"
-              >
-                <Check
-                  v-if="appliedToWorkflow"
-                  class="h-3.5 w-3.5 text-emerald-500"
-                />
-                <Wand2 v-else class="h-3.5 w-3.5" />
-                <span>{{
-                  appliedToWorkflow
-                    ? 'Applied to Workflow!'
-                    : 'Apply to Generator'
-                }}</span>
-              </Button>
-            </div>
-
-            <!-- Positive Prompt -->
-            <div v-if="activeImage.meta.prompt" class="flex flex-col gap-1.5">
-              <div
-                class="text-muted-foreground flex items-center justify-between text-xs"
-              >
-                <span class="font-medium">Positive Prompt</span>
-                <button
-                  type="button"
-                  class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-                  @click="copyText(String(activeImage.meta.prompt), 'prompt')"
-                >
-                  <Check
-                    v-if="copiedKey === 'prompt'"
-                    class="h-3 w-3 text-emerald-500"
-                  />
-                  <Copy v-else class="h-3 w-3" />
-                  <span>{{
-                    copiedKey === 'prompt' ? 'Copied' : 'Copy Prompt'
-                  }}</span>
-                </button>
-              </div>
-              <p
-                class="bg-muted/60 border-border/40 max-h-28 overflow-y-auto rounded-lg border p-2.5 font-mono text-xs leading-relaxed select-text"
-              >
-                {{ activeImage.meta.prompt }}
-              </p>
-            </div>
-
-            <!-- Negative Prompt -->
-            <div
-              v-if="activeImage.meta.negativePrompt"
-              class="flex flex-col gap-1.5"
-            >
-              <div
-                class="text-muted-foreground flex items-center justify-between text-xs"
-              >
-                <span class="font-medium">Negative Prompt</span>
-                <button
-                  type="button"
-                  class="hover:text-primary flex cursor-pointer items-center gap-1 text-xs font-medium transition-colors"
-                  @click="
-                    copyText(
-                      String(activeImage.meta.negativePrompt),
-                      'negPrompt'
-                    )
-                  "
-                >
-                  <Check
-                    v-if="copiedKey === 'negPrompt'"
-                    class="h-3 w-3 text-emerald-500"
-                  />
-                  <Copy v-else class="h-3 w-3" />
-                  <span>{{
-                    copiedKey === 'negPrompt' ? 'Copied' : 'Copy Negative'
-                  }}</span>
-                </button>
-              </div>
-              <p
-                class="bg-muted/60 border-border/40 max-h-24 overflow-y-auto rounded-lg border p-2.5 font-mono text-xs leading-relaxed select-text"
-              >
-                {{ activeImage.meta.negativePrompt }}
-              </p>
-            </div>
-
-            <!-- Technical Parameter Badges -->
-            <div class="flex flex-wrap gap-1.5 pt-1">
-              <span
-                v-if="activeImage.meta.sampler"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                Sampler: {{ activeImage.meta.sampler }}
-              </span>
-              <span
-                v-if="activeImage.meta.steps"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                Steps: {{ activeImage.meta.steps }}
-              </span>
-              <span
-                v-if="activeImage.meta.cfgScale"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                CFG: {{ activeImage.meta.cfgScale }}
-              </span>
-              <span
-                v-if="activeImage.meta.seed"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                Seed: {{ activeImage.meta.seed }}
-              </span>
-              <span
-                v-if="activeImage.meta.Size"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                Size: {{ activeImage.meta.Size }}
-              </span>
-              <span
-                v-if="activeImage.meta.clipSkip"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                Clip Skip: {{ activeImage.meta.clipSkip }}
-              </span>
-              <span
-                v-if="activeImage.meta.Model"
-                class="bg-muted/80 rounded-md px-2 py-0.5 font-mono text-xs"
-              >
-                Model: {{ activeImage.meta.Model }}
-              </span>
-            </div>
-
-            <!-- Raw JSON Metadata Toggle -->
-            <div class="border-border/60 border-t pt-2">
-              <button
-                type="button"
-                class="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-xs transition-colors"
-                @click="showRawMeta = !showRawMeta"
-              >
-                <FileCode class="h-3.5 w-3.5" />
-                <span>{{
-                  showRawMeta ? 'Hide Raw Metadata' : 'View Raw Metadata'
-                }}</span>
-                <ChevronUp v-if="showRawMeta" class="h-3 w-3" />
-                <ChevronDown v-else class="h-3 w-3" />
-              </button>
-
-              <div v-if="showRawMeta" class="mt-2">
-                <pre
-                  class="bg-muted/70 max-h-48 overflow-y-auto rounded-lg p-2.5 font-mono text-xs leading-tight select-text"
-                  >{{ JSON.stringify(activeImage.meta, null, 2) }}</pre>
-              </div>
-            </div>
-          </div>
-
+          <CivitaiSampleMetadata
+            :active-image="activeImage"
+            :applied-to-workflow="appliedToWorkflow"
+            :copied-key="copiedKey"
+            @apply="applyParametersToWorkflow"
+            @copy="copyText"
+          />
           <!-- Model Description Section (Spacious, Unboxed / Not trapped in a card) -->
           <div class="border-border/60 flex flex-col gap-3.5 border-t pt-6">
             <h2 class="text-foreground text-xl font-bold tracking-tight">
               About this Model
             </h2>
 
-            <div
-              v-if="sanitizedDescription"
-              class="civitai-rich-text w-full leading-relaxed select-text"
-              @click="handleDescriptionClick"
-              v-html="sanitizedDescription"
-            />
-            <p v-else class="text-muted-foreground text-xs italic">
-              No description provided.
-            </p>
+            <CivitaiRichText
+              :html="model.description"
+              class="w-full leading-relaxed"
+              ><p class="text-muted-foreground text-xs italic">
+                No description provided.
+              </p></CivitaiRichText
+            >
           </div>
         </div>
 
@@ -1134,10 +888,9 @@ onUnmounted(() => {
             <ScrollArea
               class="border-border/40 bg-muted/20 max-h-48 rounded-lg border p-3 text-xs"
             >
-              <div
-                class="civitai-rich-text text-muted-foreground select-text"
-                @click="handleDescriptionClick"
-                v-html="sanitizedVersionNotes"
+              <CivitaiRichText
+                :html="currentVersion.description"
+                class="text-muted-foreground"
               />
             </ScrollArea>
           </div>
@@ -1225,110 +978,3 @@ onUnmounted(() => {
     </ImageLightboxModal>
   </div>
 </template>
-
-<style scoped>
-:deep(.civitai-rich-text) {
-  font-size: 0.875rem;
-  line-height: 1.625;
-  color: var(--color-foreground);
-  word-break: break-word;
-}
-:deep(.civitai-rich-text p) {
-  margin-bottom: 0.75rem;
-}
-:deep(.civitai-rich-text h1) {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-  color: var(--color-foreground);
-}
-:deep(.civitai-rich-text h2) {
-  font-size: 1.125rem;
-  font-weight: 700;
-  margin-top: 1.25rem;
-  margin-bottom: 0.625rem;
-  color: var(--color-foreground);
-}
-:deep(.civitai-rich-text h3),
-:deep(.civitai-rich-text h4) {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
-  color: var(--color-foreground);
-}
-:deep(.civitai-rich-text ul) {
-  list-style-type: disc;
-  padding-left: 1.5rem;
-  margin-bottom: 0.75rem;
-}
-:deep(.civitai-rich-text ol) {
-  list-style-type: decimal;
-  padding-left: 1.5rem;
-  margin-bottom: 0.75rem;
-}
-:deep(.civitai-rich-text li) {
-  margin-bottom: 0.25rem;
-}
-:deep(.civitai-rich-text a) {
-  color: var(--color-primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  transition: opacity 0.15s ease;
-}
-:deep(.civitai-rich-text a:hover) {
-  opacity: 0.8;
-}
-:deep(.civitai-rich-text blockquote) {
-  border-left: 3px solid var(--color-primary);
-  padding-left: 0.875rem;
-  margin: 0.75rem 0;
-  color: var(--color-muted-foreground);
-  font-style: italic;
-}
-:deep(.civitai-rich-text code) {
-  background-color: var(--color-muted);
-  border: 1px solid var(--color-border);
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.375rem;
-  font-family: monospace;
-  font-size: 0.75rem;
-}
-:deep(.civitai-rich-text pre) {
-  background-color: var(--color-muted);
-  border: 1px solid var(--color-border);
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  overflow-x: auto;
-  margin: 0.75rem 0;
-  font-family: monospace;
-  font-size: 0.75rem;
-}
-:deep(.civitai-rich-text img) {
-  max-width: 100%;
-  border-radius: 0.5rem;
-  margin: 0.75rem 0;
-  border: 1px solid var(--color-border);
-}
-:deep(.civitai-rich-text table) {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.75rem 0;
-  font-size: 0.75rem;
-}
-:deep(.civitai-rich-text th),
-:deep(.civitai-rich-text td) {
-  border: 1px solid var(--color-border);
-  padding: 0.5rem;
-}
-:deep(.civitai-rich-text th) {
-  background-color: var(--color-muted);
-  font-weight: 600;
-  text-align: left;
-}
-:deep(.civitai-rich-text hr) {
-  border-color: var(--color-border);
-  margin: 1.25rem 0;
-}
-</style>

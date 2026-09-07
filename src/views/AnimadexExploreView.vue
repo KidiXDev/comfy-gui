@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import GalleryFilterSelect from '@/components/common/GalleryFilterSelect.vue';
 import {
   computed,
   nextTick,
@@ -104,6 +105,19 @@ const filterLorasOnly = ref(false);
 // Artist Filters
 const selectedScoreBucket = ref<string>('all');
 const selectedArtistCategory = ref<string>('all');
+
+const filterFields = [
+  { label: 'Series', model: selectedSeries },
+  { label: 'Gender', model: selectedGender },
+  { label: 'Hair', model: selectedHairColor },
+  { label: 'Length', model: selectedHairLength },
+  { label: 'Eyes', model: selectedEyeColor },
+  { label: 'Score', model: selectedScoreBucket },
+  { label: 'Category', model: selectedArtistCategory }
+];
+const activeFilters = computed(() =>
+  filterFields.filter(({ model }) => model.value !== 'all')
+);
 
 // Facets cache
 const characterFacets = ref<CharacterFacetsResponse['facets'] | null>(null);
@@ -376,15 +390,9 @@ function handleTabChange(tab: BrowseTab) {
 }
 
 function resetAllFilters() {
+  for (const { model } of filterFields) model.value = 'all';
   searchQuery.value = '';
-  selectedSeries.value = 'all';
-  selectedGender.value = 'all';
-  selectedHairColor.value = 'all';
-  selectedHairLength.value = 'all';
-  selectedEyeColor.value = 'all';
   filterLorasOnly.value = false;
-  selectedScoreBucket.value = 'all';
-  selectedArtistCategory.value = 'all';
   characterSort.value = 'count';
   artistSort.value = 'count';
   copyrightSort.value = 'count';
@@ -689,151 +697,60 @@ watch(
             class="flex flex-wrap items-center gap-2.5"
           >
             <!-- Series -->
-            <div class="flex min-w-40 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Series:</span
-              >
-              <Select v-model="selectedSeries">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-50 text-xs"
-                >
-                  <SelectValue placeholder="All Series" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs"
-                      >All Series</SelectItem
-                    >
-                    <SelectItem
-                      v-for="val in characterFacets?.copyright?.values || []"
-                      :key="val.value"
-                      :value="val.value"
-                      class="text-xs"
-                    >
-                      {{ val.label }} ({{ val.count }})
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedSeries"
+              label="Series"
+              placeholder="All Series"
+              :options="characterFacets?.copyright?.values || []"
+              class="min-w-40"
+              trigger-class="max-w-50"
+              show-counts
+            />
 
             <!-- Gender -->
-            <div class="flex min-w-35 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Gender:</span
-              >
-              <Select v-model="selectedGender">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-                >
-                  <SelectValue placeholder="All Genders" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs">All</SelectItem>
-                    <SelectItem value="1girl" class="text-xs"
-                      >Female (1girl)</SelectItem
-                    >
-                    <SelectItem value="1boy" class="text-xs"
-                      >Male (1boy)</SelectItem
-                    >
-                    <SelectItem value="1other" class="text-xs"
-                      >Ambiguous</SelectItem
-                    >
-                    <SelectItem value="no humans" class="text-xs"
-                      >Non-Human</SelectItem
-                    >
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedGender"
+              label="Gender"
+              placeholder="All"
+              :options="[
+                { value: '1girl', label: 'Female (1girl)' },
+                { value: '1boy', label: 'Male (1boy)' },
+                { value: '1other', label: 'Ambiguous' },
+                { value: 'no humans', label: 'Non-Human' }
+              ]"
+              class="min-w-35"
+              trigger-class="max-w-37.5"
+            />
 
             <!-- Hair Color -->
-            <div class="flex min-w-37.5 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Hair:</span
-              >
-              <Select v-model="selectedHairColor">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-                >
-                  <SelectValue placeholder="Any Color" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs"
-                      >Any Color</SelectItem
-                    >
-                    <SelectItem
-                      v-for="val in characterFacets?.hair_color?.values || []"
-                      :key="val.value"
-                      :value="val.value"
-                      class="text-xs"
-                    >
-                      {{ val.label }}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedHairColor"
+              label="Hair"
+              placeholder="Any Color"
+              :options="characterFacets?.hair_color?.values || []"
+              class="min-w-37.5"
+              trigger-class="max-w-37.5"
+            />
 
             <!-- Hair Length -->
-            <div class="flex min-w-37.5 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Length:</span
-              >
-              <Select v-model="selectedHairLength">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-                >
-                  <SelectValue placeholder="Any Length" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs"
-                      >Any Length</SelectItem
-                    >
-                    <SelectItem
-                      v-for="val in characterFacets?.hair_length?.values || []"
-                      :key="val.value"
-                      :value="val.value"
-                      class="text-xs"
-                    >
-                      {{ val.label }}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedHairLength"
+              label="Length"
+              placeholder="Any Length"
+              :options="characterFacets?.hair_length?.values || []"
+              class="min-w-37.5"
+              trigger-class="max-w-37.5"
+            />
 
             <!-- Eye Color -->
-            <div class="flex min-w-37.5 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Eyes:</span
-              >
-              <Select v-model="selectedEyeColor">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-                >
-                  <SelectValue placeholder="Any Color" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs"
-                      >Any Color</SelectItem
-                    >
-                    <SelectItem
-                      v-for="val in characterFacets?.eye_color?.values || []"
-                      :key="val.value"
-                      :value="val.value"
-                      class="text-xs"
-                    >
-                      {{ val.label }}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedEyeColor"
+              label="Eyes"
+              placeholder="Any Color"
+              :options="characterFacets?.eye_color?.values || []"
+              class="min-w-37.5"
+              trigger-class="max-w-37.5"
+            />
 
             <!-- LoRA Only Switch -->
             <div class="ml-auto flex items-center gap-2">
@@ -858,61 +775,31 @@ watch(
             class="flex flex-wrap items-center gap-3"
           >
             <!-- Score Bucket -->
-            <div class="flex min-w-40 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Classifier Score:</span
-              >
-              <Select v-model="selectedScoreBucket">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-45 text-xs"
-                >
-                  <SelectValue placeholder="All Scores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs"
-                      >All Scores</SelectItem
-                    >
-                    <SelectItem value="5" class="text-xs"
-                      >50% and up</SelectItem
-                    >
-                    <SelectItem value="4" class="text-xs">40% – 50%</SelectItem>
-                    <SelectItem value="3" class="text-xs">30% – 40%</SelectItem>
-                    <SelectItem value="2" class="text-xs">20% – 30%</SelectItem>
-                    <SelectItem value="1" class="text-xs">Under 20%</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedScoreBucket"
+              label="Classifier Score"
+              placeholder="All Scores"
+              :options="[
+                { value: '5', label: '50% and up' },
+                { value: '4', label: '40% – 50%' },
+                { value: '3', label: '30% – 40%' },
+                { value: '2', label: '20% – 30%' },
+                { value: '1', label: 'Under 20%' }
+              ]"
+              class="min-w-40"
+              trigger-class="max-w-45"
+            />
 
             <!-- Category -->
-            <div class="flex min-w-45 items-center gap-1.5">
-              <span class="text-muted-foreground text-xs whitespace-nowrap"
-                >Category:</span
-              >
-              <Select v-model="selectedArtistCategory">
-                <SelectTrigger
-                  class="bg-background/80 border-border/60 h-8 w-full max-w-50 text-xs"
-                >
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="all" class="text-xs"
-                      >All Categories</SelectItem
-                    >
-                    <SelectItem
-                      v-for="val in artistFacets?.category?.values || []"
-                      :key="val.value"
-                      :value="val.value"
-                      class="text-xs"
-                    >
-                      {{ val.label }} ({{ val.count }})
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+            <GalleryFilterSelect
+              v-model="selectedArtistCategory"
+              label="Category"
+              placeholder="All Categories"
+              :options="artistFacets?.category?.values || []"
+              class="min-w-45"
+              trigger-class="max-w-50"
+              show-counts
+            />
           </div>
 
           <!-- Active Filter Pills & Reset Button -->
@@ -924,63 +811,19 @@ watch(
               <span class="text-muted-foreground text-xs">Active filters:</span>
 
               <Badge
-                v-if="selectedSeries !== 'all'"
+                v-for="filter in activeFilters"
+                :key="filter.label"
                 variant="secondary"
                 class="h-6 gap-1 text-xs font-normal"
               >
-                <span>Series: {{ selectedSeries }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedSeries = 'all'"
-                />
-              </Badge>
-
-              <Badge
-                v-if="selectedGender !== 'all'"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>Gender: {{ selectedGender }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedGender = 'all'"
-                />
-              </Badge>
-
-              <Badge
-                v-if="selectedHairColor !== 'all'"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>Hair: {{ selectedHairColor }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedHairColor = 'all'"
-                />
-              </Badge>
-
-              <Badge
-                v-if="selectedHairLength !== 'all'"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>Length: {{ selectedHairLength }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedHairLength = 'all'"
-                />
-              </Badge>
-
-              <Badge
-                v-if="selectedEyeColor !== 'all'"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>Eyes: {{ selectedEyeColor }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedEyeColor = 'all'"
-                />
+                <span>{{ filter.label }}: {{ filter.model.value }}</span>
+                <button
+                  type="button"
+                  :aria-label="'Clear ' + filter.label"
+                  @click="filter.model.value = 'all'"
+                >
+                  <X class="h-3 w-3" />
+                </button>
               </Badge>
 
               <Badge
@@ -992,30 +835,6 @@ watch(
                 <X
                   class="h-3 w-3 cursor-pointer"
                   @click="filterLorasOnly = false"
-                />
-              </Badge>
-
-              <Badge
-                v-if="selectedScoreBucket !== 'all'"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>Score: {{ selectedScoreBucket }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedScoreBucket = 'all'"
-                />
-              </Badge>
-
-              <Badge
-                v-if="selectedArtistCategory !== 'all'"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>Category: {{ selectedArtistCategory }}</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="selectedArtistCategory = 'all'"
                 />
               </Badge>
             </div>

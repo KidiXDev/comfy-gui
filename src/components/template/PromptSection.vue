@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
+import PromptChips from '@/components/prompt/PromptChips.vue';
+import PromptTagCatalog from '@/components/prompt/PromptTagCatalog.vue';
+import {
+  usePromptTextEditing,
+  type PromptField
+} from '@/composables/usePromptTextEditing';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
   ArrowRightLeft,
@@ -8,32 +15,15 @@ import {
   ChevronUp,
   Code2,
   Copy,
-  Copyright,
-  Dices,
-  FolderOpen,
   HelpCircle,
-  Layers,
   MoreHorizontal,
-  Palette,
-  Plus,
-  RefreshCw,
   Search,
   SlidersHorizontal,
   Sparkles,
-  Tag,
   Tags,
   Trash2,
-  User,
   X
 } from '@lucide/vue';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger
-} from '@/components/ui/accordion';
-import { vDraggable } from 'vue-draggable-plus';
-import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -58,34 +48,16 @@ import PromptPresetDialog from '../common/PromptPresetDialog.vue';
 import PromptFormatMenu from '../common/PromptFormatMenu.vue';
 import PromptEnhanceDialog from './PromptEnhanceDialog.vue';
 import WorkflowField from './WorkflowField.vue';
-import { ComfyApi, type AutocompleteItem } from '../../services/comfyApi';
 import {
-  getPromptTokenRange,
-  replacePromptToken,
-  type PromptTokenRange
-} from '../../services/promptAutocomplete';
-import {
-  adjustPromptWeight,
   estimateClipTokens,
   formatAndCleanPrompt,
-  DEFAULT_FORMAT_OPTIONS,
-  parsePromptToChips,
-  reconstructPromptFromChips,
-  type PromptTag
+  DEFAULT_FORMAT_OPTIONS
 } from '../../utils/promptTools';
-import { useLauncherStore } from '../../stores/launcherStore';
-import { useComfyStore } from '../../stores/comfyStore';
-import { usePromptSuggestionStore } from '../../stores/promptSuggestionStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { loadAppData, saveAppData } from '../../services/appStorage';
 
 const workflowStore = useWorkflowStore();
-const launcherStore = useLauncherStore();
-const comfyStore = useComfyStore();
-const promptSuggestionStore = usePromptSuggestionStore();
 
-type PromptField = 'positive' | 'negative';
-type TextareaRef = { $el: HTMLTextAreaElement };
 type PromptTextareaSizes = Record<PromptField, number>;
 
 const TEXTAREA_SIZES_KEY = 'prompt_textarea_sizes';
@@ -188,234 +160,43 @@ function handleEnhanceApply(payload: {
   }
 }
 
-const positiveTextarea = ref<TextareaRef>();
-const negativeTextarea = ref<TextareaRef>();
-const suggestions = ref<AutocompleteItem[]>([]);
-const activeIndex = ref(0);
-const activeField = ref<PromptField>();
-const autocompleteListRef = ref<HTMLElement | null>(null);
-let activeRange: PromptTokenRange | null = null;
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
-let searchController: AbortController | undefined;
-
-function getTextareaElement(field: PromptField): HTMLTextAreaElement | null {
-  const comp =
-    field === 'positive' ? positiveTextarea.value : negativeTextarea.value;
-  if (!comp) return null;
-  return (
-    (comp.$el instanceof HTMLTextAreaElement ? comp.$el : null) ??
-    (comp as unknown as HTMLTextAreaElement)
-  );
-}
-
-const caretPropertiesToCopy = [
-  'direction',
-  'boxSizing',
-  'width',
-  'overflowX',
-  'overflowY',
-  'borderTopWidth',
-  'borderRightWidth',
-  'borderBottomWidth',
-  'borderLeftWidth',
-  'borderStyle',
-  'paddingTop',
-  'paddingRight',
-  'paddingBottom',
-  'paddingLeft',
-  'fontStyle',
-  'fontVariant',
-  'fontWeight',
-  'fontStretch',
-  'fontSize',
-  'fontSizeAdjust',
-  'lineHeight',
-  'fontFamily',
-  'textAlign',
-  'textTransform',
-  'textIndent',
-  'textDecoration',
-  'letterSpacing',
-  'wordSpacing',
-  'tabSize'
-] as const;
-
-let mirrorDiv: HTMLDivElement | null = null;
-
-function getCaretCoordinates(
-  element: HTMLTextAreaElement,
-  position: number
-): { top: number; left: number; height: number } {
-  if (typeof document === 'undefined') {
-    return { top: 0, left: 0, height: 20 };
-  }
-
-  if (!mirrorDiv) {
-    mirrorDiv = document.createElement('div');
-    mirrorDiv.id = 'prompt-textarea-caret-position-mirror';
-    document.body.append(mirrorDiv);
-  }
-
-  const style = mirrorDiv.style;
-  const computedStyle = window.getComputedStyle(element);
-
-  style.whiteSpace = 'pre-wrap';
-  style.wordWrap = 'break-word';
-  style.overflowWrap = 'break-word';
-  style.position = 'absolute';
-  style.top = '-9999px';
-  style.left = '-9999px';
-  style.visibility = 'hidden';
-
-  for (const prop of caretPropertiesToCopy) {
-    style[prop] = computedStyle[prop];
-  }
-
-  style.width = `${element.clientWidth}px`;
-  mirrorDiv.textContent = element.value.slice(0, position);
-
-  const span = document.createElement('span');
-  span.textContent = element.value.slice(position) || '.';
-  mirrorDiv.append(span);
-
-  const parsedLineHeight = Math.trunc(
-    Number(computedStyle.lineHeight.replace('px', ''))
-  );
-  const coordinates = {
-    top: span.offsetTop - element.scrollTop,
-    left: span.offsetLeft - element.scrollLeft,
-    height:
-      span.offsetHeight ||
-      (Number.isNaN(parsedLineHeight) ? 18 : parsedLineHeight)
-  };
-
-  return coordinates;
-}
-
-const caretCoords = ref<{ top: number; left: number; height: number }>({
-  top: 0,
-  left: 0,
-  height: 20
-});
-
-function getAutocompleteDropdownStyle(field: PromptField) {
-  const input = getTextareaElement(field);
-  const containerWidth = input?.clientWidth ?? 400;
-  const dropdownWidth = 320;
-
-  let left = caretCoords.value.left;
-  let top = caretCoords.value.top + caretCoords.value.height + 4;
-
-  if (left + dropdownWidth > containerWidth - 8) {
-    left = Math.max(8, containerWidth - dropdownWidth - 8);
-  }
-  if (left < 8) {
-    left = 8;
-  }
-  if (top < 4) {
-    top = 4;
-  }
-
-  return {
-    top: `${top}px`,
-    left: `${left}px`,
-    width: `${Math.min(dropdownWidth, containerWidth - 16)}px`
-  };
-}
-
-function handleTextareaScroll(field: PromptField, event: Event) {
-  if (activeField.value === field) {
-    const input = event.target as HTMLTextAreaElement;
-    caretCoords.value = getCaretCoordinates(input, input.selectionStart);
-  }
-}
-
-function scrollToActiveSuggestion() {
-  void nextTick(() => {
-    const list = autocompleteListRef.value;
-    if (!list) return;
-    const activeEl = list.querySelector<HTMLElement>(
-      `[data-index="${activeIndex.value}"]`
-    );
-    if (activeEl) {
-      activeEl.scrollIntoView({ block: 'nearest' });
-    }
-  });
-}
-
-watch(activeIndex, () => {
-  if (activeField.value && suggestions.value.length > 0) {
-    scrollToActiveSuggestion();
-  }
-});
-
 // View modes
 const isPositiveChipsMode = ref(false);
 const isNegativeChipsMode = ref(false);
-const positiveChips = ref<PromptTag[]>([]);
-const negativeChips = ref<PromptTag[]>([]);
-const newPositiveTagInput = ref('');
-const newNegativeTagInput = ref('');
+const {
+  positiveTextarea,
+  negativeTextarea,
+  suggestions,
+  activeIndex,
+  activeField,
+  autocompleteListRef,
+  getAutocompleteDropdownStyle,
+  handleTextareaScroll,
+  updateCursor,
+  handleInput,
+  handleBlur,
+  selectSuggestion,
+  handleKeydown,
+  isFindBarOpen,
+  findQuery,
+  findTarget,
+  findCaseSensitive,
+  currentMatchIndex,
+  findInputRef,
+  findMatches,
+  highlightCurrentMatch,
+  findNext,
+  findPrev,
+  openFindBar,
+  setFindTarget,
+  closeFindBar,
+  handleContainerKeydown,
+  insertTagAtCursor
+} = usePromptTextEditing(isPositiveChipsMode, isNegativeChipsMode);
 
 // Copy feedback states
 const copiedPositive = ref(false);
 const copiedNegative = ref(false);
-
-// Prompt library state
-const libraryTarget = ref<PromptField>('positive');
-const selectedCategory = ref<string>('all');
-const tagSearchQuery = ref<string>('');
-const lastPositiveCursorPos = ref<number | null>(null);
-const lastNegativeCursorPos = ref<number | null>(null);
-
-const categoryNames: Record<number, string> = {
-  0: 'General',
-  1: 'Artist',
-  3: 'Copyright',
-  4: 'Character',
-  5: 'Meta'
-};
-
-const categoryBadgeStyles: Record<number, string> = {
-  0: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-  1: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
-  3: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-  4: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-  5: 'bg-slate-500/10 text-slate-400 border-slate-500/30'
-};
-
-function getCategoryIcon(item: AutocompleteItem) {
-  if (item.kind === 'wildcard') return Dices;
-  switch (Number(item.category)) {
-    case 0:
-      return Tag;
-    case 1:
-      return Palette;
-    case 3:
-      return Copyright;
-    case 4:
-      return User;
-    case 5:
-      return Code2;
-    default:
-      return Tag;
-  }
-}
-
-function getCategoryName(item: AutocompleteItem) {
-  if (item.kind === 'wildcard') return 'Wildcard';
-  return categoryNames[Number(item.category)] ?? 'Tag';
-}
-
-function getCategoryBadgeStyle(item: AutocompleteItem) {
-  if (item.kind === 'wildcard') {
-    return 'bg-pink-500/10 text-pink-400 border-pink-500/30';
-  }
-  return (
-    categoryBadgeStyles[Number(item.category)] ||
-    'bg-muted text-muted-foreground border-border'
-  );
-}
 
 // Negative prompt bundle presets
 const negativePresets = [
@@ -484,508 +265,6 @@ const negativeQuickTags = [
 
 const selectedQuickGroup = ref(0);
 
-// Watch for chips sync
-watch(
-  () => workflowStore.positivePrompt,
-  (val) => {
-    if (isPositiveChipsMode.value) {
-      const currentReconstructed = reconstructPromptFromChips(
-        positiveChips.value
-      );
-      if (currentReconstructed === val) return;
-      positiveChips.value = parsePromptToChips(val);
-    }
-  }
-);
-
-watch(
-  () => workflowStore.negativePrompt,
-  (val) => {
-    if (isNegativeChipsMode.value) {
-      const currentReconstructed = reconstructPromptFromChips(
-        negativeChips.value
-      );
-      if (currentReconstructed === val) return;
-      negativeChips.value = parsePromptToChips(val);
-    }
-  }
-);
-
-function togglePositiveChipsMode() {
-  isPositiveChipsMode.value = !isPositiveChipsMode.value;
-  if (isPositiveChipsMode.value) {
-    if (positiveChips.value.length > 0) {
-      const reconstructed = reconstructPromptFromChips(positiveChips.value);
-      if (reconstructed === workflowStore.positivePrompt) {
-        // Prompt was not changed in text mode; preserve existing chips with disabled state
-        return;
-      }
-    }
-    positiveChips.value = parsePromptToChips(workflowStore.positivePrompt);
-  }
-}
-
-function toggleNegativeChipsMode() {
-  isNegativeChipsMode.value = !isNegativeChipsMode.value;
-  if (isNegativeChipsMode.value) {
-    if (negativeChips.value.length > 0) {
-      const reconstructed = reconstructPromptFromChips(negativeChips.value);
-      if (reconstructed === workflowStore.negativePrompt) {
-        // Prompt was not changed in text mode; preserve existing chips with disabled state
-        return;
-      }
-    }
-    negativeChips.value = parsePromptToChips(workflowStore.negativePrompt);
-  }
-}
-
-function syncPositiveChipsToStore() {
-  workflowStore.positivePrompt = reconstructPromptFromChips(
-    positiveChips.value
-  );
-}
-
-function syncNegativeChipsToStore() {
-  workflowStore.negativePrompt = reconstructPromptFromChips(
-    negativeChips.value
-  );
-}
-
-function toggleChipDisabled(isPositive: boolean, index: number) {
-  const chips = isPositive ? positiveChips.value : negativeChips.value;
-  const chip = chips[index];
-  if (chip) {
-    chip.disabled = !chip.disabled;
-    if (isPositive) syncPositiveChipsToStore();
-    else syncNegativeChipsToStore();
-  }
-}
-
-function removeChip(chips: PromptTag[], index: number, isPositive: boolean) {
-  chips.splice(index, 1);
-  if (isPositive) syncPositiveChipsToStore();
-  else syncNegativeChipsToStore();
-}
-
-function addNewChip(isPositive: boolean) {
-  const rawInput = isPositive
-    ? newPositiveTagInput.value
-    : newNegativeTagInput.value;
-  if (!rawInput.trim()) return;
-
-  const newChips = parsePromptToChips(rawInput);
-  if (newChips.length > 0) {
-    if (isPositive) {
-      positiveChips.value.push(...newChips);
-      newPositiveTagInput.value = '';
-      syncPositiveChipsToStore();
-    } else {
-      negativeChips.value.push(...newChips);
-      newNegativeTagInput.value = '';
-      syncNegativeChipsToStore();
-    }
-  }
-}
-
-function updateCursor(field: PromptField, event: Event) {
-  const el = event.target as HTMLTextAreaElement;
-  if (el) {
-    if (field === 'positive') lastPositiveCursorPos.value = el.selectionStart;
-    else lastNegativeCursorPos.value = el.selectionStart;
-    if (activeField.value === field) {
-      caretCoords.value = getCaretCoordinates(el, el.selectionStart);
-    }
-  }
-}
-
-function handleInput(field: PromptField, event: Event) {
-  scheduleAutocomplete(field, event);
-  updateCursor(field, event);
-}
-
-function handleBlur(field: PromptField, event: Event) {
-  closeAutocompleteAfterBlur();
-  updateCursor(field, event);
-}
-
-function closeAutocomplete() {
-  suggestions.value = [];
-  activeField.value = undefined;
-}
-
-function closeAutocompleteAfterBlur() {
-  setTimeout(closeAutocomplete, 150);
-}
-
-function scheduleAutocomplete(field: PromptField, event: Event) {
-  clearTimeout(searchTimer);
-  searchController?.abort();
-  if (
-    !launcherStore.config.autocompleteEnabled ||
-    !comfyStore.isConnected ||
-    !comfyStore.isYetEssentialAvailable
-  ) {
-    return closeAutocomplete();
-  }
-
-  const input = event.target as HTMLTextAreaElement;
-  caretCoords.value = getCaretCoordinates(input, input.selectionStart);
-  const range = getPromptTokenRange(input.value, input.selectionStart);
-  if (!range) return closeAutocomplete();
-  activeRange = range;
-  searchTimer = setTimeout(async () => {
-    searchController = new AbortController();
-    try {
-      const items = await ComfyApi.searchTags(
-        launcherStore.config.serverUrl,
-        range.query,
-        launcherStore.config.autocompleteLimit,
-        range.mode,
-        searchController.signal
-      );
-      suggestions.value = items;
-      activeIndex.value = 0;
-      activeField.value = items.length > 0 ? field : undefined;
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        closeAutocomplete();
-      }
-    }
-  }, 140);
-}
-
-function selectSuggestion(field: PromptField, item: AutocompleteItem) {
-  if (!activeRange) return;
-  const input = getTextareaElement(field);
-  if (!input) return;
-  const current =
-    field === 'positive'
-      ? workflowStore.positivePrompt
-      : workflowStore.negativePrompt;
-  const result = replacePromptToken(
-    current,
-    activeRange,
-    item.insert_text,
-    launcherStore.config.autocompleteReplaceUnderscores,
-    launcherStore.config.autocompleteIncludeArtistPrefix
-  );
-  input.select();
-  document.execCommand('insertText', false, result.text);
-  if (field === 'positive') lastPositiveCursorPos.value = result.cursor;
-  else lastNegativeCursorPos.value = result.cursor;
-  closeAutocomplete();
-  void nextTick(() => {
-    input.focus();
-    input.setSelectionRange(result.cursor, result.cursor);
-  });
-}
-
-/**
- * Handles keyboard navigation & shortcut weight editing (Ctrl+Up / Ctrl+Down).
- */
-function handleKeydown(field: PromptField, event: KeyboardEvent) {
-  const isCtrlOrMeta = event.ctrlKey || event.metaKey;
-  const isAlt = event.altKey;
-  const isWeightModifier = isCtrlOrMeta || isAlt;
-
-  // 1. Hotkey: Weight increase / decrease with Ctrl+Up / Ctrl+Down or Alt+Up / Alt+Down
-  if (
-    isWeightModifier &&
-    (event.key === 'ArrowUp' || event.key === 'ArrowDown')
-  ) {
-    event.preventDefault();
-    const input = getTextareaElement(field);
-    if (!input) return;
-
-    const delta = event.key === 'ArrowUp' ? 0.05 : -0.05;
-    const current =
-      field === 'positive'
-        ? workflowStore.positivePrompt
-        : workflowStore.negativePrompt;
-
-    const result = adjustPromptWeight(
-      current,
-      input.selectionStart,
-      input.selectionEnd,
-      delta
-    );
-
-    if (field === 'positive') {
-      workflowStore.positivePrompt = result.text;
-      lastPositiveCursorPos.value = result.selectionEnd;
-    } else {
-      workflowStore.negativePrompt = result.text;
-      lastNegativeCursorPos.value = result.selectionEnd;
-    }
-
-    void nextTick(() => {
-      input.focus();
-      input.setSelectionRange(result.selectionStart, result.selectionEnd);
-    });
-    return;
-  }
-
-  // 2. Shortcut: Ctrl+F to open Find in Prompt
-  if (isCtrlOrMeta && (event.key === 'f' || event.key === 'F')) {
-    event.preventDefault();
-    openFindBar(field);
-    return;
-  }
-
-  // 3. Autocomplete suggestions navigation
-  if (
-    !isCtrlOrMeta &&
-    !isAlt &&
-    activeField.value === field &&
-    suggestions.value.length > 0
-  ) {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const direction = event.key === 'ArrowDown' ? 1 : -1;
-      activeIndex.value =
-        (activeIndex.value + direction + suggestions.value.length) %
-        suggestions.value.length;
-    } else if (event.key === 'PageDown') {
-      event.preventDefault();
-      activeIndex.value = Math.min(
-        suggestions.value.length - 1,
-        activeIndex.value + 5
-      );
-    } else if (event.key === 'PageUp') {
-      event.preventDefault();
-      activeIndex.value = Math.max(0, activeIndex.value - 5);
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      activeIndex.value = 0;
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      activeIndex.value = suggestions.value.length - 1;
-    } else if (event.key === 'Enter' || event.key === 'Tab') {
-      const chosen = suggestions.value[activeIndex.value];
-      if (chosen) {
-        event.preventDefault();
-        selectSuggestion(field, chosen);
-      }
-    } else if (event.key === 'Escape') {
-      closeAutocomplete();
-    }
-  }
-}
-
-// In-prompt search state (Ctrl+F)
-interface FindMatch {
-  start: number;
-  end: number;
-}
-
-const isFindBarOpen = ref(false);
-const findQuery = ref('');
-const findTarget = ref<PromptField>('positive');
-const findCaseSensitive = ref(false);
-const currentMatchIndex = ref(0);
-const findInputRef = ref<HTMLInputElement | null>(null);
-
-const findMatches = computed<FindMatch[]>(() => {
-  const query = findQuery.value;
-  if (!query) return [];
-
-  const text =
-    findTarget.value === 'positive'
-      ? workflowStore.positivePrompt
-      : workflowStore.negativePrompt;
-
-  if (!text) return [];
-
-  const matches: FindMatch[] = [];
-  const searchPattern = findCaseSensitive.value ? query : query.toLowerCase();
-  const searchContent = findCaseSensitive.value ? text : text.toLowerCase();
-
-  let startIndex = 0;
-  while (startIndex < searchContent.length) {
-    const foundIndex = searchContent.indexOf(searchPattern, startIndex);
-    if (foundIndex === -1) break;
-    matches.push({
-      start: foundIndex,
-      end: foundIndex + query.length
-    });
-    startIndex = foundIndex + Math.max(1, query.length);
-  }
-
-  return matches;
-});
-
-watch(findMatches, (newMatches) => {
-  if (newMatches.length === 0) {
-    currentMatchIndex.value = 0;
-  } else if (currentMatchIndex.value >= newMatches.length) {
-    currentMatchIndex.value = 0;
-    highlightCurrentMatch();
-  } else {
-    highlightCurrentMatch();
-  }
-});
-
-function highlightCurrentMatch() {
-  const matches = findMatches.value;
-  if (matches.length === 0) return;
-
-  const match = matches[currentMatchIndex.value];
-  if (!match) return;
-
-  const input = getTextareaElement(findTarget.value);
-  if (!input) return;
-
-  input.setSelectionRange(match.start, match.end);
-
-  // Center match vertically
-  const coords = getCaretCoordinates(input, match.start);
-  const targetScrollTop = coords.top + input.scrollTop - input.clientHeight / 2;
-  input.scrollTop = Math.max(0, targetScrollTop);
-}
-
-function findNext() {
-  const matches = findMatches.value;
-  if (matches.length === 0) return;
-  currentMatchIndex.value = (currentMatchIndex.value + 1) % matches.length;
-  highlightCurrentMatch();
-}
-
-function findPrev() {
-  const matches = findMatches.value;
-  if (matches.length === 0) return;
-  currentMatchIndex.value =
-    (currentMatchIndex.value - 1 + matches.length) % matches.length;
-  highlightCurrentMatch();
-}
-
-function openFindBar(target?: PromptField) {
-  if (target) {
-    findTarget.value = target;
-  }
-  if (findTarget.value === 'positive' && isPositiveChipsMode.value) {
-    isPositiveChipsMode.value = false;
-  } else if (findTarget.value === 'negative' && isNegativeChipsMode.value) {
-    isNegativeChipsMode.value = false;
-  }
-
-  const input = getTextareaElement(findTarget.value);
-  if (input) {
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
-    if (start !== end) {
-      const selection = input.value.slice(start, end).trim();
-      if (selection && selection.length < 100) {
-        findQuery.value = selection;
-      }
-    }
-  }
-
-  isFindBarOpen.value = true;
-  void nextTick(() => {
-    findInputRef.value?.focus();
-    findInputRef.value?.select();
-    if (findMatches.value.length > 0) {
-      highlightCurrentMatch();
-    }
-  });
-}
-
-function setFindTarget(target: PromptField) {
-  findTarget.value = target;
-  if (target === 'positive' && isPositiveChipsMode.value) {
-    isPositiveChipsMode.value = false;
-  } else if (target === 'negative' && isNegativeChipsMode.value) {
-    isNegativeChipsMode.value = false;
-  }
-  currentMatchIndex.value = 0;
-  void nextTick(() => {
-    highlightCurrentMatch();
-    findInputRef.value?.focus();
-  });
-}
-
-function closeFindBar() {
-  isFindBarOpen.value = false;
-  const input = getTextareaElement(findTarget.value);
-  input?.focus();
-}
-
-function handleContainerKeydown(event: KeyboardEvent) {
-  if (
-    (event.ctrlKey || event.metaKey) &&
-    (event.key === 'f' || event.key === 'F')
-  ) {
-    const target = event.target as HTMLElement;
-    if (target.tagName === 'INPUT' && target !== findInputRef.value) {
-      return;
-    }
-    event.preventDefault();
-    openFindBar(findTarget.value);
-  }
-}
-
-function formatPostCount(count: number) {
-  return count >= 1000
-    ? `${(count / 1000).toFixed(1).replace(/\.0$/u, '')}k`
-    : count;
-}
-
-function autocompleteMeta(item: AutocompleteItem) {
-  const count = formatPostCount(item.total_post);
-  return item.kind === 'wildcard' ? `${count} entries` : `${count} posts`;
-}
-
-function insertTagAtCursor(tag: string, target: PromptField = 'positive') {
-  const isPos = target === 'positive';
-  const current = isPos
-    ? workflowStore.positivePrompt
-    : workflowStore.negativePrompt;
-  const el = isPos ? positiveTextarea.value?.$el : negativeTextarea.value?.$el;
-
-  const lastCursor = isPos
-    ? lastPositiveCursorPos.value
-    : lastNegativeCursorPos.value;
-  let pos =
-    el && document.activeElement === el
-      ? el.selectionStart
-      : (lastCursor ?? current.length);
-  pos = Math.max(0, Math.min(pos, current.length));
-
-  const before = current.slice(0, pos);
-  const after = current.slice(pos);
-
-  let prefix = '';
-  if (before.length > 0) {
-    const trimmedBefore = before.trimEnd();
-    prefix = trimmedBefore.endsWith(',') ? ' ' : ', ';
-  }
-
-  let suffix = '';
-  if (after.length > 0) {
-    const trimmedAfter = after.trimStart();
-    if (!trimmedAfter.startsWith(',')) {
-      suffix = ', ';
-    }
-  }
-
-  const insertion = `${prefix}${tag}${suffix}`;
-  const newPrompt = before + insertion + after;
-
-  if (isPos) workflowStore.positivePrompt = newPrompt;
-  else workflowStore.negativePrompt = newPrompt;
-
-  const newCursor = pos + prefix.length + tag.length;
-  if (isPos) lastPositiveCursorPos.value = newCursor;
-  else lastNegativeCursorPos.value = newCursor;
-
-  void nextTick(() => {
-    if (el) {
-      el.focus();
-      el.setSelectionRange(newCursor, newCursor);
-    }
-  });
-}
-
 function applyNegativePreset(presetPrompt: string) {
   if (workflowStore.negativePrompt.trim()) {
     // Append and format
@@ -1036,34 +315,6 @@ async function copyPrompt(field: PromptField) {
     }, 1800);
   }
 }
-
-watch(
-  () => promptSuggestionStore.categories,
-  (newCats) => {
-    if (
-      selectedCategory.value !== 'all' &&
-      !newCats.some((c) => c.id === selectedCategory.value)
-    ) {
-      selectedCategory.value = 'all';
-    }
-  }
-);
-
-const filteredCategories = computed(() => {
-  const allCats = promptSuggestionStore.categories;
-  const query = tagSearchQuery.value.trim().toLowerCase();
-  if (!query) {
-    if (selectedCategory.value === 'all') return allCats;
-    return allCats.filter((c) => c.id === selectedCategory.value);
-  }
-
-  return allCats
-    .map((cat) => ({
-      ...cat,
-      tags: (cat.tags ?? []).filter((t) => t.toLowerCase().includes(query))
-    }))
-    .filter((cat) => cat.tags.length > 0);
-});
 
 const positiveTokenInfo = computed(() =>
   estimateClipTokens(workflowStore.positivePrompt)
@@ -1296,7 +547,7 @@ const negativeTokenInfo = computed(() =>
                   ? 'Switch to Raw Text Editor'
                   : 'Switch to Interactive Tag Chips'
               "
-              @click="togglePositiveChipsMode"
+              @click="isPositiveChipsMode = !isPositiveChipsMode"
             >
               <Tags class="h-3 w-3" />
               <span>{{ isPositiveChipsMode ? 'Text' : 'Chips' }}</span>
@@ -1428,128 +679,19 @@ const negativeTokenInfo = computed(() =>
             :style="getAutocompleteDropdownStyle('positive')"
             class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
           >
-            <button
-              v-for="(item, index) in suggestions"
-              :key="`${item.label}-${item.category}`"
-              :data-index="index"
-              type="button"
-              role="option"
-              :aria-selected="index === activeIndex"
-              class="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition-colors"
-              :class="
-                index === activeIndex
-                  ? 'bg-primary/20 text-foreground border-primary/30 border font-semibold'
-                  : 'hover:bg-accent/60 text-foreground'
-              "
-              @mousedown.prevent
-              @click="selectSuggestion('positive', item)"
-            >
-              <div class="flex items-center gap-2 overflow-hidden">
-                <span
-                  class="flex h-5 w-5 shrink-0 items-center justify-center rounded border"
-                  :class="getCategoryBadgeStyle(item)"
-                  :title="getCategoryName(item)"
-                >
-                  <component :is="getCategoryIcon(item)" class="h-3 w-3" />
-                </span>
-                <span class="truncate">{{ item.label }}</span>
-              </div>
-              <span class="text-muted-foreground ml-3 shrink-0 text-xs">
-                {{ autocompleteMeta(item) }}
-              </span>
-            </button>
+            <PromptSuggestionOptions
+              :suggestions="suggestions"
+              :active-index="activeIndex"
+              @select="selectSuggestion('positive', $event)"
+            />
           </div>
         </div>
 
         <!-- Interactive Tag Chips Mode -->
-        <div
-          v-else
-          class="border-border bg-background flex max-h-128 min-h-28 resize-y flex-col justify-between gap-2.5 overflow-auto rounded-md border p-2.5"
-        >
-          <div
-            v-draggable="[
-              positiveChips,
-              {
-                animation: 200,
-                ghostClass: 'ghost-chip',
-                chosenClass: 'chosen-chip',
-                dragClass: 'drag-chip',
-                onEnd: syncPositiveChipsToStore
-              }
-            ]"
-            class="flex flex-1 flex-wrap content-start items-start gap-1.5 overflow-y-auto pr-1"
-          >
-            <div
-              v-for="(chip, idx) in positiveChips"
-              :key="chip.id"
-              class="group inline-flex shrink-0 cursor-grab items-center gap-1.5 self-start rounded-md border px-2 py-0.5 font-mono text-xs shadow-2xs transition-colors select-none active:cursor-grabbing"
-              :class="[
-                chip.disabled
-                  ? 'border-border/40 bg-muted/30 text-muted-foreground/50 border-dashed line-through opacity-50'
-                  : 'border-border/80 bg-secondary/80 text-foreground hover:border-primary/50'
-              ]"
-              @dblclick="toggleChipDisabled(true, idx)"
-            >
-              <span
-                class="font-medium"
-                :class="{ 'line-through': chip.disabled }"
-                >{{ chip.text }}</span
-              >
-
-              <!-- Weight indicator badge -->
-              <span
-                v-if="chip.weight !== 1.0"
-                class="py-0.2 rounded px-1 text-xs font-bold"
-                :class="[
-                  chip.disabled
-                    ? 'bg-muted text-muted-foreground/40'
-                    : chip.weight > 1.0
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-amber-500/20 text-amber-400'
-                ]"
-              >
-                {{ chip.weight }}x
-              </span>
-
-              <!-- Remove tag button -->
-              <button
-                type="button"
-                class="hover:bg-destructive/20 hover:text-destructive text-muted-foreground/60 ml-0.5 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded transition-colors hover:opacity-100"
-                title="Remove tag"
-                @click.stop="removeChip(positiveChips, idx, true)"
-              >
-                <X class="h-2.5 w-2.5" />
-              </button>
-            </div>
-
-            <div
-              v-if="positiveChips.length === 0"
-              class="text-muted-foreground py-2 text-xs italic"
-            >
-              No prompt tags. Type in the input below to add tags.
-            </div>
-          </div>
-
-          <!-- Add new tag chip bar -->
-          <div class="border-border/40 flex items-center gap-1.5 border-t pt-2">
-            <input
-              v-model="newPositiveTagInput"
-              type="text"
-              placeholder="Type new tag(s) and press Enter..."
-              class="border-border bg-secondary/50 focus:border-primary h-7 flex-1 rounded px-2 font-mono text-xs outline-none"
-              @keydown.enter.prevent="addNewChip(true)"
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              class="h-7 text-xs"
-              @click="addNewChip(true)"
-            >
-              <Plus class="mr-1 h-3 w-3" /> Add Tag
-            </Button>
-          </div>
-        </div>
-
+        <PromptChips
+          v-show="isPositiveChipsMode"
+          v-model="workflowStore.positivePrompt"
+        />
         <!-- Categorized Quick Tags Bar -->
         <div class="flex flex-col gap-1.5 pt-0.5">
           <div class="flex items-center justify-between">
@@ -1604,190 +746,7 @@ const negativeTokenInfo = computed(() =>
         </div>
 
         <!-- Categorized Prompt Library Accordion -->
-        <div class="pt-1">
-          <Accordion type="single" collapsible class="w-full">
-            <AccordionItem
-              value="prompt-categories"
-              class="border-border/60 bg-card/40 rounded-lg border"
-            >
-              <AccordionTrigger
-                class="hover:bg-accent/40 rounded-lg px-2.5 py-1.5 hover:no-underline"
-              >
-                <div class="flex items-center gap-2">
-                  <Layers class="text-primary h-3.5 w-3.5" />
-                  <span class="text-xs font-semibold tracking-wide">
-                    Prompt Library & Tag Catalog
-                  </span>
-                  <span class="text-muted-foreground font-mono text-xs">
-                    ({{ promptSuggestionStore.categories.length }} categories)
-                  </span>
-                </div>
-              </AccordionTrigger>
-
-              <AccordionContent
-                class="flex flex-col gap-2.5 px-2.5 pt-1 pb-2.5"
-              >
-                <!-- Search, Target Selector & Controls -->
-                <div class="border-border/50 flex flex-col gap-2 border-b pb-2">
-                  <!-- Search Row with Target Selector -->
-                  <div class="flex items-center gap-1.5">
-                    <div class="relative flex-1">
-                      <Search
-                        class="text-muted-foreground absolute top-2 left-2.5 h-3.5 w-3.5"
-                      />
-                      <input
-                        v-model="tagSearchQuery"
-                        type="text"
-                        placeholder="Search tags across library..."
-                        class="border-border bg-background placeholder:text-muted-foreground/60 focus:border-primary h-8 w-full rounded-md border pr-7 pl-8 font-mono text-xs outline-none"
-                      />
-                      <button
-                        v-if="tagSearchQuery"
-                        type="button"
-                        class="text-muted-foreground hover:text-foreground absolute top-2 right-2 cursor-pointer"
-                        @click="tagSearchQuery = ''"
-                      >
-                        <X class="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-
-                    <!-- Insert Target Switch -->
-                    <div
-                      class="border-border/80 bg-secondary/70 flex items-center rounded-lg border p-0.5 text-xs"
-                    >
-                      <button
-                        type="button"
-                        class="cursor-pointer rounded px-2 py-1 font-medium transition-colors select-none"
-                        :class="
-                          libraryTarget === 'positive'
-                            ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        "
-                        @click="libraryTarget = 'positive'"
-                      >
-                        + Positive
-                      </button>
-                      <button
-                        type="button"
-                        class="cursor-pointer rounded px-2 py-1 font-medium transition-colors select-none"
-                        :class="
-                          libraryTarget === 'negative'
-                            ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        "
-                        @click="libraryTarget = 'negative'"
-                      >
-                        - Negative
-                      </button>
-                    </div>
-
-                    <!-- Open Folder & Reload Buttons -->
-                    <div class="flex items-center gap-1">
-                      <button
-                        type="button"
-                        class="border-border bg-secondary/80 text-muted-foreground hover:text-foreground hover:border-primary/40 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
-                        title="Open prompt suggestions JSON folder in File Explorer"
-                        @click="promptSuggestionStore.openFolder()"
-                      >
-                        <FolderOpen class="text-primary h-3.5 w-3.5" />
-                        <span class="hidden font-mono sm:inline">Folder</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="border-border bg-secondary/80 text-muted-foreground hover:text-foreground hover:border-primary/40 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border text-xs font-medium transition-colors"
-                        :title="
-                          promptSuggestionStore.isLoading
-                            ? 'Reloading...'
-                            : 'Reload prompt suggestions JSON files'
-                        "
-                        :disabled="promptSuggestionStore.isLoading"
-                        @click="promptSuggestionStore.reload()"
-                      >
-                        <RefreshCw
-                          class="h-3.5 w-3.5"
-                          :class="{
-                            'animate-spin': promptSuggestionStore.isLoading
-                          }"
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Category Pills Bar -->
-                  <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
-                    <button
-                      type="button"
-                      class="cursor-pointer rounded px-2.5 py-1 font-mono text-xs font-medium transition-colors select-none"
-                      :class="
-                        selectedCategory === 'all' && !tagSearchQuery
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
-                          : 'border-border/60 bg-secondary/80 text-muted-foreground hover:text-foreground border'
-                      "
-                      @click="
-                        selectedCategory = 'all';
-                        tagSearchQuery = '';
-                      "
-                    >
-                      All
-                    </button>
-                    <button
-                      v-for="cat in promptSuggestionStore.categories"
-                      :key="cat.id"
-                      type="button"
-                      class="cursor-pointer rounded px-2.5 py-1 font-mono text-xs font-medium transition-colors select-none"
-                      :class="
-                        selectedCategory === cat.id && !tagSearchQuery
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
-                          : 'border-border/60 bg-secondary/80 text-muted-foreground hover:text-foreground border'
-                      "
-                      @click="
-                        selectedCategory = cat.id;
-                        tagSearchQuery = '';
-                      "
-                    >
-                      {{ cat.name }}
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Tags Container Grouped by Category -->
-                <div class="flex max-h-56 flex-col gap-3 overflow-y-auto pr-1">
-                  <div
-                    v-for="cat in filteredCategories"
-                    :key="cat.id"
-                    class="flex flex-col gap-1.5"
-                  >
-                    <span
-                      class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
-                    >
-                      {{ cat.name }}
-                    </span>
-                    <div class="flex flex-wrap gap-1.5">
-                      <button
-                        v-for="tag in cat.tags"
-                        :key="tag"
-                        type="button"
-                        class="border-border/80 bg-secondary/70 text-foreground hover:border-primary/50 hover:bg-primary/10 hover:text-primary inline-flex cursor-pointer items-center rounded-md border px-2 py-0.5 font-mono text-xs transition-all select-none active:scale-95"
-                        :title="`Click to insert into ${libraryTarget} prompt`"
-                        @mousedown.prevent
-                        @click="insertTagAtCursor(tag, libraryTarget)"
-                      >
-                        + {{ tag }}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    v-if="filteredCategories.length === 0"
-                    class="text-muted-foreground py-3 text-center font-mono text-xs"
-                  >
-                    No tags match "{{ tagSearchQuery }}"
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
+        <PromptTagCatalog @insert="insertTagAtCursor" />
       </WorkflowField>
 
       <!-- 2. NEGATIVE PROMPT SECTION -->
@@ -1836,7 +795,7 @@ const negativeTokenInfo = computed(() =>
                   ? 'Switch to Raw Text Editor'
                   : 'Switch to Interactive Tag Chips'
               "
-              @click="toggleNegativeChipsMode"
+              @click="isNegativeChipsMode = !isNegativeChipsMode"
             >
               <Tags class="h-3 w-3" />
               <span>{{ isNegativeChipsMode ? 'Text' : 'Chips' }}</span>
@@ -1965,128 +924,20 @@ const negativeTokenInfo = computed(() =>
             :style="getAutocompleteDropdownStyle('negative')"
             class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
           >
-            <button
-              v-for="(item, index) in suggestions"
-              :key="`${item.label}-${item.category}`"
-              :data-index="index"
-              type="button"
-              role="option"
-              :aria-selected="index === activeIndex"
-              class="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition-colors"
-              :class="
-                index === activeIndex
-                  ? 'bg-primary/20 text-foreground border-primary/30 border font-semibold'
-                  : 'hover:bg-accent/60 text-foreground'
-              "
-              @mousedown.prevent
-              @click="selectSuggestion('negative', item)"
-            >
-              <div class="flex items-center gap-2 overflow-hidden">
-                <span
-                  class="flex h-5 w-5 shrink-0 items-center justify-center rounded border"
-                  :class="getCategoryBadgeStyle(item)"
-                  :title="getCategoryName(item)"
-                >
-                  <component :is="getCategoryIcon(item)" class="h-3 w-3" />
-                </span>
-                <span class="truncate">{{ item.label }}</span>
-              </div>
-              <span class="text-muted-foreground ml-3 shrink-0 text-xs">
-                {{ autocompleteMeta(item) }}
-              </span>
-            </button>
+            <PromptSuggestionOptions
+              :suggestions="suggestions"
+              :active-index="activeIndex"
+              @select="selectSuggestion('negative', $event)"
+            />
           </div>
         </div>
 
         <!-- Interactive Tag Chips Mode for Negative -->
-        <div
-          v-else
-          class="border-border bg-background flex max-h-112 min-h-24 resize-y flex-col justify-between gap-2.5 overflow-auto rounded-md border p-2.5"
-        >
-          <div
-            v-draggable="[
-              negativeChips,
-              {
-                animation: 200,
-                ghostClass: 'ghost-chip-negative',
-                chosenClass: 'chosen-chip-negative',
-                dragClass: 'drag-chip',
-                onEnd: syncNegativeChipsToStore
-              }
-            ]"
-            class="flex flex-1 flex-wrap content-start items-start gap-1.5 overflow-y-auto pr-1"
-          >
-            <div
-              v-for="(chip, idx) in negativeChips"
-              :key="chip.id"
-              class="group inline-flex shrink-0 cursor-grab items-center gap-1.5 self-start rounded-md border px-2 py-0.5 font-mono text-xs shadow-2xs transition-colors select-none active:cursor-grabbing"
-              :class="[
-                chip.disabled
-                  ? 'border-border/40 bg-muted/30 text-muted-foreground/50 border-dashed line-through opacity-50'
-                  : 'border-border/80 bg-secondary/80 text-foreground hover:border-primary/50'
-              ]"
-              @dblclick="toggleChipDisabled(false, idx)"
-            >
-              <span
-                class="font-medium"
-                :class="{ 'line-through': chip.disabled }"
-                >{{ chip.text }}</span
-              >
-
-              <!-- Weight indicator badge -->
-              <span
-                v-if="chip.weight !== 1.0"
-                class="py-0.2 rounded px-1 text-xs font-bold"
-                :class="[
-                  chip.disabled
-                    ? 'bg-muted text-muted-foreground/40'
-                    : chip.weight > 1.0
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-amber-500/20 text-amber-400'
-                ]"
-              >
-                {{ chip.weight }}x
-              </span>
-
-              <!-- Remove tag button -->
-              <button
-                type="button"
-                class="hover:bg-destructive/20 hover:text-destructive text-muted-foreground/60 ml-0.5 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded transition-colors hover:opacity-100"
-                title="Remove tag"
-                @click.stop="removeChip(negativeChips, idx, false)"
-              >
-                <X class="h-2.5 w-2.5" />
-              </button>
-            </div>
-
-            <div
-              v-if="negativeChips.length === 0"
-              class="text-muted-foreground py-2 text-xs italic"
-            >
-              No negative prompt tags.
-            </div>
-          </div>
-
-          <!-- Add new negative tag chip bar -->
-          <div class="border-border/40 flex items-center gap-1.5 border-t pt-2">
-            <input
-              v-model="newNegativeTagInput"
-              type="text"
-              placeholder="Type new negative tag(s) and press Enter..."
-              class="border-border bg-secondary/50 focus:border-primary h-7 flex-1 rounded px-2 font-mono text-xs outline-none"
-              @keydown.enter.prevent="addNewChip(false)"
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              class="h-7 text-xs"
-              @click="addNewChip(false)"
-            >
-              <Plus class="mr-1 h-3 w-3" /> Add Tag
-            </Button>
-          </div>
-        </div>
-
+        <PromptChips
+          v-show="isNegativeChipsMode"
+          v-model="workflowStore.negativePrompt"
+          negative
+        />
         <!-- Quick Negative Tags Bar -->
         <div class="flex items-center justify-between gap-1.5 pt-0.5">
           <div class="flex flex-wrap items-center gap-1.5">
@@ -2138,38 +989,3 @@ const negativeTokenInfo = computed(() =>
     </div>
   </TooltipProvider>
 </template>
-
-<style scoped>
-:deep(.ghost-chip) {
-  opacity: 0.35 !important;
-  border: 2px dashed #3b82f6 !important;
-  background-color: rgba(59, 130, 246, 0.18) !important;
-  border-radius: 0.375rem !important;
-}
-
-:deep(.chosen-chip) {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
-  outline: 2px solid #3b82f6 !important;
-  border-radius: 0.375rem !important;
-}
-
-:deep(.drag-chip) {
-  cursor: grabbing !important;
-  opacity: 0.95 !important;
-  transform: rotate(1.5deg) scale(1.04) !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4) !important;
-}
-
-:deep(.ghost-chip-negative) {
-  opacity: 0.35 !important;
-  border: 2px dashed #ef4444 !important;
-  background-color: rgba(239, 68, 68, 0.18) !important;
-  border-radius: 0.375rem !important;
-}
-
-:deep(.chosen-chip-negative) {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
-  outline: 2px solid #ef4444 !important;
-  border-radius: 0.375rem !important;
-}
-</style>

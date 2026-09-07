@@ -1,0 +1,674 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
+import {
+  Eye,
+  EyeOff,
+  Image as ImageIcon,
+  KeyRound,
+  Loader2,
+  Tag,
+  Trash2,
+  Wifi
+} from '@lucide/vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import {
+  clearBooruCache,
+  fetchBooruSettings,
+  saveBooruSettings,
+  testBooruCredentials,
+  type BooruCredentials,
+  type BooruSettings,
+  type BooruSettingsUpdate
+} from '@/services/booruGallery';
+import { loadAppData, saveAppData } from '@/services/appStorage';
+import { useComfyStore } from '@/stores/comfyStore';
+import { cleanPath } from '@/stores/launcherStore';
+import NoticeBanner from '@/components/layout/NoticeBanner.vue';
+import SettingsSection from '@/components/layout/SettingsSection.vue';
+
+const props = defineProps<{ serverUrl: string }>();
+const comfyStore = useComfyStore();
+const emit = defineEmits<{ saved: [] }>();
+function showSaved() {
+  emit('saved');
+}
+const booruSettings = ref<BooruSettings | null>(null);
+const booruAvailable = ref<boolean | null>(null);
+const booruCredentials = ref<BooruCredentials>({
+  danbooru: { username: '', apiKey: '' },
+  gelbooru: { userId: '', apiKey: '' }
+});
+const showDanbooruKey = ref(false);
+const showGelbooruKey = ref(false);
+const booruDefaultSource = ref('danbooru');
+const booruBlacklist = ref('');
+const booruOutputFilterTags = ref('');
+const booruPromptCategories = ref<string[]>([
+  'copyright',
+  'character',
+  'general'
+]);
+const booruReplaceUnderscores = ref(false);
+const booruEscapeParentheses = ref(false);
+const booruTimeout = ref(30);
+const booruCacheBudget = ref(1024);
+const booruCacheMessage = ref('');
+const booruTesting = ref<'danbooru' | 'gelbooru' | null>(null);
+const booruResult = ref<{
+  source: 'danbooru' | 'gelbooru';
+  ok: boolean;
+  message: string;
+} | null>(null);
+async function loadBooruPromptFormatOptions() {
+  try {
+    const saved = await loadAppData<{
+      replaceUnderscores?: boolean;
+      escapeParentheses?: boolean;
+    }>('booru_prompt_format_options');
+    if (saved) {
+      if (typeof saved.replaceUnderscores === 'boolean') {
+        booruReplaceUnderscores.value = saved.replaceUnderscores;
+      }
+      if (typeof saved.escapeParentheses === 'boolean') {
+        booruEscapeParentheses.value = saved.escapeParentheses;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load booru prompt format options:', error);
+  }
+}
+const danbooruConfigured = computed(
+  () =>
+    booruSettings.value?.credentialStatus.danbooru?.hasUsername &&
+    booruSettings.value?.credentialStatus.danbooru?.hasApiKey
+);
+const gelbooruConfigured = computed(
+  () =>
+    booruSettings.value?.credentialStatus.gelbooru?.hasUserId &&
+    booruSettings.value?.credentialStatus.gelbooru?.hasApiKey
+);
+const BOORU_PROMPT_CATEGORIES = [
+  'artist',
+  'copyright',
+  'character',
+  'general',
+  'meta'
+];
+let applyingGallerySettings = false;
+function applyGallerySettings(settings: BooruSettings) {
+  applyingGallerySettings = true;
+  try {
+    booruSettings.value = settings;
+    booruDefaultSource.value = settings.defaultSource;
+    booruBlacklist.value = settings.blacklist.join(', ');
+    booruOutputFilterTags.value = settings.outputFilterTags.join(', ');
+    booruPromptCategories.value = [...settings.promptDefaults.categories];
+    booruReplaceUnderscores.value = settings.promptDefaults.replaceUnderscores;
+    booruEscapeParentheses.value = settings.promptDefaults.escapeParentheses;
+    booruTimeout.value = settings.timeout;
+    booruCacheBudget.value = settings.cacheBudgetMiB;
+  } finally {
+    applyingGallerySettings = false;
+  }
+}
+async function loadGallerySettings() {
+  if (!comfyStore.isConnected) {
+    booruAvailable.value = null;
+    booruSettings.value = null;
+    return;
+  }
+  try {
+    applyGallerySettings(await fetchBooruSettings(props.serverUrl));
+    booruAvailable.value = true;
+  } catch {
+    booruAvailable.value = false;
+    booruSettings.value = null;
+  }
+}
+watch(
+  () => comfyStore.isConnected,
+  () => void loadGallerySettings(),
+  { immediate: true }
+);
+function parseTagList(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[,，、\r\n]+/u)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+function togglePromptCategory(category: string) {
+  booruPromptCategories.value = booruPromptCategories.value.includes(category)
+    ? booruPromptCategories.value.filter((item) => item !== category)
+    : [...booruPromptCategories.value, category];
+}
+async function saveGalleryPreferences() {
+  if (booruAvailable.value) {
+    const credentials: Partial<BooruCredentials> = {};
+    if (
+      booruCredentials.value.danbooru.username &&
+      booruCredentials.value.danbooru.apiKey
+    ) {
+      credentials.danbooru = booruCredentials.value.danbooru;
+    }
+    if (
+      booruCredentials.value.gelbooru.userId &&
+      booruCredentials.value.gelbooru.apiKey
+    ) {
+      credentials.gelbooru = booruCredentials.value.gelbooru;
+    }
+    booruTimeout.value = Math.min(
+      300,
+      Math.max(3, Number(booruTimeout.value) || 30)
+    );
+    booruCacheBudget.value = Math.min(
+      32768,
+      Math.max(128, Number(booruCacheBudget.value) || 1024)
+    );
+    const update: BooruSettingsUpdate = {
+      defaultSource: booruDefaultSource.value,
+      blacklist: parseTagList(booruBlacklist.value),
+      outputFilterTags: parseTagList(booruOutputFilterTags.value),
+      promptDefaults: {
+        categories: booruPromptCategories.value,
+        replaceUnderscores: booruReplaceUnderscores.value,
+        escapeParentheses: booruEscapeParentheses.value
+      },
+      timeout: booruTimeout.value,
+      cacheBudgetMiB: booruCacheBudget.value,
+      ...(Object.keys(credentials).length > 0 ? { credentials } : {})
+    };
+    applyGallerySettings(
+      await saveBooruSettings(cleanPath(props.serverUrl), update)
+    );
+    if (Object.keys(credentials).length > 0) {
+      applyingGallerySettings = true;
+      booruCredentials.value = {
+        danbooru: { username: '', apiKey: '' },
+        gelbooru: { userId: '', apiKey: '' }
+      };
+      applyingGallerySettings = false;
+    }
+    showSaved();
+  }
+}
+const autosaveGalleryPreferences = useDebounceFn(
+  () => void saveGalleryPreferences().catch(console.error),
+  600
+);
+watch(
+  [
+    booruDefaultSource,
+    booruBlacklist,
+    booruOutputFilterTags,
+    booruPromptCategories,
+    booruReplaceUnderscores,
+    booruEscapeParentheses,
+    booruTimeout,
+    booruCacheBudget,
+    booruCredentials
+  ],
+  () => {
+    if (!applyingGallerySettings) autosaveGalleryPreferences();
+  },
+  { deep: true, flush: 'sync' }
+);
+watch([booruReplaceUnderscores, booruEscapeParentheses], ([rep, esc]) => {
+  void saveAppData('booru_prompt_format_options', {
+    replaceUnderscores: rep,
+    escapeParentheses: esc
+  }).catch(console.error);
+});
+async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
+  booruTesting.value = source;
+  booruResult.value = null;
+  try {
+    await testBooruCredentials(cleanPath(props.serverUrl), source, {
+      ...booruCredentials.value[source]
+    });
+    booruResult.value = {
+      source,
+      ok: true,
+      message: `${source === 'danbooru' ? 'Danbooru' : 'Gelbooru'} connection succeeded.`
+    };
+  } catch (error) {
+    booruResult.value = {
+      source,
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    booruTesting.value = null;
+  }
+}
+async function clearGalleryCache() {
+  booruCacheMessage.value = '';
+  try {
+    await clearBooruCache(cleanPath(props.serverUrl));
+    booruCacheMessage.value = 'Gallery cache cleared successfully.';
+  } catch (error) {
+    booruCacheMessage.value =
+      error instanceof Error ? error.message : String(error);
+  }
+}
+onMounted(loadBooruPromptFormatOptions);
+</script>
+<template>
+  <SettingsSection
+    title="Booru Gallery & Provider Credentials"
+    icon-class="text-purple-400"
+  >
+    <template #icon>
+      <ImageIcon class="h-3.5 w-3.5" />
+    </template>
+    <template #actions>
+      <Badge
+        v-if="booruAvailable"
+        variant="outline"
+        class="border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-400"
+      >
+        Active
+      </Badge>
+    </template>
+
+    <NoticeBanner v-if="!booruAvailable">
+      <span v-if="!comfyStore.isConnected">
+        Start the ComfyUI server to configure the Booru Gallery.
+      </span>
+      <span v-else>
+        The
+        <code class="font-mono font-semibold">comfyui-aaalice-nodes</code>
+        custom node is not detected. Install it into ComfyUI's
+        <code class="font-mono">custom_nodes</code> to enable the gallery.
+      </span>
+    </NoticeBanner>
+
+    <!-- General Booru Config -->
+    <div
+      class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+    >
+      <div
+        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
+      >
+        <Label class="text-foreground text-xs font-semibold">
+          Default Source
+        </Label>
+        <Select v-model="booruDefaultSource" :disabled="!booruAvailable">
+          <SelectTrigger class="w-full text-xs">
+            <SelectValue placeholder="Default source">
+              {{
+                booruDefaultSource === 'danbooru'
+                  ? 'Danbooru'
+                  : booruDefaultSource === 'gelbooru'
+                    ? 'Gelbooru'
+                    : booruDefaultSource === 'safebooru'
+                      ? 'Safebooru'
+                      : booruDefaultSource === 'aitag'
+                        ? 'AI TAG'
+                        : booruDefaultSource
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup class="max-h-40 overflow-y-auto">
+              <SelectItem value="danbooru">Danbooru</SelectItem>
+              <SelectItem value="gelbooru">Gelbooru</SelectItem>
+              <SelectItem value="safebooru">Safebooru</SelectItem>
+              <SelectItem value="aitag">AI TAG</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div
+        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
+      >
+        <Label class="text-foreground text-xs font-semibold">
+          Network & Storage Cache
+        </Label>
+        <div class="grid grid-cols-2 gap-3">
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">Timeout (seconds)</FieldLabel>
+            <Input
+              v-model="booruTimeout"
+              type="number"
+              min="3"
+              max="300"
+              :disabled="!booruAvailable"
+              class="font-mono text-xs"
+            />
+          </Field>
+          <Field class="gap-1.5">
+            <FieldLabel class="text-xs">Cache Budget (MiB)</FieldLabel>
+            <Input
+              v-model="booruCacheBudget"
+              type="number"
+              min="128"
+              max="32768"
+              :disabled="!booruAvailable"
+              class="font-mono text-xs"
+            />
+          </Field>
+        </div>
+        <div class="flex items-center justify-between pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="!booruAvailable"
+            class="border-border bg-secondary hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-xs font-medium"
+            @click="clearGalleryCache"
+          >
+            <Trash2 class="h-3.5 w-3.5" />
+            <span>Clear Cache</span>
+          </Button>
+          <span
+            v-if="booruCacheMessage"
+            class="font-mono text-xs text-emerald-400"
+          >
+            {{ booruCacheMessage }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tag Filtering & Blacklist -->
+    <div
+      class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+    >
+      <Field class="gap-1.5">
+        <FieldLabel class="text-foreground text-xs font-semibold">
+          Content Blacklist
+        </FieldLabel>
+        <Textarea
+          v-model="booruBlacklist"
+          :disabled="!booruAvailable"
+          rows="3"
+          placeholder="e.g. loli, shota, gore"
+          class="border-border bg-secondary/50 font-mono text-xs"
+        />
+      </Field>
+
+      <Field class="gap-1.5">
+        <FieldLabel class="text-foreground text-xs font-semibold">
+          Prompt Output Filter
+        </FieldLabel>
+        <Textarea
+          v-model="booruOutputFilterTags"
+          :disabled="!booruAvailable"
+          rows="3"
+          placeholder="e.g. watermark, signature, blurry"
+          class="border-border bg-secondary/50 font-mono text-xs"
+        />
+      </Field>
+    </div>
+
+    <!-- Prompt Defaults & Category Toggles -->
+    <div
+      class="border-border/80 bg-muted/20 flex flex-col gap-3.5 rounded-lg border p-4"
+      :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+    >
+      <Label class="text-foreground text-xs font-semibold">
+        Prompt Extraction Defaults
+      </Label>
+
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="category in BOORU_PROMPT_CATEGORIES"
+          :key="category"
+          type="button"
+          :disabled="!booruAvailable"
+          class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition-all"
+          :class="
+            booruPromptCategories.includes(category)
+              ? 'border-primary/50 bg-primary/15 text-primary shadow-xs'
+              : 'border-border bg-secondary/50 text-muted-foreground hover:text-foreground'
+          "
+          @click="togglePromptCategory(category)"
+        >
+          <Tag class="h-3 w-3" />
+          <span>{{ category }}</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
+        <div
+          class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
+        >
+          <span class="text-foreground text-xs font-medium">
+            Replace underscores with spaces
+          </span>
+          <Switch v-model="booruReplaceUnderscores" />
+        </div>
+        <div
+          class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
+        >
+          <span class="text-foreground text-xs font-medium">
+            Escape prompt parentheses
+          </span>
+          <Switch v-model="booruEscapeParentheses" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider API Accounts -->
+    <div
+      class="border-border/80 flex items-center justify-between border-t pt-3"
+    >
+      <span
+        class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+      >
+        Provider API Credentials
+      </span>
+      <span class="text-muted-foreground text-xs">
+        Credentials are encrypted and stored locally by the custom node
+      </span>
+    </div>
+
+    <div
+      class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
+    >
+      <!-- Danbooru Account Card -->
+      <div
+        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <KeyRound class="text-primary h-4 w-4" />
+            <div>
+              <Label class="text-foreground text-xs font-semibold">
+                Danbooru
+              </Label>
+            </div>
+          </div>
+          <Badge
+            variant="outline"
+            :class="
+              danbooruConfigured
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-border text-muted-foreground'
+            "
+            class="font-mono text-xs"
+          >
+            <span
+              class="mr-1.5 h-1.5 w-1.5 rounded-full"
+              :class="
+                danbooruConfigured ? 'bg-emerald-400' : 'bg-muted-foreground'
+              "
+            />
+            {{ danbooruConfigured ? 'Configured' : 'Not configured' }}
+          </Badge>
+        </div>
+
+        <Input
+          v-model="booruCredentials.danbooru.username"
+          :disabled="!booruAvailable"
+          autocomplete="off"
+          placeholder="Username"
+          class="font-mono text-xs"
+        />
+
+        <div class="relative">
+          <Input
+            v-model="booruCredentials.danbooru.apiKey"
+            :disabled="!booruAvailable"
+            :type="showDanbooruKey ? 'text' : 'password'"
+            autocomplete="new-password"
+            :placeholder="
+              danbooruConfigured
+                ? 'API Key (leave blank to keep current)'
+                : 'API Key'
+            "
+            class="pr-9 font-mono text-xs"
+          />
+          <button
+            type="button"
+            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
+            @click="showDanbooruKey = !showDanbooruKey"
+          >
+            <EyeOff v-if="showDanbooruKey" class="h-3.5 w-3.5" />
+            <Eye v-else class="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="!booruAvailable || booruTesting !== null"
+            class="border-border bg-secondary text-xs font-medium"
+            @click="testBooruAccount('danbooru')"
+          >
+            <Loader2
+              v-if="booruTesting === 'danbooru'"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Wifi v-else class="h-3.5 w-3.5" />
+            <span>Test Account</span>
+          </Button>
+
+          <p
+            v-if="booruResult?.source === 'danbooru'"
+            class="text-xs font-medium"
+            :class="booruResult.ok ? 'text-emerald-400' : 'text-destructive'"
+          >
+            {{ booruResult.message }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Gelbooru Account Card -->
+      <div
+        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <KeyRound class="text-primary h-4 w-4" />
+            <div>
+              <Label class="text-foreground text-xs font-semibold">
+                Gelbooru
+              </Label>
+              <p class="text-muted-foreground text-xs">User ID & API Key</p>
+            </div>
+          </div>
+          <Badge
+            variant="outline"
+            :class="
+              gelbooruConfigured
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-border text-muted-foreground'
+            "
+            class="font-mono text-xs"
+          >
+            <span
+              class="mr-1.5 h-1.5 w-1.5 rounded-full"
+              :class="
+                gelbooruConfigured ? 'bg-emerald-400' : 'bg-muted-foreground'
+              "
+            />
+            {{ gelbooruConfigured ? 'Configured' : 'Not configured' }}
+          </Badge>
+        </div>
+
+        <Input
+          v-model="booruCredentials.gelbooru.userId"
+          :disabled="!booruAvailable"
+          autocomplete="off"
+          placeholder="User ID (numeric)"
+          class="font-mono text-xs"
+        />
+
+        <div class="relative">
+          <Input
+            v-model="booruCredentials.gelbooru.apiKey"
+            :disabled="!booruAvailable"
+            :type="showGelbooruKey ? 'text' : 'password'"
+            autocomplete="new-password"
+            :placeholder="
+              gelbooruConfigured
+                ? 'API Key (leave blank to keep current)'
+                : 'API Key or copied account fragment'
+            "
+            class="pr-9 font-mono text-xs"
+          />
+          <button
+            type="button"
+            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
+            @click="showGelbooruKey = !showGelbooruKey"
+          >
+            <EyeOff v-if="showGelbooruKey" class="h-3.5 w-3.5" />
+            <Eye v-else class="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="!booruAvailable || booruTesting !== null"
+            class="border-border bg-secondary text-xs font-medium"
+            @click="testBooruAccount('gelbooru')"
+          >
+            <Loader2
+              v-if="booruTesting === 'gelbooru'"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Wifi v-else class="h-3.5 w-3.5" />
+            <span>Test Account</span>
+          </Button>
+
+          <p
+            v-if="booruResult?.source === 'gelbooru'"
+            class="text-xs font-medium"
+            :class="booruResult.ok ? 'text-emerald-400' : 'text-destructive'"
+          >
+            {{ booruResult.message }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </SettingsSection>
+</template>

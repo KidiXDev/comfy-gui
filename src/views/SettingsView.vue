@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BooruSettings from '@/components/settings/BooruSettings.vue';
+import AiSettings from '@/components/settings/AiSettings.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { invoke } from '@tauri-apps/api/core';
@@ -7,13 +9,10 @@ import {
   Check,
   CheckCircle2,
   Cpu,
-  Eye,
-  EyeOff,
   ExternalLink,
   FolderOpen,
   Globe,
   HardDrive,
-  Image as ImageIcon,
   Info,
   KeyRound,
   Loader2,
@@ -21,13 +20,11 @@ import {
   RefreshCw,
   Settings,
   Sparkles,
-  Tag,
   Terminal,
   Trash2,
   Wifi,
   XCircle
 } from '@lucide/vue';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -39,7 +36,6 @@ import {
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -50,15 +46,6 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import {
-  clearBooruCache,
-  fetchBooruSettings,
-  saveBooruSettings,
-  testBooruCredentials,
-  type BooruCredentials,
-  type BooruSettings,
-  type BooruSettingsUpdate
-} from '../services/booruGallery';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
 import { useComfyStore } from '../stores/comfyStore';
@@ -68,9 +55,6 @@ import {
   useLauncherStore
 } from '../stores/launcherStore';
 import { APP_VERSION, isNewerVersion } from '../version';
-import { useAiStore } from '../stores/aiStore';
-import AiModelSelector from '@/components/common/AiModelSelector.vue';
-import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 import PageLayout from '@/components/layout/PageLayout.vue';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import SettingsSection from '@/components/layout/SettingsSection.vue';
@@ -78,31 +62,6 @@ import SettingsSwitchRow from '@/components/layout/SettingsSwitchRow.vue';
 
 const launcherStore = useLauncherStore();
 const comfyStore = useComfyStore();
-const aiStore = useAiStore();
-
-const aiTemperature = computed<number[]>({
-  get: () => [aiStore.config.temperature],
-  set: ([value]) => {
-    aiStore.config.temperature = value ?? 0.7;
-  }
-});
-const aiContextMaximum = computed(() =>
-  Math.max(8192, aiStore.selectedModelInfo?.context_length ?? 131072)
-);
-const aiContextTokens = computed<number[]>({
-  get: () => [
-    Math.min(aiStore.config.contextTokenLimit, aiContextMaximum.value)
-  ],
-  set: ([value]) => {
-    aiStore.config.contextTokenLimit = value ?? 32768;
-  }
-});
-const aiResponseTokens = computed<number[]>({
-  get: () => [aiStore.config.maxOutputTokens],
-  set: ([value]) => {
-    aiStore.config.maxOutputTokens = value ?? 4096;
-  }
-});
 
 const workingDir = ref(launcherStore.config.workingDir);
 const pythonPath = ref(launcherStore.config.pythonPath);
@@ -118,40 +77,12 @@ const autocompleteReplaceUnderscores = ref(
 const autocompleteIncludeArtistPrefix = ref(
   launcherStore.config.autocompleteIncludeArtistPrefix
 );
-const booruSettings = ref<BooruSettings | null>(null);
-const booruAvailable = ref<boolean | null>(null);
-const booruCredentials = ref<BooruCredentials>({
-  danbooru: { username: '', apiKey: '' },
-  gelbooru: { userId: '', apiKey: '' }
-});
-const showDanbooruKey = ref(false);
-const showGelbooruKey = ref(false);
 const civitaiApiKey = ref('');
 const savedCivitaiApiKey = ref('');
 const hasCivitaiApiKey = ref(false);
 const civitaiNsfw = ref(false);
 let applyingCivitaiSettings = true;
 let lastSavedCivitaiNsfw = false;
-
-const booruDefaultSource = ref('danbooru');
-const booruBlacklist = ref('');
-const booruOutputFilterTags = ref('');
-const booruPromptCategories = ref<string[]>([
-  'copyright',
-  'character',
-  'general'
-]);
-const booruReplaceUnderscores = ref(false);
-const booruEscapeParentheses = ref(false);
-const booruTimeout = ref(30);
-const booruCacheBudget = ref(1024);
-const booruCacheMessage = ref('');
-const booruTesting = ref<'danbooru' | 'gelbooru' | null>(null);
-const booruResult = ref<{
-  source: 'danbooru' | 'gelbooru';
-  ok: boolean;
-  message: string;
-} | null>(null);
 
 const isTesting = ref(false);
 const testResult = ref<{ ok: boolean; message: string } | null>(null);
@@ -203,169 +134,10 @@ async function clearCivitaiApiKey() {
   }
 }
 
-async function loadBooruPromptFormatOptions() {
-  try {
-    const saved = await loadAppData<{
-      replaceUnderscores?: boolean;
-      escapeParentheses?: boolean;
-    }>('booru_prompt_format_options');
-    if (saved) {
-      if (typeof saved.replaceUnderscores === 'boolean') {
-        booruReplaceUnderscores.value = saved.replaceUnderscores;
-      }
-      if (typeof saved.escapeParentheses === 'boolean') {
-        booruEscapeParentheses.value = saved.escapeParentheses;
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to load booru prompt format options:', error);
-  }
-}
-
 onMounted(() => {
   void loadCivitaiSettings();
-  void loadBooruPromptFormatOptions();
-  loadAiSettings();
 });
-
-const openRouterApiKey = ref('');
-const savedOpenRouterApiKey = ref('');
-const hasOpenRouterApiKey = ref(false);
-const isTestingAi = ref(false);
-const aiTestResult = ref<{ ok: boolean; message: string } | null>(null);
-
-function loadAiSettings() {
-  const key = aiStore.config.apiKey.trim();
-  savedOpenRouterApiKey.value = key;
-  hasOpenRouterApiKey.value = !!key;
-  openRouterApiKey.value = '';
-}
-
-function clearOpenRouterApiKey() {
-  savedOpenRouterApiKey.value = '';
-  openRouterApiKey.value = '';
-  hasOpenRouterApiKey.value = false;
-  aiStore.config.apiKey = '';
-  void aiStore.saveConfig();
-  showSaved();
-}
-
-const autosaveAiSettings = useDebounceFn(() => {
-  const newKey = openRouterApiKey.value.trim();
-  if (newKey) {
-    aiStore.config.apiKey = newKey;
-    savedOpenRouterApiKey.value = newKey;
-    hasOpenRouterApiKey.value = true;
-    openRouterApiKey.value = '';
-  }
-  void aiStore.saveConfig();
-  showSaved();
-}, 300);
-
-async function testOpenRouterConnection() {
-  const key = openRouterApiKey.value.trim() || savedOpenRouterApiKey.value;
-  if (!key) {
-    aiTestResult.value = {
-      ok: false,
-      message: 'Please enter an API key first'
-    };
-    return;
-  }
-  isTestingAi.value = true;
-  aiTestResult.value = null;
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
-      headers: { Authorization: `Bearer ${key}` }
-    });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        data?: { label?: string; usage?: number; limit?: number };
-      };
-      aiTestResult.value = {
-        ok: true,
-        message: `Connected! ${data?.data?.label ? `(${data.data.label})` : 'Key is valid'}`
-      };
-      if (openRouterApiKey.value.trim()) {
-        aiStore.config.apiKey = openRouterApiKey.value.trim();
-        savedOpenRouterApiKey.value = openRouterApiKey.value.trim();
-        hasOpenRouterApiKey.value = true;
-        openRouterApiKey.value = '';
-        void aiStore.saveConfig();
-      }
-      void aiStore.refreshModels(true);
-    } else {
-      aiTestResult.value = {
-        ok: false,
-        message: `Authentication failed: HTTP ${res.status}`
-      };
-    }
-  } catch (err) {
-    aiTestResult.value = { ok: false, message: String(err) };
-  } finally {
-    isTestingAi.value = false;
-  }
-}
-
-watch(
-  () => aiStore.config.apiKey,
-  (val) => {
-    savedOpenRouterApiKey.value = val;
-    hasOpenRouterApiKey.value = !!val;
-  }
-);
-const danbooruConfigured = computed(
-  () =>
-    booruSettings.value?.credentialStatus.danbooru?.hasUsername &&
-    booruSettings.value?.credentialStatus.danbooru?.hasApiKey
-);
-const gelbooruConfigured = computed(
-  () =>
-    booruSettings.value?.credentialStatus.gelbooru?.hasUserId &&
-    booruSettings.value?.credentialStatus.gelbooru?.hasApiKey
-);
-
-const BOORU_PROMPT_CATEGORIES = [
-  'artist',
-  'copyright',
-  'character',
-  'general',
-  'meta'
-];
-
-let applyingGallerySettings = false;
 let saveSuccessTimer: ReturnType<typeof setTimeout> | undefined;
-
-function applyGallerySettings(settings: BooruSettings) {
-  applyingGallerySettings = true;
-  try {
-    booruSettings.value = settings;
-    booruDefaultSource.value = settings.defaultSource;
-    booruBlacklist.value = settings.blacklist.join(', ');
-    booruOutputFilterTags.value = settings.outputFilterTags.join(', ');
-    booruPromptCategories.value = [...settings.promptDefaults.categories];
-    booruReplaceUnderscores.value = settings.promptDefaults.replaceUnderscores;
-    booruEscapeParentheses.value = settings.promptDefaults.escapeParentheses;
-    booruTimeout.value = settings.timeout;
-    booruCacheBudget.value = settings.cacheBudgetMiB;
-  } finally {
-    applyingGallerySettings = false;
-  }
-}
-
-async function loadGallerySettings() {
-  if (!comfyStore.isConnected) {
-    booruAvailable.value = null;
-    booruSettings.value = null;
-    return;
-  }
-  try {
-    applyGallerySettings(await fetchBooruSettings(serverUrl.value));
-    booruAvailable.value = true;
-  } catch {
-    booruAvailable.value = false;
-    booruSettings.value = null;
-  }
-}
 
 watch(
   autocompleteReady,
@@ -380,29 +152,6 @@ watch(
   },
   { immediate: true }
 );
-
-watch(
-  () => comfyStore.isConnected,
-  () => void loadGallerySettings(),
-  { immediate: true }
-);
-
-function parseTagList(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(/[,，、\r\n]+/u)
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-    )
-  ];
-}
-
-function togglePromptCategory(category: string) {
-  booruPromptCategories.value = booruPromptCategories.value.includes(category)
-    ? booruPromptCategories.value.filter((item) => item !== category)
-    : [...booruPromptCategories.value, category];
-}
 
 async function handleBrowseComfyDir() {
   const dir = await launcherStore.selectComfyDir();
@@ -424,11 +173,6 @@ function showSaved() {
   saveSuccessTimer = setTimeout(() => {
     saveSuccess.value = false;
   }, 2500);
-}
-
-function saveAiTuning() {
-  void aiStore.saveConfig();
-  showSaved();
 }
 
 async function saveApplicationSettings() {
@@ -461,63 +205,8 @@ async function saveApplicationSettings() {
   if (serverChanged) comfyStore.init();
 }
 
-async function saveGalleryPreferences() {
-  if (booruAvailable.value) {
-    const credentials: Partial<BooruCredentials> = {};
-    if (
-      booruCredentials.value.danbooru.username &&
-      booruCredentials.value.danbooru.apiKey
-    ) {
-      credentials.danbooru = booruCredentials.value.danbooru;
-    }
-    if (
-      booruCredentials.value.gelbooru.userId &&
-      booruCredentials.value.gelbooru.apiKey
-    ) {
-      credentials.gelbooru = booruCredentials.value.gelbooru;
-    }
-    booruTimeout.value = Math.min(
-      300,
-      Math.max(3, Number(booruTimeout.value) || 30)
-    );
-    booruCacheBudget.value = Math.min(
-      32768,
-      Math.max(128, Number(booruCacheBudget.value) || 1024)
-    );
-    const update: BooruSettingsUpdate = {
-      defaultSource: booruDefaultSource.value,
-      blacklist: parseTagList(booruBlacklist.value),
-      outputFilterTags: parseTagList(booruOutputFilterTags.value),
-      promptDefaults: {
-        categories: booruPromptCategories.value,
-        replaceUnderscores: booruReplaceUnderscores.value,
-        escapeParentheses: booruEscapeParentheses.value
-      },
-      timeout: booruTimeout.value,
-      cacheBudgetMiB: booruCacheBudget.value,
-      ...(Object.keys(credentials).length > 0 ? { credentials } : {})
-    };
-    applyGallerySettings(
-      await saveBooruSettings(cleanPath(serverUrl.value), update)
-    );
-    if (Object.keys(credentials).length > 0) {
-      applyingGallerySettings = true;
-      booruCredentials.value = {
-        danbooru: { username: '', apiKey: '' },
-        gelbooru: { userId: '', apiKey: '' }
-      };
-      applyingGallerySettings = false;
-    }
-    showSaved();
-  }
-}
-
 const autosaveApplicationSettings = useDebounceFn(
   () => void saveApplicationSettings().catch(console.error),
-  600
-);
-const autosaveGalleryPreferences = useDebounceFn(
-  () => void saveGalleryPreferences().catch(console.error),
   600
 );
 const autosaveCivitaiSettings = useDebounceFn(() => {
@@ -559,68 +248,9 @@ watch(
   { deep: true }
 );
 
-watch(
-  [
-    booruDefaultSource,
-    booruBlacklist,
-    booruOutputFilterTags,
-    booruPromptCategories,
-    booruReplaceUnderscores,
-    booruEscapeParentheses,
-    booruTimeout,
-    booruCacheBudget,
-    booruCredentials
-  ],
-  () => {
-    if (!applyingGallerySettings) autosaveGalleryPreferences();
-  },
-  { deep: true, flush: 'sync' }
-);
-
-watch([booruReplaceUnderscores, booruEscapeParentheses], ([rep, esc]) => {
-  void saveAppData('booru_prompt_format_options', {
-    replaceUnderscores: rep,
-    escapeParentheses: esc
-  }).catch(console.error);
-});
-
 watch([civitaiApiKey, civitaiNsfw], () => {
   if (!applyingCivitaiSettings) autosaveCivitaiSettings();
 });
-
-async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
-  booruTesting.value = source;
-  booruResult.value = null;
-  try {
-    await testBooruCredentials(cleanPath(serverUrl.value), source, {
-      ...booruCredentials.value[source]
-    });
-    booruResult.value = {
-      source,
-      ok: true,
-      message: `${source === 'danbooru' ? 'Danbooru' : 'Gelbooru'} connection succeeded.`
-    };
-  } catch (error) {
-    booruResult.value = {
-      source,
-      ok: false,
-      message: error instanceof Error ? error.message : String(error)
-    };
-  } finally {
-    booruTesting.value = null;
-  }
-}
-
-async function clearGalleryCache() {
-  booruCacheMessage.value = '';
-  try {
-    await clearBooruCache(cleanPath(serverUrl.value));
-    booruCacheMessage.value = 'Gallery cache cleared successfully.';
-  } catch (error) {
-    booruCacheMessage.value =
-      error instanceof Error ? error.message : String(error);
-  }
-}
 
 async function installCustomNode() {
   if (!repositoryUrl.value.trim() || isInstallingCustomNode.value) return;
@@ -1099,413 +729,7 @@ void loadNetworkCacheStats();
         />
       </SettingsSection>
 
-      <SettingsSection
-        title="Booru Gallery & Provider Credentials"
-        icon-class="text-purple-400"
-      >
-        <template #icon>
-          <ImageIcon class="h-3.5 w-3.5" />
-        </template>
-        <template #actions>
-          <Badge
-            v-if="booruAvailable"
-            variant="outline"
-            class="border-emerald-500/30 bg-emerald-500/10 text-xs font-medium text-emerald-400"
-          >
-            Active
-          </Badge>
-        </template>
-
-        <NoticeBanner v-if="!booruAvailable">
-          <span v-if="!comfyStore.isConnected">
-            Start the ComfyUI server to configure the Booru Gallery.
-          </span>
-          <span v-else>
-            The
-            <code class="font-mono font-semibold">comfyui-aaalice-nodes</code>
-            custom node is not detected. Install it into ComfyUI's
-            <code class="font-mono">custom_nodes</code> to enable the gallery.
-          </span>
-        </NoticeBanner>
-
-        <!-- General Booru Config -->
-        <div
-          class="grid grid-cols-1 gap-4 lg:grid-cols-2"
-          :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
-        >
-          <div
-            class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
-          >
-            <Label class="text-foreground text-xs font-semibold">
-              Default Source
-            </Label>
-            <Select v-model="booruDefaultSource" :disabled="!booruAvailable">
-              <SelectTrigger class="w-full text-xs">
-                <SelectValue placeholder="Default source">
-                  {{
-                    booruDefaultSource === 'danbooru'
-                      ? 'Danbooru'
-                      : booruDefaultSource === 'gelbooru'
-                        ? 'Gelbooru'
-                        : booruDefaultSource === 'safebooru'
-                          ? 'Safebooru'
-                          : booruDefaultSource === 'aitag'
-                            ? 'AI TAG'
-                            : booruDefaultSource
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="danbooru">Danbooru</SelectItem>
-                  <SelectItem value="gelbooru">Gelbooru</SelectItem>
-                  <SelectItem value="safebooru">Safebooru</SelectItem>
-                  <SelectItem value="aitag">AI TAG</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div
-            class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
-          >
-            <Label class="text-foreground text-xs font-semibold">
-              Network & Storage Cache
-            </Label>
-            <div class="grid grid-cols-2 gap-3">
-              <Field class="gap-1.5">
-                <FieldLabel class="text-xs">Timeout (seconds)</FieldLabel>
-                <Input
-                  v-model="booruTimeout"
-                  type="number"
-                  min="3"
-                  max="300"
-                  :disabled="!booruAvailable"
-                  class="font-mono text-xs"
-                />
-              </Field>
-              <Field class="gap-1.5">
-                <FieldLabel class="text-xs">Cache Budget (MiB)</FieldLabel>
-                <Input
-                  v-model="booruCacheBudget"
-                  type="number"
-                  min="128"
-                  max="32768"
-                  :disabled="!booruAvailable"
-                  class="font-mono text-xs"
-                />
-              </Field>
-            </div>
-            <div class="flex items-center justify-between pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="!booruAvailable"
-                class="border-border bg-secondary hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-xs font-medium"
-                @click="clearGalleryCache"
-              >
-                <Trash2 class="h-3.5 w-3.5" />
-                <span>Clear Cache</span>
-              </Button>
-              <span
-                v-if="booruCacheMessage"
-                class="font-mono text-xs text-emerald-400"
-              >
-                {{ booruCacheMessage }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tag Filtering & Blacklist -->
-        <div
-          class="grid grid-cols-1 gap-4 lg:grid-cols-2"
-          :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
-        >
-          <Field class="gap-1.5">
-            <FieldLabel class="text-foreground text-xs font-semibold">
-              Content Blacklist
-            </FieldLabel>
-            <Textarea
-              v-model="booruBlacklist"
-              :disabled="!booruAvailable"
-              rows="3"
-              placeholder="e.g. loli, shota, gore"
-              class="border-border bg-secondary/50 font-mono text-xs"
-            />
-          </Field>
-
-          <Field class="gap-1.5">
-            <FieldLabel class="text-foreground text-xs font-semibold">
-              Prompt Output Filter
-            </FieldLabel>
-            <Textarea
-              v-model="booruOutputFilterTags"
-              :disabled="!booruAvailable"
-              rows="3"
-              placeholder="e.g. watermark, signature, blurry"
-              class="border-border bg-secondary/50 font-mono text-xs"
-            />
-          </Field>
-        </div>
-
-        <!-- Prompt Defaults & Category Toggles -->
-        <div
-          class="border-border/80 bg-muted/20 flex flex-col gap-3.5 rounded-lg border p-4"
-          :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
-        >
-          <Label class="text-foreground text-xs font-semibold">
-            Prompt Extraction Defaults
-          </Label>
-
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="category in BOORU_PROMPT_CATEGORIES"
-              :key="category"
-              type="button"
-              :disabled="!booruAvailable"
-              class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium capitalize transition-all"
-              :class="
-                booruPromptCategories.includes(category)
-                  ? 'border-primary/50 bg-primary/15 text-primary shadow-xs'
-                  : 'border-border bg-secondary/50 text-muted-foreground hover:text-foreground'
-              "
-              @click="togglePromptCategory(category)"
-            >
-              <Tag class="h-3 w-3" />
-              <span>{{ category }}</span>
-            </button>
-          </div>
-
-          <div class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
-            <div
-              class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
-            >
-              <span class="text-foreground text-xs font-medium">
-                Replace underscores with spaces
-              </span>
-              <Switch v-model="booruReplaceUnderscores" />
-            </div>
-            <div
-              class="border-border/60 bg-card/60 flex items-center justify-between rounded-lg border p-2.5"
-            >
-              <span class="text-foreground text-xs font-medium">
-                Escape prompt parentheses
-              </span>
-              <Switch v-model="booruEscapeParentheses" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Provider API Accounts -->
-        <div
-          class="border-border/80 flex items-center justify-between border-t pt-3"
-        >
-          <span
-            class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
-          >
-            Provider API Credentials
-          </span>
-          <span class="text-muted-foreground text-xs">
-            Credentials are encrypted and stored locally by the custom node
-          </span>
-        </div>
-
-        <div
-          class="grid grid-cols-1 gap-4 lg:grid-cols-2"
-          :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
-        >
-          <!-- Danbooru Account Card -->
-          <div
-            class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
-          >
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <KeyRound class="text-primary h-4 w-4" />
-                <div>
-                  <Label class="text-foreground text-xs font-semibold">
-                    Danbooru
-                  </Label>
-                </div>
-              </div>
-              <Badge
-                variant="outline"
-                :class="
-                  danbooruConfigured
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                    : 'border-border text-muted-foreground'
-                "
-                class="font-mono text-xs"
-              >
-                <span
-                  class="mr-1.5 h-1.5 w-1.5 rounded-full"
-                  :class="
-                    danbooruConfigured
-                      ? 'bg-emerald-400'
-                      : 'bg-muted-foreground'
-                  "
-                />
-                {{ danbooruConfigured ? 'Configured' : 'Not configured' }}
-              </Badge>
-            </div>
-
-            <Input
-              v-model="booruCredentials.danbooru.username"
-              :disabled="!booruAvailable"
-              autocomplete="off"
-              placeholder="Username"
-              class="font-mono text-xs"
-            />
-
-            <div class="relative">
-              <Input
-                v-model="booruCredentials.danbooru.apiKey"
-                :disabled="!booruAvailable"
-                :type="showDanbooruKey ? 'text' : 'password'"
-                autocomplete="new-password"
-                :placeholder="
-                  danbooruConfigured
-                    ? 'API Key (leave blank to keep current)'
-                    : 'API Key'
-                "
-                class="pr-9 font-mono text-xs"
-              />
-              <button
-                type="button"
-                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
-                @click="showDanbooruKey = !showDanbooruKey"
-              >
-                <EyeOff v-if="showDanbooruKey" class="h-3.5 w-3.5" />
-                <Eye v-else class="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div class="flex items-center justify-between pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="!booruAvailable || booruTesting !== null"
-                class="border-border bg-secondary text-xs font-medium"
-                @click="testBooruAccount('danbooru')"
-              >
-                <Loader2
-                  v-if="booruTesting === 'danbooru'"
-                  class="h-3.5 w-3.5 animate-spin"
-                />
-                <Wifi v-else class="h-3.5 w-3.5" />
-                <span>Test Account</span>
-              </Button>
-
-              <p
-                v-if="booruResult?.source === 'danbooru'"
-                class="text-xs font-medium"
-                :class="
-                  booruResult.ok ? 'text-emerald-400' : 'text-destructive'
-                "
-              >
-                {{ booruResult.message }}
-              </p>
-            </div>
-          </div>
-
-          <!-- Gelbooru Account Card -->
-          <div
-            class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
-          >
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <KeyRound class="text-primary h-4 w-4" />
-                <div>
-                  <Label class="text-foreground text-xs font-semibold">
-                    Gelbooru
-                  </Label>
-                  <p class="text-muted-foreground text-xs">User ID & API Key</p>
-                </div>
-              </div>
-              <Badge
-                variant="outline"
-                :class="
-                  gelbooruConfigured
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                    : 'border-border text-muted-foreground'
-                "
-                class="font-mono text-xs"
-              >
-                <span
-                  class="mr-1.5 h-1.5 w-1.5 rounded-full"
-                  :class="
-                    gelbooruConfigured
-                      ? 'bg-emerald-400'
-                      : 'bg-muted-foreground'
-                  "
-                />
-                {{ gelbooruConfigured ? 'Configured' : 'Not configured' }}
-              </Badge>
-            </div>
-
-            <Input
-              v-model="booruCredentials.gelbooru.userId"
-              :disabled="!booruAvailable"
-              autocomplete="off"
-              placeholder="User ID (numeric)"
-              class="font-mono text-xs"
-            />
-
-            <div class="relative">
-              <Input
-                v-model="booruCredentials.gelbooru.apiKey"
-                :disabled="!booruAvailable"
-                :type="showGelbooruKey ? 'text' : 'password'"
-                autocomplete="new-password"
-                :placeholder="
-                  gelbooruConfigured
-                    ? 'API Key (leave blank to keep current)'
-                    : 'API Key or copied account fragment'
-                "
-                class="pr-9 font-mono text-xs"
-              />
-              <button
-                type="button"
-                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
-                @click="showGelbooruKey = !showGelbooruKey"
-              >
-                <EyeOff v-if="showGelbooruKey" class="h-3.5 w-3.5" />
-                <Eye v-else class="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div class="flex items-center justify-between pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="!booruAvailable || booruTesting !== null"
-                class="border-border bg-secondary text-xs font-medium"
-                @click="testBooruAccount('gelbooru')"
-              >
-                <Loader2
-                  v-if="booruTesting === 'gelbooru'"
-                  class="h-3.5 w-3.5 animate-spin"
-                />
-                <Wifi v-else class="h-3.5 w-3.5" />
-                <span>Test Account</span>
-              </Button>
-
-              <p
-                v-if="booruResult?.source === 'gelbooru'"
-                class="text-xs font-medium"
-                :class="
-                  booruResult.ok ? 'text-emerald-400' : 'text-destructive'
-                "
-              >
-                {{ booruResult.message }}
-              </p>
-            </div>
-          </div>
-        </div>
-      </SettingsSection>
+      <BooruSettings :server-url="serverUrl" @saved="showSaved" />
 
       <SettingsSection title="Civitai API" icon-class="text-orange-400">
         <template #icon>
@@ -1559,248 +783,7 @@ void loadNetworkCacheStats();
         />
       </SettingsSection>
 
-      <SettingsSection title="AI Assistant (OpenRouter)">
-        <template #icon>
-          <Sparkles class="h-3.5 w-3.5" />
-        </template>
-        <template #actions>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            class="text-xs"
-            @click="openUrl('https://openrouter.ai/settings/keys')"
-          >
-            <ExternalLink class="h-3.5 w-3.5" />
-            Get OpenRouter Key
-          </Button>
-        </template>
-
-        <!-- OpenRouter API Key Input -->
-        <Field class="gap-1.5">
-          <div class="flex items-center justify-between">
-            <FieldLabel class="text-xs">OpenRouter API Key</FieldLabel>
-            <button
-              type="button"
-              :disabled="
-                isTestingAi || (!openRouterApiKey && !hasOpenRouterApiKey)
-              "
-              class="text-primary flex cursor-pointer items-center gap-1 text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-              @click="testOpenRouterConnection"
-            >
-              <Loader2 v-if="isTestingAi" class="h-3 w-3 animate-spin" />
-              <Wifi v-else class="h-3 w-3" />
-              <span>Test Connection</span>
-            </button>
-          </div>
-          <div class="relative">
-            <Input
-              v-model="openRouterApiKey"
-              type="password"
-              autocomplete="new-password"
-              :placeholder="
-                hasOpenRouterApiKey ? 'Saved' : 'Enter OpenRouter API key'
-              "
-              class="pr-10 font-mono text-xs"
-              @keydown.enter="autosaveAiSettings.flush()"
-              @blur="autosaveAiSettings.flush()"
-            />
-            <button
-              v-if="hasOpenRouterApiKey && !openRouterApiKey"
-              type="button"
-              class="text-muted-foreground hover:text-destructive absolute top-1/2 right-2.5 -translate-y-1/2 p-1 transition-colors"
-              title="Remove saved OpenRouter API key"
-              @click="clearOpenRouterApiKey"
-            >
-              <Trash2 class="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div
-            v-if="aiTestResult"
-            class="text-xs"
-            :class="aiTestResult.ok ? 'text-emerald-500' : 'text-destructive'"
-          >
-            {{ aiTestResult.message }}
-          </div>
-        </Field>
-
-        <!-- Default Model Selector with Search -->
-        <Field class="gap-1.5">
-          <FieldLabel class="text-xs">Default Model</FieldLabel>
-          <AiModelSelector
-            :model-value="aiStore.config.selectedModel"
-            @change="
-              (val) => {
-                aiStore.config.selectedModel = val;
-                void aiStore.saveConfig();
-                showSaved();
-              }
-            "
-          />
-        </Field>
-
-        <AiReasoningSelector />
-
-        <div
-          class="border-border/60 bg-muted/20 grid gap-4 rounded-lg border p-3"
-        >
-          <Field class="gap-2">
-            <div class="flex items-center justify-between">
-              <FieldLabel class="text-xs">Temperature</FieldLabel>
-              <span class="text-primary font-mono text-xs">
-                {{ aiStore.config.temperature.toFixed(1) }}
-              </span>
-            </div>
-            <Slider
-              v-model="aiTemperature"
-              :min="0"
-              :max="2"
-              :step="0.1"
-              aria-label="AI temperature"
-              @value-commit="saveAiTuning"
-            />
-          </Field>
-
-          <Field class="gap-2">
-            <div class="flex items-center justify-between">
-              <FieldLabel class="text-xs">Chat Context Tokens</FieldLabel>
-              <span class="text-primary font-mono text-xs">
-                {{ aiContextTokens[0]?.toLocaleString() }}
-              </span>
-            </div>
-            <Slider
-              v-model="aiContextTokens"
-              :min="2048"
-              :max="aiContextMaximum"
-              :step="1024"
-              aria-label="Chat context token budget"
-              @value-commit="saveAiTuning"
-            />
-            <p class="text-muted-foreground text-xs">
-              Approximate history budget, capped by the selected model.
-            </p>
-          </Field>
-
-          <Field class="gap-2">
-            <div class="flex items-center justify-between">
-              <FieldLabel class="text-xs">Response Tokens</FieldLabel>
-              <span class="text-primary font-mono text-xs">
-                {{ aiStore.config.maxOutputTokens.toLocaleString() }}
-              </span>
-            </div>
-            <Slider
-              v-model="aiResponseTokens"
-              :min="512"
-              :max="16384"
-              :step="512"
-              aria-label="Maximum AI response tokens"
-              @value-commit="saveAiTuning"
-            />
-          </Field>
-        </div>
-
-        <!-- Provider Routing Override (Custom Provider) -->
-        <Field class="gap-1.5">
-          <FieldLabel class="text-xs">
-            Provider Override (Custom Provider)
-          </FieldLabel>
-          <Input
-            v-model="aiStore.config.providerOverride"
-            placeholder="Enter your provider"
-            class="h-8 font-mono text-xs"
-            @change="
-              () => {
-                void aiStore.saveConfig();
-                showSaved();
-              }
-            "
-          />
-        </Field>
-
-        <!-- Allow Provider Fallbacks -->
-        <div
-          class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
-        >
-          <Label
-            for="ai-provider-fallbacks-switch"
-            class="text-foreground flex cursor-pointer items-center text-xs font-medium"
-          >
-            Allow Provider Fallbacks
-          </Label>
-          <Switch
-            id="ai-provider-fallbacks-switch"
-            :checked="aiStore.config.allowProviderFallbacks ?? true"
-            @update:checked="
-              (val: boolean) => {
-                aiStore.config.allowProviderFallbacks = val;
-                void aiStore.saveConfig();
-                showSaved();
-              }
-            "
-          />
-        </div>
-
-        <!-- Auto-Apply Toggle Setting -->
-        <div
-          class="border-border/60 bg-muted/20 flex items-center justify-between rounded-lg border p-3"
-        >
-          <Label
-            for="ai-auto-apply-switch"
-            class="text-foreground flex cursor-pointer items-center text-xs font-medium"
-          >
-            Auto-Apply Agentic Actions
-          </Label>
-          <Switch
-            id="ai-auto-apply-switch"
-            :model-value="aiStore.config.autoApply"
-            @update:model-value="
-              (val: boolean) => {
-                aiStore.config.autoApply = val;
-                void aiStore.saveConfig();
-                showSaved();
-              }
-            "
-          />
-        </div>
-
-        <!-- Chatbot Assistant Custom Instructions -->
-        <Field class="gap-1.5">
-          <FieldLabel class="text-xs">
-            Chatbot Assistant Instructions (Optional)
-          </FieldLabel>
-          <Textarea
-            :model-value="aiStore.config.customSystemPrompt"
-            rows="3"
-            placeholder="Enter custom instructions for the AI Chatbot Assistant..."
-            class="resize-y font-mono text-xs leading-relaxed"
-            @update:model-value="
-              (val) => {
-                aiStore.config.customSystemPrompt = String(val);
-                void aiStore.saveConfig();
-              }
-            "
-          />
-        </Field>
-
-        <!-- Prompt Enhancer Custom Instructions -->
-        <Field class="gap-1.5">
-          <FieldLabel class="text-xs">
-            Prompt Enhancer Instructions (Optional)
-          </FieldLabel>
-          <Textarea
-            :model-value="aiStore.config.enhancerSystemPrompt"
-            rows="3"
-            placeholder="Enter custom guidelines for the Prompt Enhancer modal..."
-            class="resize-y font-mono text-xs leading-relaxed"
-            @update:model-value="
-              (val) => {
-                aiStore.config.enhancerSystemPrompt = String(val);
-                void aiStore.saveConfig();
-              }
-            "
-          />
-        </Field>
-      </SettingsSection>
+      <AiSettings @saved="showSaved" />
 
       <SettingsSection title="Network Disk Cache" icon-class="text-cyan-400">
         <template #icon>
