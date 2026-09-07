@@ -533,10 +533,11 @@ onUnmounted(() => {
             <CivitaiRichText
               :html="model.description"
               class="w-full leading-relaxed"
-              ><p class="text-muted-foreground text-xs italic">
-                No description provided.
-              </p></CivitaiRichText
             >
+              <p class="text-muted-foreground text-xs italic">
+                No description provided.
+              </p>
+            </CivitaiRichText>
           </div>
         </div>
 
@@ -792,9 +793,9 @@ onUnmounted(() => {
                 role="status"
               >
                 <p>{{ props.downloadMessage }}</p>
-                <Button as-child variant="outline" size="sm"
-                  ><RouterLink to="/settings">Open Settings</RouterLink></Button
-                >
+                <Button as-child variant="outline" size="sm">
+                  <RouterLink to="/settings">Open Settings</RouterLink>
+                </Button>
               </div>
               <p
                 v-if="props.errorMessage"

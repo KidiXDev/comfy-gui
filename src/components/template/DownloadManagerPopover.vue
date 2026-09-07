@@ -96,13 +96,9 @@ async function handleRedownload(item: DownloadRecord) {
         variant="ghost"
         size="icon"
         class="text-muted-foreground hover:text-foreground relative h-9 w-9"
-        title="Download manager"
+        aria-label="Download manager"
       >
-        <Loader2
-          v-if="downloadStore.items.some((item) => item.status === 'active')"
-          class="h-4 w-4 animate-spin"
-        />
-        <Download v-else class="h-4 w-4" />
+        <Download class="h-4 w-4" />
         <Badge
           v-if="downloadStore.activeCount"
           class="border-background absolute -top-1.5 -right-1.5 h-5 min-w-5 justify-center rounded-full border-2 px-1 text-xs"
