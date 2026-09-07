@@ -246,7 +246,9 @@ impl DownloadManager {
             app,
             &record.gid,
             |item| {
-                item.status = "active".into();
+                if item.status != "paused" {
+                    item.status = "active".into();
+                }
                 item.completed_length = completed;
                 item.total_length = total;
                 item.error_message = None;
@@ -287,7 +289,9 @@ impl DownloadManager {
                 app,
                 &record.gid,
                 |item| {
-                    item.status = "active".into();
+                    if item.status != "paused" {
+                        item.status = "active".into();
+                    }
                     item.completed_length = completed;
                     if speed > 0 {
                         item.download_speed = speed;
