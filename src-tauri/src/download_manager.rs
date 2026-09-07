@@ -1,21 +1,17 @@
 use reqwest::blocking::Client;
+use reqwest::header::{CONTENT_RANGE, RANGE};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use std::fs;
-use std::io::{copy, Cursor};
-use std::net::TcpListener;
+use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
-
-const ARIA2_X64_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
-const ARIA2_X64_SHA256: &str = "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288";
-const ARIA2_X86_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-32bit-build1.zip";
-const ARIA2_X86_SHA256: &str = "35f6514cc5dd7e98a87b3c4c2d25a0754b9b063dbe59bc0f22d483464f61e5b6";
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +32,8 @@ pub struct DownloadRecord {
     pub created_at: u64,
     #[serde(default = "default_file_exists")]
     pub file_exists: bool,
+    #[serde(default, rename = "_url", skip_serializing)]
+    url: String,
 }
 
 fn default_file_exists() -> bool {
@@ -53,16 +51,16 @@ pub struct NewDownload {
     pub url: String,
 }
 
-struct Aria2Connection {
-    child: Child,
-    port: u16,
-    secret: String,
+#[derive(Default)]
+struct JobControl {
+    cancelled: AtomicBool,
+    paused: AtomicBool,
 }
 
 #[derive(Default)]
 struct Inner {
-    connection: Option<Aria2Connection>,
     records: Vec<DownloadRecord>,
+    jobs: HashMap<String, Arc<JobControl>>,
     loaded: bool,
 }
 
@@ -75,7 +73,7 @@ fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
         .path()
         .app_config_dir()
-        .map_err(|error| error.to_string())?
+        .map_err(|e| e.to_string())?
         .join("aria2"))
 }
 
@@ -83,8 +81,7 @@ fn load_history(inner: &mut Inner, app: &AppHandle) -> Result<(), String> {
     if inner.loaded {
         return Ok(());
     }
-    let path = config_dir(app)?.join("downloads.json");
-    inner.records = fs::read(path)
+    inner.records = fs::read(config_dir(app)?.join("downloads.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
@@ -94,231 +91,28 @@ fn load_history(inner: &mut Inner, app: &AppHandle) -> Result<(), String> {
 
 fn save_history(inner: &Inner, app: &AppHandle) -> Result<(), String> {
     let directory = config_dir(app)?;
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let bytes = serde_json::to_vec_pretty(&inner.records).map_err(|error| error.to_string())?;
-    fs::write(directory.join("downloads.json"), bytes).map_err(|error| error.to_string())
-}
-
-#[cfg(windows)]
-fn hide_window(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    command.creation_flags(0x08000000);
-}
-
-#[cfg(not(windows))]
-fn hide_window(_command: &mut Command) {}
-
-fn system_aria2() -> Option<PathBuf> {
-    let mut command = Command::new("aria2c");
-    command
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    hide_window(&mut command);
-    command
-        .status()
-        .ok()?
-        .success()
-        .then(|| PathBuf::from("aria2c"))
-}
-
-#[cfg(windows)]
-fn install_aria2(app: &AppHandle) -> Result<PathBuf, String> {
-    let directory = config_dir(app)?;
-    let binary = directory.join("aria2c.exe");
-    if binary.is_file() {
-        return Ok(binary);
-    }
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let (url, expected_hash, binary_path) = if cfg!(target_arch = "x86_64") {
-        (
-            ARIA2_X64_URL,
-            ARIA2_X64_SHA256,
-            "aria2-1.37.0-win-64bit-build1/aria2c.exe",
-        )
-    } else if cfg!(target_arch = "x86") {
-        (
-            ARIA2_X86_URL,
-            ARIA2_X86_SHA256,
-            "aria2-1.37.0-win-32bit-build1/aria2c.exe",
-        )
-    } else {
-        return Err("Automatic aria2 installation is only available for Windows x64/x86.".into());
-    };
-    let response = Client::builder()
-        .user_agent("ComfyGUI/1.0")
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|error| error.to_string())?
-        .get(url)
-        .send()
-        .map_err(|error| format!("Failed to download aria2: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("Failed to download aria2: {error}"))?;
-    let bytes = response.bytes().map_err(|error| error.to_string())?;
-    let actual_hash = format!("{:x}", Sha256::digest(&bytes));
-    if actual_hash != expected_hash {
-        return Err("Downloaded aria2 archive failed SHA-256 verification.".into());
-    }
-
-    let temporary_binary = directory.join("aria2c.exe.tmp");
-    let extraction = (|| {
-        let mut archive =
-            zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| error.to_string())?;
-        let mut source = archive
-            .by_name(binary_path)
-            .map_err(|error| format!("aria2c.exe was not found in the archive: {error}"))?;
-        let mut target = fs::File::create(&temporary_binary).map_err(|error| error.to_string())?;
-        copy(&mut source, &mut target).map_err(|error| error.to_string())?;
-        target.sync_all().map_err(|error| error.to_string())?;
-        drop(target);
-        fs::rename(&temporary_binary, &binary).map_err(|error| error.to_string())
-    })();
-    if extraction.is_err() {
-        let _ = fs::remove_file(&temporary_binary);
-    }
-    let _ = fs::remove_file(directory.join("aria2.zip"));
-    extraction?;
-    Ok(binary)
-}
-
-#[cfg(not(windows))]
-fn install_aria2(_app: &AppHandle) -> Result<PathBuf, String> {
-    system_aria2().ok_or_else(|| "Install aria2c and make it available on PATH.".into())
-}
-
-fn rpc_client() -> Result<Client, String> {
-    Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|error| error.to_string())
-}
-
-fn rpc_with(port: u16, secret: &str, method: &str, params: Vec<Value>) -> Result<Value, String> {
-    let mut authorized_params = vec![json!(format!("token:{secret}"))];
-    authorized_params.extend(params);
-    let response: Value = rpc_client()?
-        .post(format!("http://127.0.0.1:{port}/jsonrpc"))
-        .json(&json!({
-            "jsonrpc": "2.0",
-            "id": "comfygui",
-            "method": method,
-            "params": authorized_params
-        }))
-        .send()
-        .map_err(|error| error.to_string())?
-        .json()
-        .map_err(|error| error.to_string())?;
-    if let Some(error) = response.get("error") {
-        Err(error["message"]
-            .as_str()
-            .unwrap_or("aria2 RPC request failed")
-            .to_string())
-    } else {
-        Ok(response["result"].clone())
-    }
-}
-
-fn rpc(connection: &Aria2Connection, method: &str, params: Vec<Value>) -> Result<Value, String> {
-    rpc_with(connection.port, &connection.secret, method, params)
-}
-
-fn start_aria2(app: &AppHandle) -> Result<Aria2Connection, String> {
-    let binary = match system_aria2() {
-        Some(binary) => binary,
-        None => install_aria2(app)?,
-    };
-    let directory = config_dir(app)?;
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let session = directory.join("aria2.session");
-    if !session.exists() {
-        fs::write(&session, []).map_err(|error| error.to_string())?;
-    }
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| error.to_string())?
-        .port();
-    drop(listener);
-    let secret = format!(
-        "{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let mut command = Command::new(binary);
-    command
-        .arg("--enable-rpc=true")
-        .arg("--rpc-listen-all=false")
-        .arg(format!("--rpc-listen-port={port}"))
-        .arg(format!("--rpc-secret={secret}"))
-        .arg(format!("--input-file={}", session.display()))
-        .arg(format!("--save-session={}", session.display()))
-        .arg("--save-session-interval=1")
-        .arg("--continue=true")
-        .arg("--max-concurrent-downloads=3")
-        .arg("--max-connection-per-server=8")
-        .arg("--split=8")
-        .arg("--min-split-size=1M")
-        .arg("--file-allocation=none")
-        .arg("--auto-file-renaming=false")
-        .arg("--allow-overwrite=false")
-        .arg("--summary-interval=0")
-        .arg("--console-log-level=warn")
-        .arg(format!("--stop-with-process={}", std::process::id()))
-        .current_dir(&directory)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    hide_window(&mut command);
-    let child = command.spawn().map_err(|error| error.to_string())?;
-    let connection = Aria2Connection {
-        child,
-        port,
-        secret,
-    };
-    for _ in 0..50 {
-        if rpc(&connection, "aria2.getVersion", vec![]).is_ok() {
-            return Ok(connection);
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-    Err("aria2 RPC did not start in time.".into())
-}
-
-fn ensure_connection<'a>(
-    inner: &'a mut Inner,
-    app: &AppHandle,
-) -> Result<&'a Aria2Connection, String> {
-    let stopped = inner
-        .connection
-        .as_mut()
-        .and_then(|connection| connection.child.try_wait().ok().flatten())
-        .is_some();
-    if stopped {
-        inner.connection = None;
-    }
-    if inner.connection.is_none() {
-        inner.connection = Some(start_aria2(app)?);
-    }
-    Ok(inner.connection.as_ref().unwrap())
-}
-
-fn parse_number(value: &Value, key: &str) -> u64 {
-    value[key]
-        .as_str()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0)
+    fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    let records = inner
+        .records
+        .iter()
+        .map(|record| {
+            let mut value = serde_json::to_value(record).map_err(|e| e.to_string())?;
+            value["_url"] = record.url.clone().into();
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let bytes = serde_json::to_vec_pretty(&records).map_err(|e| e.to_string())?;
+    fs::write(directory.join("downloads.json"), bytes).map_err(|e| e.to_string())
 }
 
 fn cleanup_files(model_path: &Path) {
     let _ = fs::remove_file(model_path);
+    let _ = fs::remove_file(format!("{}.part", model_path.display()));
     let _ = fs::remove_file(format!("{}.aria2", model_path.display()));
-    let Some(parent) = model_path.parent() else {
-        return;
-    };
-    let Some(stem) = model_path.file_stem().and_then(|value| value.to_str()) else {
+    let (Some(parent), Some(stem)) = (
+        model_path.parent(),
+        model_path.file_stem().and_then(|v| v.to_str()),
+    ) else {
         return;
     };
     for suffix in [
@@ -333,154 +127,315 @@ fn cleanup_files(model_path: &Path) {
     }
 }
 
+fn content_range_total(value: &str) -> Option<u64> {
+    value.rsplit('/').next()?.parse().ok()
+}
+
 impl DownloadManager {
-    pub fn add(&self, app: &AppHandle, download: NewDownload) -> Result<DownloadRecord, String> {
-        let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
-        load_history(&mut inner, app)?;
-        if let Some(pos) = inner.records.iter().position(|record| {
-            record.version_id == download.version_id
-                && !matches!(record.status.as_str(), "error" | "removed")
-        }) {
-            let existing = &inner.records[pos];
-            if existing.status == "complete" && !Path::new(&existing.model_path).is_file() {
-                inner.records.remove(pos);
-            } else {
-                return Ok(existing.clone());
-            }
+    fn update_record(
+        &self,
+        app: &AppHandle,
+        gid: &str,
+        update: impl FnOnce(&mut DownloadRecord),
+        persist: bool,
+    ) -> bool {
+        let Ok(mut inner) = self.inner.lock() else {
+            return false;
+        };
+        let Some(record) = inner.records.iter_mut().find(|record| record.gid == gid) else {
+            return false;
+        };
+        update(record);
+        if persist {
+            let _ = save_history(&inner, app);
         }
-        let connection = ensure_connection(&mut inner, app)?;
-        let options = json!({
-            "dir": download.model_path.parent().unwrap_or(Path::new(".")).to_string_lossy(),
-            "out": download.file_name,
-            "continue": "true",
-            "user-agent": "ComfyGUI/1.0",
-            "auto-file-renaming": "false",
-            "allow-overwrite": "false"
-        });
-        let gid = rpc(
-            connection,
-            "aria2.addUri",
-            vec![json!([download.url]), options],
-        )?
-        .as_str()
-        .ok_or("aria2 did not return a download ID.")?
-        .to_string();
-        let record = DownloadRecord {
-            gid,
-            version_id: download.version_id,
-            name: download.name,
-            file_name: download.file_name,
-            model_type: download.model_type,
-            base_model: download.base_model,
-            model_path: download.model_path.to_string_lossy().to_string(),
-            preview_url: download.preview_url,
-            status: "waiting".into(),
-            completed_length: 0,
-            total_length: 0,
-            download_speed: 0,
-            error_message: None,
-            created_at: SystemTime::now()
+        true
+    }
+
+    fn start(&self, app: AppHandle, record: DownloadRecord) {
+        let control = {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+            if inner.jobs.contains_key(&record.gid) {
+                return;
+            }
+            let control = Arc::new(JobControl::default());
+            control
+                .paused
+                .store(record.status == "paused", Ordering::Relaxed);
+            inner.jobs.insert(record.gid.clone(), control.clone());
+            control
+        };
+        let manager = self.clone();
+        thread::spawn(move || manager.run_download(app, record, control));
+    }
+
+    fn run_download(&self, app: AppHandle, record: DownloadRecord, control: Arc<JobControl>) {
+        let result = self.download(&app, &record, &control);
+        if control.cancelled.load(Ordering::Relaxed) {
+            cleanup_files(Path::new(&record.model_path));
+        } else if let Err(error) = result {
+            self.update_record(
+                &app,
+                &record.gid,
+                |item| {
+                    item.status = "error".into();
+                    item.download_speed = 0;
+                    item.error_message = Some(error);
+                },
+                true,
+            );
+        }
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.jobs.remove(&record.gid);
+        }
+    }
+
+    fn download(
+        &self,
+        app: &AppHandle,
+        record: &DownloadRecord,
+        control: &JobControl,
+    ) -> Result<(), String> {
+        if record.url.is_empty() {
+            return Err(
+                "This legacy aria2 download cannot be resumed; cancel and retry it.".into(),
+            );
+        }
+        let model_path = Path::new(&record.model_path);
+        let partial_path = PathBuf::from(format!("{}.part", model_path.display()));
+        let mut completed = fs::metadata(&partial_path)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
+        let client = Client::builder()
+            .user_agent("ComfyGUI/1.0")
+            .connect_timeout(Duration::from_secs(20))
+            .timeout(Duration::from_secs(60 * 60 * 6))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut request = client.get(&record.url);
+        if completed > 0 {
+            request = request.header(RANGE, format!("bytes={completed}-"));
+        }
+        let mut response = request.send().map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("Model download failed with {}.", response.status()));
+        }
+        if completed > 0 && response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+            completed = 0;
+        }
+        let total = response
+            .headers()
+            .get(CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(content_range_total)
+            .or_else(|| response.content_length().map(|n| n + completed))
+            .unwrap_or(0);
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(completed == 0)
+            .open(&partial_path)
+            .map_err(|e| e.to_string())?;
+        if completed > 0 {
+            file.seek(SeekFrom::Start(completed))
+                .map_err(|e| e.to_string())?;
+        }
+        self.update_record(
+            app,
+            &record.gid,
+            |item| {
+                item.status = "active".into();
+                item.completed_length = completed;
+                item.total_length = total;
+                item.error_message = None;
+            },
+            true,
+        );
+
+        let mut buffer = [0_u8; 256 * 1024];
+        let mut speed_bytes = 0_u64;
+        let mut speed_at = Instant::now();
+        loop {
+            if control.cancelled.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+            while control.paused.load(Ordering::Relaxed) {
+                if control.cancelled.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            let read = response.read(&mut buffer).map_err(|e| e.to_string())?;
+            if read == 0 {
+                break;
+            }
+            file.write_all(&buffer[..read]).map_err(|e| e.to_string())?;
+            completed += read as u64;
+            speed_bytes += read as u64;
+            let elapsed = speed_at.elapsed();
+            let speed = if elapsed >= Duration::from_millis(500) {
+                let value = (speed_bytes as f64 / elapsed.as_secs_f64()) as u64;
+                speed_bytes = 0;
+                speed_at = Instant::now();
+                value
+            } else {
+                0
+            };
+            self.update_record(
+                app,
+                &record.gid,
+                |item| {
+                    item.status = "active".into();
+                    item.completed_length = completed;
+                    if speed > 0 {
+                        item.download_speed = speed;
+                    }
+                },
+                false,
+            );
+        }
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        fs::rename(&partial_path, model_path).map_err(|e| e.to_string())?;
+        self.update_record(
+            app,
+            &record.gid,
+            |item| {
+                item.status = "complete".into();
+                item.completed_length = completed;
+                if item.total_length == 0 {
+                    item.total_length = completed;
+                }
+                item.download_speed = 0;
+                item.file_exists = true;
+            },
+            true,
+        );
+        Ok(())
+    }
+
+    pub fn add(&self, app: &AppHandle, download: NewDownload) -> Result<DownloadRecord, String> {
+        let record = {
+            let mut inner = self.inner.lock().map_err(|e| e.to_string())?;
+            load_history(&mut inner, app)?;
+            if let Some(pos) = inner.records.iter().position(|record| {
+                record.version_id == download.version_id
+                    && !matches!(record.status.as_str(), "error" | "removed")
+            }) {
+                let existing = &inner.records[pos];
+                if existing.status == "complete" && !Path::new(&existing.model_path).is_file() {
+                    inner.records.remove(pos);
+                } else {
+                    return Ok(existing.clone());
+                }
+            }
+            let created_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_millis() as u64,
-            file_exists: false,
+                .as_millis() as u64;
+            let record = DownloadRecord {
+                gid: format!("{}-{created_at}", download.version_id),
+                version_id: download.version_id,
+                name: download.name,
+                file_name: download.file_name,
+                model_type: download.model_type,
+                base_model: download.base_model,
+                model_path: download.model_path.to_string_lossy().to_string(),
+                preview_url: download.preview_url,
+                status: "waiting".into(),
+                completed_length: 0,
+                total_length: 0,
+                download_speed: 0,
+                error_message: None,
+                created_at,
+                file_exists: false,
+                url: download.url,
+            };
+            inner.records.insert(0, record.clone());
+            save_history(&inner, app)?;
+            record
         };
-        inner.records.insert(0, record.clone());
-        save_history(&inner, app)?;
+        self.start(app.clone(), record.clone());
         Ok(record)
     }
 
     fn refresh(&self, app: &AppHandle) -> Result<Vec<DownloadRecord>, String> {
-        let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
-        load_history(&mut inner, app)?;
-        let pending = inner
-            .records
-            .iter()
-            .any(|record| !matches!(record.status.as_str(), "complete" | "error" | "removed"));
-        if pending {
-            ensure_connection(&mut inner, app)?;
-            let connection = inner.connection.as_ref().unwrap();
-            let port = connection.port;
-            let secret = connection.secret.clone();
+        let restart = {
+            let mut inner = self.inner.lock().map_err(|e| e.to_string())?;
+            load_history(&mut inner, app)?;
+            let restart = inner
+                .records
+                .iter()
+                .filter(|record| {
+                    matches!(record.status.as_str(), "active" | "waiting" | "paused")
+                        && !inner.jobs.contains_key(&record.gid)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
             for record in &mut inner.records {
-                if matches!(record.status.as_str(), "complete" | "error" | "removed") {
-                    continue;
-                }
-                match rpc_with(
-                    port,
-                    &secret,
-                    "aria2.tellStatus",
-                    vec![
-                        json!(record.gid),
-                        json!([
-                            "status",
-                            "totalLength",
-                            "completedLength",
-                            "downloadSpeed",
-                            "errorMessage"
-                        ]),
-                    ],
-                ) {
-                    Ok(status) => {
-                        record.status = status["status"].as_str().unwrap_or("error").into();
-                        record.total_length = parse_number(&status, "totalLength");
-                        record.completed_length = parse_number(&status, "completedLength");
-                        record.download_speed = parse_number(&status, "downloadSpeed");
-                        record.error_message = status["errorMessage"].as_str().map(str::to_string);
-                    }
-                    Err(error) => {
-                        let control = PathBuf::from(format!("{}.aria2", record.model_path));
-                        if Path::new(&record.model_path).is_file() && !control.exists() {
-                            record.status = "complete".into();
-                            record.completed_length = record.total_length;
-                        } else {
-                            record.status = "error".into();
-                            record.error_message = Some(error);
-                        }
-                    }
-                }
+                record.file_exists =
+                    record.status == "complete" && Path::new(&record.model_path).is_file();
             }
-            save_history(&inner, app)?;
+            restart
+        };
+        for record in restart {
+            self.start(app.clone(), record);
         }
-        for record in &mut inner.records {
-            record.file_exists =
-                record.status == "complete" && Path::new(&record.model_path).is_file();
-        }
-        Ok(inner.records.clone())
-    }
-
-    fn change_status(&self, app: &AppHandle, gid: &str, method: &str) -> Result<(), String> {
-        let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
-        load_history(&mut inner, app)?;
-        let connection = ensure_connection(&mut inner, app)?;
-        rpc(connection, method, vec![json!(gid)])?;
-        Ok(())
-    }
-
-    fn cancel(&self, app: &AppHandle, gid: &str) -> Result<(), String> {
-        let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
-        load_history(&mut inner, app)?;
-        let index = inner
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|e| e.to_string())?
             .records
-            .iter()
-            .position(|record| record.gid == gid)
+            .clone())
+    }
+
+    fn change_status(&self, app: &AppHandle, gid: &str, paused: bool) -> Result<(), String> {
+        let mut inner = self.inner.lock().map_err(|e| e.to_string())?;
+        load_history(&mut inner, app)?;
+        let record = inner
+            .records
+            .iter_mut()
+            .find(|record| record.gid == gid)
             .ok_or("Download was not found.")?;
-        let record = inner.records[index].clone();
-        if record.status == "complete" {
-            return Err("Completed models cannot be cancelled.".into());
+        if !matches!(record.status.as_str(), "active" | "waiting" | "paused") {
+            return Err("Only active downloads can be paused or resumed.".into());
         }
-        if matches!(record.status.as_str(), "active" | "waiting" | "paused") {
-            let connection = ensure_connection(&mut inner, app)?;
-            rpc(connection, "aria2.forceRemove", vec![json!(gid)])?;
-            let _ = rpc(connection, "aria2.removeDownloadResult", vec![json!(gid)]);
+        record.status = if paused { "paused" } else { "active" }.into();
+        record.download_speed = 0;
+        if let Some(control) = inner.jobs.get(gid) {
+            control.paused.store(paused, Ordering::Relaxed);
         }
-        cleanup_files(Path::new(&record.model_path));
-        inner.records.remove(index);
         save_history(&inner, app)
     }
 
+    fn cancel(&self, app: &AppHandle, gid: &str) -> Result<(), String> {
+        let model_path = {
+            let mut inner = self.inner.lock().map_err(|e| e.to_string())?;
+            load_history(&mut inner, app)?;
+            let index = inner
+                .records
+                .iter()
+                .position(|record| record.gid == gid)
+                .ok_or("Download was not found.")?;
+            if inner.records[index].status == "complete" {
+                return Err("Completed models cannot be cancelled.".into());
+            }
+            if let Some(control) = inner.jobs.get(gid) {
+                control.cancelled.store(true, Ordering::Relaxed);
+                control.paused.store(false, Ordering::Relaxed);
+            }
+            let path = inner.records.remove(index).model_path;
+            save_history(&inner, app)?;
+            path
+        };
+        cleanup_files(Path::new(&model_path));
+        Ok(())
+    }
+
     fn clear_history(&self, app: &AppHandle, gid: Option<&str>) -> Result<(), String> {
-        let mut inner = self.inner.lock().map_err(|error| error.to_string())?;
+        let mut inner = self.inner.lock().map_err(|e| e.to_string())?;
         load_history(&mut inner, app)?;
         remove_history_records(&mut inner.records, gid);
         save_history(&inner, app)
@@ -502,9 +457,8 @@ pub async fn list(
     let manager = (*manager).clone();
     tauri::async_runtime::spawn_blocking(move || manager.refresh(&app_handle))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|e| e.to_string())?
 }
-
 #[tauri::command]
 pub async fn pause(
     app_handle: AppHandle,
@@ -512,13 +466,10 @@ pub async fn pause(
     gid: String,
 ) -> Result<(), String> {
     let manager = (*manager).clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        manager.change_status(&app_handle, &gid, "aria2.forcePause")
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || manager.change_status(&app_handle, &gid, true))
+        .await
+        .map_err(|e| e.to_string())?
 }
-
 #[tauri::command]
 pub async fn resume(
     app_handle: AppHandle,
@@ -526,13 +477,10 @@ pub async fn resume(
     gid: String,
 ) -> Result<(), String> {
     let manager = (*manager).clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        manager.change_status(&app_handle, &gid, "aria2.unpause")
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || manager.change_status(&app_handle, &gid, false))
+        .await
+        .map_err(|e| e.to_string())?
 }
-
 #[tauri::command]
 pub async fn cancel(
     app_handle: AppHandle,
@@ -542,9 +490,8 @@ pub async fn cancel(
     let manager = (*manager).clone();
     tauri::async_runtime::spawn_blocking(move || manager.cancel(&app_handle, &gid))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|e| e.to_string())?
 }
-
 #[tauri::command]
 pub async fn clear_history(
     app_handle: AppHandle,
@@ -554,33 +501,31 @@ pub async fn clear_history(
     let manager = (*manager).clone();
     tauri::async_runtime::spawn_blocking(move || manager.clear_history(&app_handle, gid.as_deref()))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
-    use super::cleanup_files;
+    use super::{cleanup_files, content_range_total};
     use std::fs;
 
     #[test]
+    fn parses_range_total() {
+        assert_eq!(content_range_total("bytes 10-19/100"), Some(100));
+        assert_eq!(content_range_total("invalid"), None);
+    }
+
+    #[test]
     fn history_removal_targets_one_finished_item_and_preserves_active_downloads() {
-        let mut records: Vec<super::DownloadRecord> = [
-            "complete", "error", "removed", "active", "waiting", "paused",
-        ]
-        .into_iter()
-        .map(|status| {
-            serde_json::from_value(serde_json::json!({
-                "gid": status, "status": status, "versionId": 1,
-                "name": "model", "fileName": "model.safetensors",
-                "modelType": "LORA", "baseModel": "Anima", "modelPath": "model.safetensors",
-                "completedLength": 0, "totalLength": 0, "downloadSpeed": 0, "createdAt": 0
-            }))
-            .unwrap()
-        })
-        .collect();
+        let mut records: Vec<super::DownloadRecord> = ["complete", "error", "removed", "active", "waiting", "paused"].into_iter().map(|status| {
+            serde_json::from_value(serde_json::json!({"gid": status, "status": status, "versionId": 1, "name": "model", "fileName": "model.safetensors", "modelType": "LORA", "baseModel": "Anima", "modelPath": "model.safetensors", "completedLength": 0, "totalLength": 0, "downloadSpeed": 0, "createdAt": 0})).unwrap()
+        }).collect();
         super::remove_history_records(&mut records, Some("error"));
         assert_eq!(records.len(), 5);
-        assert!(!records.iter().any(|record| record.gid == "error"));
+        assert!(serde_json::to_value(&records[0])
+            .unwrap()
+            .get("_url")
+            .is_none());
         for gid in ["active", "waiting", "paused", "missing"] {
             super::remove_history_records(&mut records, Some(gid));
             assert_eq!(records.len(), 5);
@@ -603,6 +548,7 @@ mod tests {
         let model = directory.join("model.safetensors");
         for path in [
             model.clone(),
+            directory.join("model.safetensors.part"),
             directory.join("model.safetensors.aria2"),
             directory.join("model.civitai.info"),
             directory.join("model.cm-info.json"),
@@ -610,9 +556,7 @@ mod tests {
         ] {
             fs::write(path, []).unwrap();
         }
-
         cleanup_files(&model);
-
         assert!(fs::read_dir(&directory).unwrap().next().is_none());
         fs::remove_dir(directory).unwrap();
     }
