@@ -18,6 +18,7 @@ import type {
   ComfyWsProgressMessage
 } from '../types/comfy';
 import type { WorkflowState } from '../types/workflow';
+import { useHistoryStore } from './historyStore';
 import { useLauncherStore } from './launcherStore';
 
 interface PendingGeneration {
@@ -136,6 +137,7 @@ function getWorkflowSteps(state: WorkflowState) {
 
 export const useComfyStore = defineStore('comfy', () => {
   const launcherStore = useLauncherStore();
+  const historyStore = useHistoryStore();
 
   const clientId = ref(`comfy-gui-${Math.random().toString(36).slice(2, 10)}`);
   const isConnected = ref(false);
@@ -367,8 +369,26 @@ export const useComfyStore = defineStore('comfy', () => {
     generationWaiters.delete(promptId);
     if (status === 'completed') {
       const result = await loadGenerationImage(entry);
-      if (result) waiter?.resolve(result);
-      else waiter?.reject(new Error('Generation completed without an image'));
+      if (result) {
+        if (
+          !historyStore.items.some(
+            (item) =>
+              item.promptId === result.promptId &&
+              item.filename === result.filename
+          )
+        ) {
+          historyStore.addHistory(
+            result.url,
+            result.filename,
+            result.subfolder,
+            result.type,
+            result.promptId,
+            result.workflowState,
+            result.durationMs
+          );
+        }
+        waiter?.resolve(result);
+      } else waiter?.reject(new Error('Generation completed without an image'));
     } else {
       waiter?.reject(
         new Error(

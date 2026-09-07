@@ -107,34 +107,6 @@ onUnmounted(() => {
   }
 });
 
-// Push to history store when generation finishes
-watch(
-  () => comfyStore.lastGeneratedImage,
-  (newImg) => {
-    if (
-      newImg &&
-      !historyStore.items.some(
-        (item) =>
-          item.promptId === newImg.promptId && item.filename === newImg.filename
-      )
-    ) {
-      const durationMs = comfyStore.generationStartTime
-        ? Date.now() - comfyStore.generationStartTime
-        : undefined;
-
-      historyStore.addHistory(
-        newImg.url,
-        newImg.filename,
-        newImg.subfolder,
-        newImg.type,
-        newImg.promptId,
-        newImg.workflowState,
-        newImg.durationMs ?? durationMs
-      );
-    }
-  }
-);
-
 function handleGenerate() {
   if (!comfyStore.isConnected || comfyStore.isQueueing) return;
   const state = workflowStore.getFullWorkflowState();

@@ -277,6 +277,11 @@ function handleSearchBlur() {
 }
 
 function updateSearchCursor(event: Event) {
+  if (
+    event instanceof KeyboardEvent &&
+    ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)
+  )
+    return;
   const el = event.target as HTMLInputElement;
   if (!el) return;
   scheduleAutocomplete(el.value, el.selectionStart ?? el.value.length);
