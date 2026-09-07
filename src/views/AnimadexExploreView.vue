@@ -11,7 +11,6 @@ import {
 } from 'vue';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import {
-  AlertCircle,
   BookOpen,
   Dices,
   Filter,
@@ -30,6 +29,8 @@ import AnimadexCard from '@/components/animadex/AnimadexCard.vue';
 import AnimadexDetailDialog from '@/components/animadex/AnimadexDetailDialog.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import NoticeBanner from '@/components/layout/NoticeBanner.vue';
+import PageLayout from '@/components/layout/PageLayout.vue';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -498,546 +499,541 @@ watch(
 </script>
 
 <template>
-  <div class="bg-background flex h-full flex-col overflow-hidden select-none">
-    <!-- Top Header & Search Bar (consistent with BooruGallery & CivitaiBrowser) -->
-    <header
-      class="border-border/80 bg-card/70 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
-    >
-      <div class="flex items-center justify-between gap-4">
-        <!-- Title & Subtitle -->
-        <div class="flex items-center gap-3">
-          <div
-            class="border-primary/30 bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs"
-          >
-            <Sparkles class="h-4 w-4" />
+  <PageLayout
+    title="Animadex Explore"
+    subtitle="Explore anime character triggers, artist style tags, and series metadata"
+    content-class="flex flex-col overflow-hidden p-0"
+  >
+    <template #icon>
+      <Sparkles class="h-4 w-4" />
+    </template>
+    <template #title-extra>
+      <Badge
+        variant="outline"
+        class="border-primary/30 text-primary h-4 px-1.5 text-[10px] font-normal"
+      >
+        Prompt Discovery
+      </Badge>
+    </template>
+    <template #actions>
+      <div class="flex items-center gap-1">
+        <button
+          v-for="tab in TAB_SHORTCUTS"
+          :key="tab.value"
+          type="button"
+          class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+          :class="
+            activeTab === tab.value
+              ? 'bg-primary text-primary-foreground shadow-xs'
+              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+          "
+          @click="handleTabChange(tab.value)"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+    </template>
+
+    <template #below-header>
+      <div
+        class="border-border/80 bg-card/70 shrink-0 border-b px-5 py-3.5 backdrop-blur-md"
+      >
+        <!-- Search Controls Bar -->
+        <form
+          class="flex flex-wrap items-center gap-2.5"
+          @submit.prevent="performSearch(true)"
+        >
+          <!-- Search Input -->
+          <div class="relative min-w-64 flex-1">
+            <Search
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+            />
+            <Input
+              v-model="searchQuery"
+              type="text"
+              :placeholder="
+                activeTab === 'characters'
+                  ? 'Search characters or tags'
+                  : activeTab === 'artists'
+                    ? 'Search artists'
+                    : 'Search series / copyright franchise'
+              "
+              class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 text-xs transition-colors"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button
+              v-if="searchQuery"
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer p-0.5"
+              @click="clearSearch"
+            >
+              <X class="h-3.5 w-3.5" />
+            </button>
           </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-xs font-bold tracking-wider uppercase">
-                Animadex Explore
-              </h1>
-              <Badge
-                variant="outline"
-                class="border-primary/30 text-primary h-4 px-1.5 text-[10px] font-normal"
+
+          <!-- Sort Selection -->
+          <Select v-if="activeTab === 'characters'" v-model="characterSort">
+            <SelectTrigger class="bg-secondary/80 h-9 w-36 text-xs font-medium">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-40 overflow-y-auto">
+                <SelectItem value="count" class="text-xs"
+                  >Most Popular</SelectItem
+                >
+                <SelectItem value="az" class="text-xs">A to Z</SelectItem>
+                <SelectItem value="random" class="text-xs">Random</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          <Select v-else-if="activeTab === 'artists'" v-model="artistSort">
+            <SelectTrigger class="bg-secondary/80 h-9 w-36 text-xs font-medium">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-40 overflow-y-auto">
+                <SelectItem value="count" class="text-xs"
+                  >Most Popular</SelectItem
+                >
+                <SelectItem value="score" class="text-xs"
+                  >Highest Score</SelectItem
+                >
+                <SelectItem value="az" class="text-xs">A to Z</SelectItem>
+                <SelectItem value="random" class="text-xs">Random</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          <Select v-else v-model="copyrightSort">
+            <SelectTrigger class="bg-secondary/80 h-9 w-36 text-xs font-medium">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-40 overflow-y-auto">
+                <SelectItem value="count" class="text-xs"
+                  >Most Popular</SelectItem
+                >
+                <SelectItem value="az" class="text-xs">A to Z</SelectItem>
+                <SelectItem value="random" class="text-xs">Random</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          <!-- Re-roll Random Seed Button -->
+          <Button
+            v-if="
+              (activeTab === 'characters' && characterSort === 'random') ||
+              (activeTab === 'artists' && artistSort === 'random') ||
+              (activeTab === 'copyrights' && copyrightSort === 'random')
+            "
+            type="button"
+            variant="outline"
+            size="sm"
+            class="h-9 cursor-pointer gap-1.5 px-3 text-xs"
+            title="Roll new random seed"
+            @click="rerollSeed"
+          >
+            <Dices class="h-3.5 w-3.5" />
+            <span>Re-roll</span>
+          </Button>
+
+          <!-- Filter Toggle Button -->
+          <Button
+            v-if="activeTab !== 'copyrights'"
+            type="button"
+            variant="outline"
+            size="sm"
+            class="h-9 cursor-pointer gap-1.5 px-3 text-xs"
+            :class="{
+              'bg-primary/10 text-primary border-primary/30': isFiltersExpanded
+            }"
+            @click="isFiltersExpanded = !isFiltersExpanded"
+          >
+            <Filter class="h-3.5 w-3.5" />
+            <span>Filters</span>
+            <Badge
+              v-if="activeFilterCount > 0"
+              variant="default"
+              class="h-4 min-w-4 rounded-full px-1 text-xs font-semibold"
+            >
+              {{ activeFilterCount }}
+            </Badge>
+          </Button>
+
+          <!-- Search Submit Button -->
+          <Button
+            type="submit"
+            size="sm"
+            class="bg-primary text-primary-foreground hover:bg-primary/90 h-9 cursor-pointer px-4 text-xs font-semibold shadow-xs"
+            :disabled="isLoading"
+          >
+            <Loader2
+              v-if="isLoading && !hasItems"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Search v-else class="h-3.5 w-3.5" />
+            <span>Search</span>
+          </Button>
+        </form>
+
+        <!-- Expandable Filters Row -->
+        <div
+          v-if="isFiltersExpanded && activeTab !== 'copyrights'"
+          class="border-border/50 bg-muted/20 flex flex-col gap-3 rounded-xl border p-3"
+        >
+          <!-- Character Filters -->
+          <div
+            v-if="activeTab === 'characters'"
+            class="flex flex-wrap items-center gap-2.5"
+          >
+            <!-- Series -->
+            <div class="flex min-w-40 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Series:</span
               >
-                Prompt Discovery
+              <Select v-model="selectedSeries">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-50 text-xs"
+                >
+                  <SelectValue placeholder="All Series" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs"
+                      >All Series</SelectItem
+                    >
+                    <SelectItem
+                      v-for="val in characterFacets?.copyright?.values || []"
+                      :key="val.value"
+                      :value="val.value"
+                      class="text-xs"
+                    >
+                      {{ val.label }} ({{ val.count }})
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- Gender -->
+            <div class="flex min-w-35 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Gender:</span
+              >
+              <Select v-model="selectedGender">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
+                >
+                  <SelectValue placeholder="All Genders" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs">All</SelectItem>
+                    <SelectItem value="1girl" class="text-xs"
+                      >Female (1girl)</SelectItem
+                    >
+                    <SelectItem value="1boy" class="text-xs"
+                      >Male (1boy)</SelectItem
+                    >
+                    <SelectItem value="1other" class="text-xs"
+                      >Ambiguous</SelectItem
+                    >
+                    <SelectItem value="no humans" class="text-xs"
+                      >Non-Human</SelectItem
+                    >
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- Hair Color -->
+            <div class="flex min-w-37.5 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Hair:</span
+              >
+              <Select v-model="selectedHairColor">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
+                >
+                  <SelectValue placeholder="Any Color" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs"
+                      >Any Color</SelectItem
+                    >
+                    <SelectItem
+                      v-for="val in characterFacets?.hair_color?.values || []"
+                      :key="val.value"
+                      :value="val.value"
+                      class="text-xs"
+                    >
+                      {{ val.label }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- Hair Length -->
+            <div class="flex min-w-37.5 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Length:</span
+              >
+              <Select v-model="selectedHairLength">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
+                >
+                  <SelectValue placeholder="Any Length" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs"
+                      >Any Length</SelectItem
+                    >
+                    <SelectItem
+                      v-for="val in characterFacets?.hair_length?.values || []"
+                      :key="val.value"
+                      :value="val.value"
+                      class="text-xs"
+                    >
+                      {{ val.label }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- Eye Color -->
+            <div class="flex min-w-37.5 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Eyes:</span
+              >
+              <Select v-model="selectedEyeColor">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
+                >
+                  <SelectValue placeholder="Any Color" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs"
+                      >Any Color</SelectItem
+                    >
+                    <SelectItem
+                      v-for="val in characterFacets?.eye_color?.values || []"
+                      :key="val.value"
+                      :value="val.value"
+                      class="text-xs"
+                    >
+                      {{ val.label }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- LoRA Only Switch -->
+            <div class="ml-auto flex items-center gap-2">
+              <Switch
+                id="loras-switch"
+                :checked="filterLorasOnly"
+                @update:checked="(val: boolean) => (filterLorasOnly = val)"
+              />
+              <label
+                for="loras-switch"
+                class="text-foreground flex cursor-pointer items-center gap-1 text-xs font-medium"
+              >
+                <Layers class="h-3.5 w-3.5 text-purple-400" />
+                <span>LoRA Only</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Artist Filters -->
+          <div
+            v-else-if="activeTab === 'artists'"
+            class="flex flex-wrap items-center gap-3"
+          >
+            <!-- Score Bucket -->
+            <div class="flex min-w-40 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Classifier Score:</span
+              >
+              <Select v-model="selectedScoreBucket">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-45 text-xs"
+                >
+                  <SelectValue placeholder="All Scores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs"
+                      >All Scores</SelectItem
+                    >
+                    <SelectItem value="5" class="text-xs"
+                      >50% and up</SelectItem
+                    >
+                    <SelectItem value="4" class="text-xs">40% – 50%</SelectItem>
+                    <SelectItem value="3" class="text-xs">30% – 40%</SelectItem>
+                    <SelectItem value="2" class="text-xs">20% – 30%</SelectItem>
+                    <SelectItem value="1" class="text-xs">Under 20%</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- Category -->
+            <div class="flex min-w-45 items-center gap-1.5">
+              <span class="text-muted-foreground text-xs whitespace-nowrap"
+                >Category:</span
+              >
+              <Select v-model="selectedArtistCategory">
+                <SelectTrigger
+                  class="bg-background/80 border-border/60 h-8 w-full max-w-50 text-xs"
+                >
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem value="all" class="text-xs"
+                      >All Categories</SelectItem
+                    >
+                    <SelectItem
+                      v-for="val in artistFacets?.category?.values || []"
+                      :key="val.value"
+                      :value="val.value"
+                      class="text-xs"
+                    >
+                      {{ val.label }} ({{ val.count }})
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <!-- Active Filter Pills & Reset Button -->
+          <div
+            v-if="activeFilterCount > 0"
+            class="border-border/30 flex items-center justify-between gap-2 border-t pt-1"
+          >
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-muted-foreground text-xs">Active filters:</span>
+
+              <Badge
+                v-if="selectedSeries !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Series: {{ selectedSeries }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedSeries = 'all'"
+                />
+              </Badge>
+
+              <Badge
+                v-if="selectedGender !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Gender: {{ selectedGender }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedGender = 'all'"
+                />
+              </Badge>
+
+              <Badge
+                v-if="selectedHairColor !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Hair: {{ selectedHairColor }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedHairColor = 'all'"
+                />
+              </Badge>
+
+              <Badge
+                v-if="selectedHairLength !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Length: {{ selectedHairLength }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedHairLength = 'all'"
+                />
+              </Badge>
+
+              <Badge
+                v-if="selectedEyeColor !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Eyes: {{ selectedEyeColor }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedEyeColor = 'all'"
+                />
+              </Badge>
+
+              <Badge
+                v-if="filterLorasOnly"
+                variant="secondary"
+                class="h-6 gap-1 bg-purple-500/20 text-xs font-normal text-purple-300"
+              >
+                <span>Has LoRA</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="filterLorasOnly = false"
+                />
+              </Badge>
+
+              <Badge
+                v-if="selectedScoreBucket !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Score: {{ selectedScoreBucket }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedScoreBucket = 'all'"
+                />
+              </Badge>
+
+              <Badge
+                v-if="selectedArtistCategory !== 'all'"
+                variant="secondary"
+                class="h-6 gap-1 text-xs font-normal"
+              >
+                <span>Category: {{ selectedArtistCategory }}</span>
+                <X
+                  class="h-3 w-3 cursor-pointer"
+                  @click="selectedArtistCategory = 'all'"
+                />
               </Badge>
             </div>
-            <p class="text-muted-foreground text-xs">
-              Explore anime character triggers, artist style tags, and series
-              metadata
-            </p>
-          </div>
-        </div>
 
-        <!-- Mode Tab Shortcuts -->
-        <div class="flex items-center gap-1">
-          <button
-            v-for="tab in TAB_SHORTCUTS"
-            :key="tab.value"
-            type="button"
-            class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-            :class="
-              activeTab === tab.value
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-            "
-            @click="handleTabChange(tab.value)"
-          >
-            {{ tab.label }}
-          </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="text-muted-foreground hover:text-foreground h-6 cursor-pointer gap-1 px-2 text-xs"
+              @click="resetAllFilters"
+            >
+              <RotateCcw class="h-3 w-3" />
+              <span>Reset All</span>
+            </Button>
+          </div>
         </div>
       </div>
-
-      <!-- Search Controls Bar -->
-      <form
-        class="flex flex-wrap items-center gap-2.5"
-        @submit.prevent="performSearch(true)"
-      >
-        <!-- Search Input -->
-        <div class="relative min-w-64 flex-1">
-          <Search
-            class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
-          />
-          <Input
-            v-model="searchQuery"
-            type="text"
-            :placeholder="
-              activeTab === 'characters'
-                ? 'Search characters or tags'
-                : activeTab === 'artists'
-                  ? 'Search artists'
-                  : 'Search series / copyright franchise'
-            "
-            class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 text-xs transition-colors"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button
-            v-if="searchQuery"
-            type="button"
-            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer p-0.5"
-            @click="clearSearch"
-          >
-            <X class="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <!-- Sort Selection -->
-        <Select v-if="activeTab === 'characters'" v-model="characterSort">
-          <SelectTrigger class="bg-secondary/80 h-9 w-36 text-xs font-medium">
-            <SelectValue placeholder="Sort" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem value="count" class="text-xs"
-                >Most Popular</SelectItem
-              >
-              <SelectItem value="az" class="text-xs">A to Z</SelectItem>
-              <SelectItem value="random" class="text-xs">Random</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        <Select v-else-if="activeTab === 'artists'" v-model="artistSort">
-          <SelectTrigger class="bg-secondary/80 h-9 w-36 text-xs font-medium">
-            <SelectValue placeholder="Sort" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem value="count" class="text-xs"
-                >Most Popular</SelectItem
-              >
-              <SelectItem value="score" class="text-xs"
-                >Highest Score</SelectItem
-              >
-              <SelectItem value="az" class="text-xs">A to Z</SelectItem>
-              <SelectItem value="random" class="text-xs">Random</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        <Select v-else v-model="copyrightSort">
-          <SelectTrigger class="bg-secondary/80 h-9 w-36 text-xs font-medium">
-            <SelectValue placeholder="Sort" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem value="count" class="text-xs"
-                >Most Popular</SelectItem
-              >
-              <SelectItem value="az" class="text-xs">A to Z</SelectItem>
-              <SelectItem value="random" class="text-xs">Random</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        <!-- Re-roll Random Seed Button -->
-        <Button
-          v-if="
-            (activeTab === 'characters' && characterSort === 'random') ||
-            (activeTab === 'artists' && artistSort === 'random') ||
-            (activeTab === 'copyrights' && copyrightSort === 'random')
-          "
-          type="button"
-          variant="outline"
-          size="sm"
-          class="h-9 cursor-pointer gap-1.5 px-3 text-xs"
-          title="Roll new random seed"
-          @click="rerollSeed"
-        >
-          <Dices class="h-3.5 w-3.5" />
-          <span>Re-roll</span>
-        </Button>
-
-        <!-- Filter Toggle Button -->
-        <Button
-          v-if="activeTab !== 'copyrights'"
-          type="button"
-          variant="outline"
-          size="sm"
-          class="h-9 cursor-pointer gap-1.5 px-3 text-xs"
-          :class="{
-            'bg-primary/10 text-primary border-primary/30': isFiltersExpanded
-          }"
-          @click="isFiltersExpanded = !isFiltersExpanded"
-        >
-          <Filter class="h-3.5 w-3.5" />
-          <span>Filters</span>
-          <Badge
-            v-if="activeFilterCount > 0"
-            variant="default"
-            class="h-4 min-w-4 rounded-full px-1 text-xs font-semibold"
-          >
-            {{ activeFilterCount }}
-          </Badge>
-        </Button>
-
-        <!-- Search Submit Button -->
-        <Button
-          type="submit"
-          size="sm"
-          class="bg-primary text-primary-foreground hover:bg-primary/90 h-9 cursor-pointer px-4 text-xs font-semibold shadow-xs"
-          :disabled="isLoading"
-        >
-          <Loader2
-            v-if="isLoading && !hasItems"
-            class="h-3.5 w-3.5 animate-spin"
-          />
-          <Search v-else class="h-3.5 w-3.5" />
-          <span>Search</span>
-        </Button>
-      </form>
-
-      <!-- Expandable Filters Row -->
-      <div
-        v-if="isFiltersExpanded && activeTab !== 'copyrights'"
-        class="border-border/50 bg-muted/20 flex flex-col gap-3 rounded-xl border p-3"
-      >
-        <!-- Character Filters -->
-        <div
-          v-if="activeTab === 'characters'"
-          class="flex flex-wrap items-center gap-2.5"
-        >
-          <!-- Series -->
-          <div class="flex min-w-40 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Series:</span
-            >
-            <Select v-model="selectedSeries">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-50 text-xs"
-              >
-                <SelectValue placeholder="All Series" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs"
-                    >All Series</SelectItem
-                  >
-                  <SelectItem
-                    v-for="val in characterFacets?.copyright?.values || []"
-                    :key="val.value"
-                    :value="val.value"
-                    class="text-xs"
-                  >
-                    {{ val.label }} ({{ val.count }})
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Gender -->
-          <div class="flex min-w-35 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Gender:</span
-            >
-            <Select v-model="selectedGender">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-              >
-                <SelectValue placeholder="All Genders" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs">All</SelectItem>
-                  <SelectItem value="1girl" class="text-xs"
-                    >Female (1girl)</SelectItem
-                  >
-                  <SelectItem value="1boy" class="text-xs"
-                    >Male (1boy)</SelectItem
-                  >
-                  <SelectItem value="1other" class="text-xs"
-                    >Ambiguous</SelectItem
-                  >
-                  <SelectItem value="no humans" class="text-xs"
-                    >Non-Human</SelectItem
-                  >
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Hair Color -->
-          <div class="flex min-w-37.5 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Hair:</span
-            >
-            <Select v-model="selectedHairColor">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-              >
-                <SelectValue placeholder="Any Color" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs">Any Color</SelectItem>
-                  <SelectItem
-                    v-for="val in characterFacets?.hair_color?.values || []"
-                    :key="val.value"
-                    :value="val.value"
-                    class="text-xs"
-                  >
-                    {{ val.label }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Hair Length -->
-          <div class="flex min-w-37.5 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Length:</span
-            >
-            <Select v-model="selectedHairLength">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-              >
-                <SelectValue placeholder="Any Length" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs"
-                    >Any Length</SelectItem
-                  >
-                  <SelectItem
-                    v-for="val in characterFacets?.hair_length?.values || []"
-                    :key="val.value"
-                    :value="val.value"
-                    class="text-xs"
-                  >
-                    {{ val.label }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Eye Color -->
-          <div class="flex min-w-37.5 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Eyes:</span
-            >
-            <Select v-model="selectedEyeColor">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-37.5 text-xs"
-              >
-                <SelectValue placeholder="Any Color" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs">Any Color</SelectItem>
-                  <SelectItem
-                    v-for="val in characterFacets?.eye_color?.values || []"
-                    :key="val.value"
-                    :value="val.value"
-                    class="text-xs"
-                  >
-                    {{ val.label }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- LoRA Only Switch -->
-          <div class="ml-auto flex items-center gap-2">
-            <Switch
-              id="loras-switch"
-              :checked="filterLorasOnly"
-              @update:checked="(val: boolean) => (filterLorasOnly = val)"
-            />
-            <label
-              for="loras-switch"
-              class="text-foreground flex cursor-pointer items-center gap-1 text-xs font-medium"
-            >
-              <Layers class="h-3.5 w-3.5 text-purple-400" />
-              <span>LoRA Only</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Artist Filters -->
-        <div
-          v-else-if="activeTab === 'artists'"
-          class="flex flex-wrap items-center gap-3"
-        >
-          <!-- Score Bucket -->
-          <div class="flex min-w-40 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Classifier Score:</span
-            >
-            <Select v-model="selectedScoreBucket">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-45 text-xs"
-              >
-                <SelectValue placeholder="All Scores" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs"
-                    >All Scores</SelectItem
-                  >
-                  <SelectItem value="5" class="text-xs">50% and up</SelectItem>
-                  <SelectItem value="4" class="text-xs">40% – 50%</SelectItem>
-                  <SelectItem value="3" class="text-xs">30% – 40%</SelectItem>
-                  <SelectItem value="2" class="text-xs">20% – 30%</SelectItem>
-                  <SelectItem value="1" class="text-xs">Under 20%</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <!-- Category -->
-          <div class="flex min-w-45 items-center gap-1.5">
-            <span class="text-muted-foreground text-xs whitespace-nowrap"
-              >Category:</span
-            >
-            <Select v-model="selectedArtistCategory">
-              <SelectTrigger
-                class="bg-background/80 border-border/60 h-8 w-full max-w-50 text-xs"
-              >
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all" class="text-xs"
-                    >All Categories</SelectItem
-                  >
-                  <SelectItem
-                    v-for="val in artistFacets?.category?.values || []"
-                    :key="val.value"
-                    :value="val.value"
-                    class="text-xs"
-                  >
-                    {{ val.label }} ({{ val.count }})
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <!-- Active Filter Pills & Reset Button -->
-        <div
-          v-if="activeFilterCount > 0"
-          class="border-border/30 flex items-center justify-between gap-2 border-t pt-1"
-        >
-          <div class="flex flex-wrap items-center gap-1.5">
-            <span class="text-muted-foreground text-xs">Active filters:</span>
-
-            <Badge
-              v-if="selectedSeries !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Series: {{ selectedSeries }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedSeries = 'all'"
-              />
-            </Badge>
-
-            <Badge
-              v-if="selectedGender !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Gender: {{ selectedGender }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedGender = 'all'"
-              />
-            </Badge>
-
-            <Badge
-              v-if="selectedHairColor !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Hair: {{ selectedHairColor }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedHairColor = 'all'"
-              />
-            </Badge>
-
-            <Badge
-              v-if="selectedHairLength !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Length: {{ selectedHairLength }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedHairLength = 'all'"
-              />
-            </Badge>
-
-            <Badge
-              v-if="selectedEyeColor !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Eyes: {{ selectedEyeColor }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedEyeColor = 'all'"
-              />
-            </Badge>
-
-            <Badge
-              v-if="filterLorasOnly"
-              variant="secondary"
-              class="h-6 gap-1 bg-purple-500/20 text-xs font-normal text-purple-300"
-            >
-              <span>Has LoRA</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="filterLorasOnly = false"
-              />
-            </Badge>
-
-            <Badge
-              v-if="selectedScoreBucket !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Score: {{ selectedScoreBucket }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedScoreBucket = 'all'"
-              />
-            </Badge>
-
-            <Badge
-              v-if="selectedArtistCategory !== 'all'"
-              variant="secondary"
-              class="h-6 gap-1 text-xs font-normal"
-            >
-              <span>Category: {{ selectedArtistCategory }}</span>
-              <X
-                class="h-3 w-3 cursor-pointer"
-                @click="selectedArtistCategory = 'all'"
-              />
-            </Badge>
-          </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            class="text-muted-foreground hover:text-foreground h-6 cursor-pointer gap-1 px-2 text-xs"
-            @click="resetAllFilters"
-          >
-            <RotateCcw class="h-3 w-3" />
-            <span>Reset All</span>
-          </Button>
-        </div>
-      </div>
-    </header>
+    </template>
 
     <!-- Main Content Viewport with Infinite Scroll & TanStack Virtualizer -->
     <main
@@ -1046,23 +1042,23 @@ watch(
       @scroll.passive="handleScroll"
     >
       <!-- Error Message Banner -->
-      <div
+      <NoticeBanner
         v-if="errorMessage && !hasItems"
-        class="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center justify-between rounded-lg border px-4 py-3 text-xs shadow-xs"
+        tone="destructive"
+        class="mb-4 shadow-xs"
       >
-        <div class="flex items-center gap-3">
-          <AlertCircle class="h-4 w-4 shrink-0" />
-          <span>{{ errorMessage }}</span>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          class="border-destructive/40 hover:bg-destructive/10 h-7 cursor-pointer text-xs"
-          @click="performSearch(true)"
-        >
-          Retry
-        </Button>
-      </div>
+        <span>{{ errorMessage }}</span>
+        <template #actions>
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-destructive/40 hover:bg-destructive/10 h-7 cursor-pointer text-xs"
+            @click="performSearch(true)"
+          >
+            Retry
+          </Button>
+        </template>
+      </NoticeBanner>
 
       <!-- Initial Loading Skeleton Grid -->
       <div
@@ -1159,20 +1155,20 @@ watch(
         <span class="ml-2 text-xs">Loading more...</span>
       </div>
     </main>
+  </PageLayout>
 
-    <!-- Detail Dialog -->
-    <AnimadexDetailDialog
-      v-model:open="isDetailOpen"
-      :item="selectedDetailItem"
-      :type="
-        activeTab === 'characters'
-          ? 'character'
-          : activeTab === 'artists'
-            ? 'artist'
-            : 'copyright'
-      "
-      @filter-by-copyright="filterBySeriesFromDetail"
-      @filter-by-tag="filterByTagFromDetail"
-    />
-  </div>
+  <!-- Detail Dialog -->
+  <AnimadexDetailDialog
+    v-model:open="isDetailOpen"
+    :item="selectedDetailItem"
+    :type="
+      activeTab === 'characters'
+        ? 'character'
+        : activeTab === 'artists'
+          ? 'artist'
+          : 'copyright'
+    "
+    @filter-by-copyright="filterBySeriesFromDetail"
+    @filter-by-tag="filterByTagFromDetail"
+  />
 </template>

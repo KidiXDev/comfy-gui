@@ -37,6 +37,8 @@ import ImageDropzone from '@/components/common/ImageDropzone.vue';
 import ImageMetadataBar from '@/components/common/ImageMetadataBar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import NoticeBanner from '@/components/layout/NoticeBanner.vue';
+import StatusDot from '@/components/layout/StatusDot.vue';
 import { useImageTransferStore } from '@/stores/imageTransferStore';
 import { formatFileSize } from '@/utils/formatters';
 import { Progress } from '@/components/ui/progress';
@@ -512,35 +514,21 @@ onUnmounted(() => {
           <span>Face Detailer Studio</span>
         </div>
 
-        <Badge
-          variant="outline"
-          :class="
-            !comfyStore.isConnected
-              ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-              : comfyStore.isFaceDetailerAvailable
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+        <StatusDot
+          :tone="
+            comfyStore.isConnected && comfyStore.isFaceDetailerAvailable
+              ? 'emerald'
+              : 'amber'
           "
-          class="text-xs font-medium"
-        >
-          <span
-            class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
-            :class="
-              !comfyStore.isConnected
-                ? 'bg-amber-400'
-                : comfyStore.isFaceDetailerAvailable
-                  ? 'animate-pulse bg-emerald-400'
-                  : 'bg-amber-400'
-            "
-          />
-          {{
+          :pulse="comfyStore.isConnected && comfyStore.isFaceDetailerAvailable"
+          :label="
             !comfyStore.isConnected
               ? 'ComfyUI Offline'
               : comfyStore.isFaceDetailerAvailable
                 ? 'Impact Ready'
                 : 'Impact Unavailable'
-          }}
-        </Badge>
+          "
+        />
 
         <Button
           variant="ghost"
@@ -1226,27 +1214,23 @@ onUnmounted(() => {
     </ResizablePanelGroup>
 
     <!-- Offline Connection Warning Toast -->
-    <div
-      v-if="!comfyStore.isConnected"
-      class="mx-3 mb-2 flex shrink-0 items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-300 shadow-xs"
-    >
-      <div class="flex items-center gap-2">
-        <AlertCircle class="h-4 w-4 shrink-0 text-amber-400" />
-        <span>
-          ComfyUI server is offline. Start the server from the launcher or
-          titlebar to run face detailer jobs.
-        </span>
-      </div>
-      <Button
-        size="sm"
-        variant="outline"
-        class="h-6.5 border-amber-500/40 text-xs text-amber-300 hover:bg-amber-500/20"
-        @click="comfyStore.fetchDiscovery()"
-      >
-        <RefreshCw class="mr-1 h-3 w-3" />
-        Reconnect
-      </Button>
-    </div>
+    <NoticeBanner v-if="!comfyStore.isConnected" class="mx-3 mb-2 shadow-xs">
+      <span>
+        ComfyUI server is offline. Start the server from the launcher or
+        titlebar to run face detailer jobs.
+      </span>
+      <template #actions>
+        <Button
+          size="sm"
+          variant="outline"
+          class="h-6.5 border-amber-500/40 text-xs text-amber-300 hover:bg-amber-500/20"
+          @click="comfyStore.fetchDiscovery()"
+        >
+          <RefreshCw class="mr-1 h-3 w-3" />
+          Reconnect
+        </Button>
+      </template>
+    </NoticeBanner>
 
     <!-- Fullscreen Lightbox Inspector Modal -->
     <ImageLightboxModal

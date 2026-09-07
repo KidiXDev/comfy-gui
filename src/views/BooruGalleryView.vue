@@ -32,6 +32,8 @@ import {
 import { toast } from 'vue-sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import NoticeBanner from '@/components/layout/NoticeBanner.vue';
+import PageLayout from '@/components/layout/PageLayout.vue';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -1095,285 +1097,273 @@ onUnmounted(deactivateView);
 </script>
 
 <template>
-  <div class="bg-background flex h-full flex-col overflow-hidden select-none">
-    <!-- Top Header & Search Bar -->
-    <header
-      class="border-border/80 bg-card/70 relative z-20 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
-    >
-      <div class="flex items-center justify-between gap-4">
-        <!-- Title & Stats -->
-        <div class="flex items-center gap-3">
-          <div
-            class="border-primary/30 bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs"
-          >
-            <ImageIcon class="h-4 w-4" />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-xs font-bold tracking-wider uppercase">
-                Booru Gallery
-              </h1>
-            </div>
-            <p class="text-muted-foreground text-xs">
-              Explore Danbooru, Gelbooru, Safebooru, and AI TAG inspirations
-            </p>
-          </div>
-        </div>
-      </div>
+  <PageLayout
+    title="Booru Gallery"
+    subtitle="Explore Danbooru, Gelbooru, Safebooru, and AI TAG inspirations"
+    content-class="flex flex-col overflow-hidden p-0"
+  >
+    <template #icon>
+      <ImageIcon class="h-4 w-4" />
+    </template>
 
-      <!-- Search Controls Bar -->
-      <form
-        class="flex flex-wrap items-center gap-2.5"
-        @submit.prevent="runSearch(true)"
+    <template #below-header>
+      <div
+        class="border-border/80 bg-card/70 relative z-20 shrink-0 border-b px-5 py-3.5 backdrop-blur-md"
       >
-        <!-- Source Selector -->
-        <Select
-          :model-value="selectedSource"
-          :disabled="!sources.length || isLoading"
-          @update:model-value="changeSource(String($event))"
+        <!-- Search Controls Bar -->
+        <form
+          class="flex flex-wrap items-center gap-2.5"
+          @submit.prevent="runSearch(true)"
         >
-          <SelectTrigger class="bg-secondary/80 h-9 w-38 text-xs font-medium">
-            <SelectValue placeholder="Source">
-              {{ activeSource?.displayName || 'Source' }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem
-                v-for="source in sources"
-                :key="source.source"
-                :value="source.source"
-              >
-                {{ source.displayName }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        <!-- Search Input with Enhanced Autocomplete Dropdown -->
-        <div class="relative min-w-64 flex-1">
-          <Search
-            class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
-          />
-          <Input
-            ref="searchInputRef"
-            v-model="query"
-            class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 font-mono text-xs transition-colors"
-            placeholder="Search tags (e.g. 1girl, blue_hair, masterpiece)"
-            :disabled="!sources.length"
-            autocomplete="off"
-            spellcheck="false"
-            @input="handleSearchInput"
-            @click="updateSearchCursor"
-            @keyup="updateSearchCursor"
-            @select="updateSearchCursor"
-            @keydown="handleSearchKeydown"
-            @blur="handleSearchBlur"
-          />
-          <button
-            v-if="query"
-            type="button"
-            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
-            @click="clearQuery"
+          <!-- Source Selector -->
+          <Select
+            :model-value="selectedSource"
+            :disabled="!sources.length || isLoading"
+            @update:model-value="changeSource(String($event))"
           >
-            <X class="h-3.5 w-3.5" />
-          </button>
+            <SelectTrigger class="bg-secondary/80 h-9 w-38 text-xs font-medium">
+              <SelectValue placeholder="Source">
+                {{ activeSource?.displayName || 'Source' }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-40 overflow-y-auto">
+                <SelectItem
+                  v-for="source in sources"
+                  :key="source.source"
+                  :value="source.source"
+                >
+                  {{ source.displayName }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
 
-          <!-- Autocomplete Floating Dropdown Menu -->
-          <div
-            v-if="isAutocompleteOpen && autocompleteSuggestions.length > 0"
-            role="listbox"
-            class="border-border/80 bg-popover/95 absolute top-full left-0 z-50 mt-1.5 max-h-64 w-full overflow-hidden rounded-xl border shadow-xl backdrop-blur-md"
-          >
-            <!-- Header bar with search hint and suggestion count -->
-            <div
-              class="border-border/60 bg-muted/40 flex items-center justify-between border-b px-3 py-1.5 text-xs select-none"
+          <!-- Search Input with Enhanced Autocomplete Dropdown -->
+          <div class="relative min-w-64 flex-1">
+            <Search
+              class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+            />
+            <Input
+              ref="searchInputRef"
+              v-model="query"
+              class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 font-mono text-xs transition-colors"
+              placeholder="Search tags (e.g. 1girl, blue_hair, masterpiece)"
+              :disabled="!sources.length"
+              autocomplete="off"
+              spellcheck="false"
+              @input="handleSearchInput"
+              @click="updateSearchCursor"
+              @keyup="updateSearchCursor"
+              @select="updateSearchCursor"
+              @keydown="handleSearchKeydown"
+              @blur="handleSearchBlur"
+            />
+            <button
+              v-if="query"
+              type="button"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
+              @click="clearQuery"
             >
-              <div class="text-muted-foreground flex items-center gap-1.5">
-                <Sparkles class="h-3 w-3 text-amber-400" />
-                <span class="font-medium"
-                  >Suggestions for
-                  <span class="text-foreground font-mono font-semibold"
-                    >"{{ activeQueryToken }}"</span
-                  ></span
+              <X class="h-3.5 w-3.5" />
+            </button>
+
+            <!-- Autocomplete Floating Dropdown Menu -->
+            <div
+              v-if="isAutocompleteOpen && autocompleteSuggestions.length > 0"
+              role="listbox"
+              class="border-border/80 bg-popover/95 absolute top-full left-0 z-50 mt-1.5 max-h-64 w-full overflow-hidden rounded-xl border shadow-xl backdrop-blur-md"
+            >
+              <!-- Header bar with search hint and suggestion count -->
+              <div
+                class="border-border/60 bg-muted/40 flex items-center justify-between border-b px-3 py-1.5 text-xs select-none"
+              >
+                <div class="text-muted-foreground flex items-center gap-1.5">
+                  <Sparkles class="h-3 w-3 text-amber-400" />
+                  <span class="font-medium"
+                    >Suggestions for
+                    <span class="text-foreground font-mono font-semibold"
+                      >"{{ activeQueryToken }}"</span
+                    ></span
+                  >
+                </div>
+                <span class="text-muted-foreground font-mono text-[10px]"
+                  >{{ autocompleteSuggestions.length }} results</span
                 >
               </div>
-              <span class="text-muted-foreground font-mono text-[10px]"
-                >{{ autocompleteSuggestions.length }} results</span
-              >
-            </div>
 
-            <!-- Scrollable Suggestions List -->
-            <div class="max-h-48 overflow-y-auto p-1">
-              <button
-                v-for="(item, index) in autocompleteSuggestions"
-                :key="`${item.label}-${item.category}`"
-                :ref="
-                  (el) => {
-                    if (index === activeAutocompleteIndex)
-                      activeItemRef = el as HTMLElement;
-                  }
-                "
-                type="button"
-                role="option"
-                :aria-selected="index === activeAutocompleteIndex"
-                class="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left font-mono text-xs transition-colors"
-                :class="
-                  index === activeAutocompleteIndex
-                    ? 'bg-accent text-accent-foreground shadow-xs'
-                    : 'text-foreground/90 hover:bg-accent/60'
-                "
-                @mousedown.prevent
-                @click="selectSuggestion(item)"
-              >
-                <!-- Matched Highlight Label -->
-                <div class="flex min-w-0 items-center gap-2">
-                  <span class="truncate">
-                    <template
-                      v-for="(part, i) in highlightMatch(
-                        item.label,
-                        activeQueryToken
-                      )"
-                      :key="i"
-                    >
-                      <span
-                        v-if="part.isMatch"
-                        class="text-primary decoration-primary/40 font-bold underline"
-                        >{{ part.text }}</span
+              <!-- Scrollable Suggestions List -->
+              <div class="max-h-48 overflow-y-auto p-1">
+                <button
+                  v-for="(item, index) in autocompleteSuggestions"
+                  :key="`${item.label}-${item.category}`"
+                  :ref="
+                    (el) => {
+                      if (index === activeAutocompleteIndex)
+                        activeItemRef = el as HTMLElement;
+                    }
+                  "
+                  type="button"
+                  role="option"
+                  :aria-selected="index === activeAutocompleteIndex"
+                  class="flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left font-mono text-xs transition-colors"
+                  :class="
+                    index === activeAutocompleteIndex
+                      ? 'bg-accent text-accent-foreground shadow-xs'
+                      : 'text-foreground/90 hover:bg-accent/60'
+                  "
+                  @mousedown.prevent
+                  @click="selectSuggestion(item)"
+                >
+                  <!-- Matched Highlight Label -->
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span class="truncate">
+                      <template
+                        v-for="(part, i) in highlightMatch(
+                          item.label,
+                          activeQueryToken
+                        )"
+                        :key="i"
                       >
-                      <span v-else>{{ part.text }}</span>
-                    </template>
-                  </span>
-                </div>
+                        <span
+                          v-if="part.isMatch"
+                          class="text-primary decoration-primary/40 font-bold underline"
+                          >{{ part.text }}</span
+                        >
+                        <span v-else>{{ part.text }}</span>
+                      </template>
+                    </span>
+                  </div>
 
-                <!-- Category Pill & Post Count -->
-                <div class="ml-3 flex shrink-0 items-center gap-1.5">
-                  <span
-                    v-if="item.postCount"
-                    class="text-muted-foreground font-mono text-[10px]"
-                  >
-                    {{ formatPostCount(item.postCount) }}
-                  </span>
-                  <span
-                    class="py-0.2 rounded-full border px-1.5 font-mono text-[10px] font-medium capitalize"
-                    :class="item.categoryClass"
-                  >
-                    {{ item.categoryName }}
-                  </span>
-                </div>
-              </button>
-            </div>
+                  <!-- Category Pill & Post Count -->
+                  <div class="ml-3 flex shrink-0 items-center gap-1.5">
+                    <span
+                      v-if="item.postCount"
+                      class="text-muted-foreground font-mono text-[10px]"
+                    >
+                      {{ formatPostCount(item.postCount) }}
+                    </span>
+                    <span
+                      class="py-0.2 rounded-full border px-1.5 font-mono text-[10px] font-medium capitalize"
+                      :class="item.categoryClass"
+                    >
+                      {{ item.categoryName }}
+                    </span>
+                  </div>
+                </button>
+              </div>
 
-            <!-- Footer Keyboard Navigation Hint Bar -->
-            <div
-              class="border-border/50 bg-muted/20 text-muted-foreground flex items-center justify-between border-t px-2.5 py-1 font-mono text-[10px] select-none"
-            >
-              <div class="flex items-center gap-2">
+              <!-- Footer Keyboard Navigation Hint Bar -->
+              <div
+                class="border-border/50 bg-muted/20 text-muted-foreground flex items-center justify-between border-t px-2.5 py-1 font-mono text-[10px] select-none"
+              >
+                <div class="flex items-center gap-2">
+                  <span
+                    ><kbd
+                      class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
+                      >↑</kbd
+                    ><kbd
+                      class="border-border/80 bg-background/80 ml-0.5 rounded border px-1 py-0.5"
+                      >↓</kbd
+                    >
+                    navigate</span
+                  >
+                  <span
+                    ><kbd
+                      class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
+                      >↵</kbd
+                    >
+                    or
+                    <kbd
+                      class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
+                      >Tab</kbd
+                    >
+                    select</span
+                  >
+                </div>
                 <span
                   ><kbd
                     class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
-                    >↑</kbd
-                  ><kbd
-                    class="border-border/80 bg-background/80 ml-0.5 rounded border px-1 py-0.5"
-                    >↓</kbd
+                    >Esc</kbd
                   >
-                  navigate</span
-                >
-                <span
-                  ><kbd
-                    class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
-                    >↵</kbd
-                  >
-                  or
-                  <kbd
-                    class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
-                    >Tab</kbd
-                  >
-                  select</span
+                  close</span
                 >
               </div>
-              <span
-                ><kbd
-                  class="border-border/80 bg-background/80 rounded border px-1 py-0.5"
-                  >Esc</kbd
-                >
-                close</span
-              >
             </div>
           </div>
-        </div>
 
-        <!-- Sort Selector -->
-        <Select v-model="selectedSort" :disabled="!activeSource || isLoading">
-          <SelectTrigger class="bg-secondary/80 h-9 w-34 text-xs font-medium">
-            <SelectValue placeholder="Sort">
-              {{ formatSortLabel(selectedSort) }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem
-                v-for="sort in activeSource?.sortValues || []"
-                :key="sort"
-                :value="sort"
-              >
-                {{ formatSortLabel(sort) }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+          <!-- Sort Selector -->
+          <Select v-model="selectedSort" :disabled="!activeSource || isLoading">
+            <SelectTrigger class="bg-secondary/80 h-9 w-34 text-xs font-medium">
+              <SelectValue placeholder="Sort">
+                {{ formatSortLabel(selectedSort) }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-40 overflow-y-auto">
+                <SelectItem
+                  v-for="sort in activeSource?.sortValues || []"
+                  :key="sort"
+                  :value="sort"
+                >
+                  {{ formatSortLabel(sort) }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
 
-        <!-- Search Submit Button -->
-        <Button
-          type="submit"
-          size="sm"
-          class="bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-xs font-semibold shadow-xs"
-          :disabled="!sources.length || isLoading"
-        >
-          <Loader2
-            v-if="isLoading && posts.length === 0"
-            class="h-3.5 w-3.5 animate-spin"
-          />
-          <Search v-else class="h-3.5 w-3.5" />
-          <span>Search</span>
-        </Button>
-      </form>
-
-      <!-- Rating Filters -->
-      <div class="flex flex-wrap items-center gap-2 pt-0.5">
-        <div
-          v-if="activeSource?.ratings.length"
-          class="flex flex-wrap items-center gap-2"
-        >
-          <span class="text-muted-foreground text-xs font-medium">
-            Ratings:
-          </span>
-          <button
-            v-for="rating in activeSource.ratings"
-            :key="rating"
-            type="button"
-            class="flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium capitalize transition-all"
-            :class="
-              selectedRatings.includes(rating)
-                ? ratingColorClass(rating)
-                : 'border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground'
-            "
-            :aria-pressed="selectedRatings.includes(rating)"
-            @click="toggleRating(rating)"
+          <!-- Search Submit Button -->
+          <Button
+            type="submit"
+            size="sm"
+            class="bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-xs font-semibold shadow-xs"
+            :disabled="!sources.length || isLoading"
           >
-            <span
-              class="h-1.5 w-1.5 rounded-full"
+            <Loader2
+              v-if="isLoading && posts.length === 0"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Search v-else class="h-3.5 w-3.5" />
+            <span>Search</span>
+          </Button>
+        </form>
+
+        <!-- Rating Filters -->
+        <div class="flex flex-wrap items-center gap-2 pt-0.5">
+          <div
+            v-if="activeSource?.ratings.length"
+            class="flex flex-wrap items-center gap-2"
+          >
+            <span class="text-muted-foreground text-xs font-medium">
+              Ratings:
+            </span>
+            <button
+              v-for="rating in activeSource.ratings"
+              :key="rating"
+              type="button"
+              class="flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium capitalize transition-all"
               :class="
                 selectedRatings.includes(rating)
-                  ? 'bg-current shadow-xs'
-                  : 'bg-muted-foreground'
+                  ? ratingColorClass(rating)
+                  : 'border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground'
               "
-            />
-            <span>{{ rating }}</span>
-          </button>
+              :aria-pressed="selectedRatings.includes(rating)"
+              @click="toggleRating(rating)"
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :class="
+                  selectedRatings.includes(rating)
+                    ? 'bg-current shadow-xs'
+                    : 'bg-muted-foreground'
+                "
+              />
+              <span>{{ rating }}</span>
+            </button>
+          </div>
         </div>
       </div>
-    </header>
+    </template>
 
     <!-- Main Content Area (Virtualized Scroll Container) -->
     <main
@@ -1458,21 +1448,13 @@ onUnmounted(deactivateView);
       <!-- Loaded Virtualized Gallery Results -->
       <template v-else>
         <!-- Warnings / Soft Errors -->
-        <div
-          v-if="visibleWarnings.length"
-          class="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-300"
-        >
-          <AlertCircle class="h-4 w-4 shrink-0 text-amber-400" />
-          <span>{{ visibleWarnings.join(' ') }}</span>
-        </div>
+        <NoticeBanner v-if="visibleWarnings.length" class="mb-4">
+          {{ visibleWarnings.join(' ') }}
+        </NoticeBanner>
 
-        <div
-          v-if="errorMessage"
-          class="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-xs"
-        >
-          <AlertCircle class="h-4 w-4 shrink-0" />
-          <span>{{ errorMessage }}</span>
-        </div>
+        <NoticeBanner v-if="errorMessage" tone="destructive" class="mb-4">
+          {{ errorMessage }}
+        </NoticeBanner>
 
         <!-- TanStack Virtualized Responsive Grid -->
         <div
@@ -1685,576 +1667,572 @@ onUnmounted(deactivateView);
         </div>
       </template>
     </main>
+  </PageLayout>
 
-    <!-- Post Detail Dialog Modal -->
-    <Dialog v-model:open="detailOpen">
-      <DialogContent
-        class="bg-card/95 border-border/80 flex h-[90vh] w-full min-w-[80vw] flex-col overflow-hidden rounded-2xl p-0 backdrop-blur-md"
+  <!-- Post Detail Dialog Modal -->
+  <Dialog v-model:open="detailOpen">
+    <DialogContent
+      class="bg-card/95 border-border/80 flex h-[90vh] w-full min-w-[80vw] flex-col overflow-hidden rounded-2xl p-0 backdrop-blur-md"
+    >
+      <!-- Modal Header -->
+      <DialogHeader
+        class="border-border/80 flex shrink-0 flex-row items-center justify-between border-b px-5 py-3"
       >
-        <!-- Modal Header -->
-        <DialogHeader
-          class="border-border/80 flex shrink-0 flex-row items-center justify-between border-b px-5 py-3"
-        >
-          <div class="flex items-center gap-3">
-            <DialogTitle class="text-xs font-bold tracking-wider uppercase">
-              Booru Post Inspector
-            </DialogTitle>
-            <div
-              v-if="detail || detailActivePost"
-              class="flex items-center gap-2"
+        <div class="flex items-center gap-3">
+          <DialogTitle class="text-xs font-bold tracking-wider uppercase">
+            Booru Post Inspector
+          </DialogTitle>
+          <div
+            v-if="detail || detailActivePost"
+            class="flex items-center gap-2"
+          >
+            <Badge
+              variant="outline"
+              class="border-border font-mono text-xs uppercase"
             >
-              <Badge
-                variant="outline"
-                class="border-border font-mono text-xs uppercase"
-              >
+              {{ detail?.source || detailActivePost?.source }} #{{
+                detail?.postId || detailActivePost?.postId
+              }}
+            </Badge>
+            <Badge
+              variant="outline"
+              :class="
+                ratingColorClass(
+                  detail?.rating || detailActivePost?.rating || ''
+                )
+              "
+              class="font-mono text-xs capitalize"
+            >
+              {{ detail?.rating || detailActivePost?.rating }}
+            </Badge>
+            <span
+              v-if="detail?.width && detail?.height"
+              class="text-muted-foreground font-mono text-xs"
+            >
+              {{ detail.width }} × {{ detail.height }}
+            </span>
+            <Skeleton v-else-if="detailLoading" class="h-3.5 w-16" />
+          </div>
+        </div>
+      </DialogHeader>
+
+      <!-- Modal Body (2-Column Grid) -->
+      <div
+        class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-2"
+      >
+        <!-- Left: High-Res Image Viewport with Skeleton Preloader -->
+        <div
+          class="border-border/60 relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden border-r bg-black/60 p-4"
+        >
+          <!-- Image Loading Skeleton (Shown while downloading full image) -->
+          <div
+            v-if="!detailImageLoaded && !detailImageError"
+            class="bg-muted/10 absolute inset-0 flex flex-col items-center justify-center gap-3 p-6"
+          >
+            <div
+              class="border-border/60 bg-secondary/80 flex h-14 w-14 items-center justify-center rounded-2xl border shadow-lg"
+            >
+              <Loader2 class="text-primary h-7 w-7 animate-spin" />
+            </div>
+            <div class="flex flex-col items-center gap-1 text-center">
+              <span class="text-foreground text-xs font-semibold">
+                {{
+                  detailFallbackAttempted
+                    ? 'Loading preview thumbnail…'
+                    : 'Loading high-resolution preview…'
+                }}
+              </span>
+              <span class="text-muted-foreground font-mono text-[10px]">
                 {{ detail?.source || detailActivePost?.source }} #{{
                   detail?.postId || detailActivePost?.postId
                 }}
-              </Badge>
-              <Badge
-                variant="outline"
-                :class="
-                  ratingColorClass(
-                    detail?.rating || detailActivePost?.rating || ''
-                  )
-                "
-                class="font-mono text-xs capitalize"
-              >
-                {{ detail?.rating || detailActivePost?.rating }}
-              </Badge>
-              <span
-                v-if="detail?.width && detail?.height"
-                class="text-muted-foreground font-mono text-xs"
-              >
-                {{ detail.width }} × {{ detail.height }}
               </span>
-              <Skeleton v-else-if="detailLoading" class="h-3.5 w-16" />
             </div>
           </div>
-        </DialogHeader>
 
-        <!-- Modal Body (2-Column Grid) -->
-        <div
-          class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-2"
-        >
-          <!-- Left: High-Res Image Viewport with Skeleton Preloader -->
+          <!-- Image Load Error Fallback -->
           <div
-            class="border-border/60 relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden border-r bg-black/60 p-4"
+            v-else-if="detailImageError"
+            class="flex max-w-sm flex-col items-center justify-center gap-3 p-6 text-center text-xs"
           >
-            <!-- Image Loading Skeleton (Shown while downloading full image) -->
             <div
-              v-if="!detailImageLoaded && !detailImageError"
-              class="bg-muted/10 absolute inset-0 flex flex-col items-center justify-center gap-3 p-6"
+              class="border-destructive/30 bg-destructive/10 text-destructive flex h-12 w-12 items-center justify-center rounded-2xl border shadow-inner"
             >
-              <div
-                class="border-border/60 bg-secondary/80 flex h-14 w-14 items-center justify-center rounded-2xl border shadow-lg"
-              >
-                <Loader2 class="text-primary h-7 w-7 animate-spin" />
-              </div>
-              <div class="flex flex-col items-center gap-1 text-center">
-                <span class="text-foreground text-xs font-semibold">
-                  {{
-                    detailFallbackAttempted
-                      ? 'Loading preview thumbnail…'
-                      : 'Loading high-resolution preview…'
-                  }}
-                </span>
-                <span class="text-muted-foreground font-mono text-[10px]">
-                  {{ detail?.source || detailActivePost?.source }} #{{
-                    detail?.postId || detailActivePost?.postId
-                  }}
-                </span>
-              </div>
+              <AlertCircle class="h-6 w-6" />
             </div>
-
-            <!-- Image Load Error Fallback -->
-            <div
-              v-else-if="detailImageError"
-              class="flex max-w-sm flex-col items-center justify-center gap-3 p-6 text-center text-xs"
-            >
-              <div
-                class="border-destructive/30 bg-destructive/10 text-destructive flex h-12 w-12 items-center justify-center rounded-2xl border shadow-inner"
-              >
-                <AlertCircle class="h-6 w-6" />
-              </div>
-              <div class="space-y-1">
-                <h3 class="text-foreground text-xs font-semibold">
-                  Failed to load image preview
-                </h3>
-                <p class="text-muted-foreground text-[11px] leading-relaxed">
-                  The media provider for
-                  <span
-                    class="text-foreground font-mono font-medium capitalize"
-                    >{{ detail?.source || detailActivePost?.source }}</span
-                  >
-                  may restrict direct hotlinking.
-                </p>
-              </div>
-              <div
-                class="mt-1 flex flex-wrap items-center justify-center gap-2"
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  class="h-7 text-xs"
-                  @click="retryDetailImage"
+            <div class="space-y-1">
+              <h3 class="text-foreground text-xs font-semibold">
+                Failed to load image preview
+              </h3>
+              <p class="text-muted-foreground text-[11px] leading-relaxed">
+                The media provider for
+                <span
+                  class="text-foreground font-mono font-medium capitalize"
+                  >{{ detail?.source || detailActivePost?.source }}</span
                 >
-                  <RotateCw class="mr-1.5 h-3 w-3" />
-                  <span>Retry Image</span>
-                </Button>
-                <Button
-                  v-if="detail?.postUrl || detailActivePost?.postUrl"
-                  size="sm"
-                  variant="outline"
-                  class="h-7 text-xs"
-                  @click="
-                    openUrl(detail?.postUrl || detailActivePost?.postUrl || '')
-                  "
-                >
-                  <ExternalLink class="mr-1.5 h-3.5 w-3.5" />
-                  <span>Open original post</span>
-                </Button>
-              </div>
+                may restrict direct hotlinking.
+              </p>
             </div>
-
-            <!-- Image Display -->
-            <img
-              v-if="detailActiveImgUrl"
-              :src="detailActiveImgUrl"
-              :alt="`${detail?.source || detailActivePost?.source} post ${detail?.postId || detailActivePost?.postId}`"
-              class="h-full w-full rounded-lg object-contain shadow-2xl transition-opacity duration-300 select-none"
-              :class="detailImageLoaded ? 'opacity-100' : 'opacity-0'"
-              @load="detailImageLoaded = true"
-              @error="handleDetailImageError"
-            />
+            <div class="mt-1 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                class="h-7 text-xs"
+                @click="retryDetailImage"
+              >
+                <RotateCw class="mr-1.5 h-3 w-3" />
+                <span>Retry Image</span>
+              </Button>
+              <Button
+                v-if="detail?.postUrl || detailActivePost?.postUrl"
+                size="sm"
+                variant="outline"
+                class="h-7 text-xs"
+                @click="
+                  openUrl(detail?.postUrl || detailActivePost?.postUrl || '')
+                "
+              >
+                <ExternalLink class="mr-1.5 h-3.5 w-3.5" />
+                <span>Open original post</span>
+              </Button>
+            </div>
           </div>
 
-          <!-- Right: Metadata & Tag Inspector -->
-          <div class="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
-            <!-- Full Right Skeleton while detailLoading is true -->
-            <template v-if="detailLoading">
-              <!-- Action Buttons Skeleton -->
-              <div class="flex items-center gap-2">
-                <Skeleton class="h-8 flex-1 rounded-md" />
-                <Skeleton class="h-8 w-28 rounded-md" />
+          <!-- Image Display -->
+          <img
+            v-if="detailActiveImgUrl"
+            :src="detailActiveImgUrl"
+            :alt="`${detail?.source || detailActivePost?.source} post ${detail?.postId || detailActivePost?.postId}`"
+            class="h-full w-full rounded-lg object-contain shadow-2xl transition-opacity duration-300 select-none"
+            :class="detailImageLoaded ? 'opacity-100' : 'opacity-0'"
+            @load="detailImageLoaded = true"
+            @error="handleDetailImageError"
+          />
+        </div>
+
+        <!-- Right: Metadata & Tag Inspector -->
+        <div class="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
+          <!-- Full Right Skeleton while detailLoading is true -->
+          <template v-if="detailLoading">
+            <!-- Action Buttons Skeleton -->
+            <div class="flex items-center gap-2">
+              <Skeleton class="h-8 flex-1 rounded-md" />
+              <Skeleton class="h-8 w-28 rounded-md" />
+            </div>
+
+            <!-- Extracted Prompt Skeleton -->
+            <div
+              class="border-border/80 bg-secondary/30 flex flex-col gap-2.5 rounded-xl border p-3.5"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <Sparkles
+                    class="h-3.5 w-3.5 animate-pulse text-amber-400/40"
+                  />
+                  <Skeleton class="h-3 w-28" />
+                </div>
+                <Skeleton class="h-3 w-12" />
+              </div>
+              <div
+                class="border-border/50 bg-background/50 flex flex-col gap-2 rounded-lg border p-3"
+              >
+                <Skeleton class="h-3 w-full" />
+                <Skeleton class="h-3 w-5/6" />
+                <Skeleton class="h-3 w-4/6" />
+              </div>
+            </div>
+
+            <!-- Tags Cloud Skeleton -->
+            <div class="space-y-4 pt-1">
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <Skeleton class="h-3.5 w-20" />
+                  <Skeleton class="h-3 w-6" />
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <Skeleton class="h-6 w-16 rounded-md" />
+                  <Skeleton class="h-6 w-24 rounded-md" />
+                  <Skeleton class="h-6 w-20 rounded-md" />
+                  <Skeleton class="h-6 w-28 rounded-md" />
+                  <Skeleton class="h-6 w-14 rounded-md" />
+                </div>
               </div>
 
-              <!-- Extracted Prompt Skeleton -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <Skeleton class="h-3.5 w-24" />
+                  <Skeleton class="h-3 w-6" />
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <Skeleton class="h-6 w-20 rounded-md" />
+                  <Skeleton class="h-6 w-16 rounded-md" />
+                  <Skeleton class="h-6 w-28 rounded-md" />
+                  <Skeleton class="h-6 w-22 rounded-md" />
+                  <Skeleton class="h-6 w-18 rounded-md" />
+                  <Skeleton class="h-6 w-24 rounded-md" />
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Loaded Metadata & Tags View -->
+          <template v-else-if="detail">
+            <!-- Action Buttons -->
+            <div class="flex items-center gap-2">
+              <Button
+                size="sm"
+                class="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 text-xs font-semibold shadow-xs"
+                @click="copyPrompt"
+              >
+                <Check v-if="copiedPrompt" class="h-3.5 w-3.5" />
+                <Copy v-else class="h-3.5 w-3.5" />
+                <span>{{
+                  copiedPrompt
+                    ? 'Copied to Clipboard!'
+                    : 'Copy Extracted Prompt'
+                }}</span>
+              </Button>
+              <Button
+                v-if="characterTags.length > 0"
+                size="sm"
+                variant="outline"
+                class="border-primary/30 hover:bg-primary/10 text-primary gap-1.5 text-xs font-semibold"
+                @click="openCreateCharacterFromBooru"
+              >
+                <BookOpen class="h-3.5 w-3.5" />
+                <span>Save as Character</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                class="border-border bg-secondary hover:bg-accent text-xs font-medium"
+                @click="openUrl(detail.postUrl)"
+              >
+                <ExternalLink class="h-3.5 w-3.5" />
+                <span>Open Source</span>
+              </Button>
+            </div>
+
+            <!-- Extracted Prompt Box -->
+            <div
+              class="border-border/80 bg-secondary/30 flex flex-col gap-2 rounded-xl border p-3.5"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span
+                  class="text-muted-foreground flex items-center gap-1.5 text-xs font-bold tracking-wider uppercase"
+                >
+                  <Sparkles class="h-3.5 w-3.5 text-amber-400" />
+                  <span>Extracted Prompt</span>
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    class="h-6 cursor-pointer rounded border px-2 font-mono text-xs transition-colors select-none"
+                    :class="
+                      promptFormatOptions.replaceUnderscores
+                        ? 'border-primary/40 bg-primary/20 text-primary font-semibold shadow-2xs'
+                        : 'border-border/60 bg-background/50 text-muted-foreground hover:text-foreground'
+                    "
+                    title="Replace underscores with spaces in extracted prompt and tags"
+                    @click="
+                      promptFormatOptions.replaceUnderscores =
+                        !promptFormatOptions.replaceUnderscores
+                    "
+                  >
+                    _ &rarr; space
+                  </button>
+                  <button
+                    type="button"
+                    class="h-6 cursor-pointer rounded border px-2 font-mono text-xs transition-colors select-none"
+                    :class="
+                      promptFormatOptions.escapeParentheses
+                        ? 'border-primary/40 bg-primary/20 text-primary font-semibold shadow-2xs'
+                        : 'border-border/60 bg-background/50 text-muted-foreground hover:text-foreground'
+                    "
+                    title="Escape parentheses (\( \)) in extracted prompt and tags"
+                    @click="
+                      promptFormatOptions.escapeParentheses =
+                        !promptFormatOptions.escapeParentheses
+                    "
+                  >
+                    \( \)
+                  </button>
+                  <span class="text-muted-foreground ml-1 font-mono text-xs">
+                    {{ tagCountTotal }} tags
+                  </span>
+                </div>
+              </div>
+              <p
+                class="text-foreground border-border/50 bg-background/50 rounded-lg border p-3 font-mono text-xs leading-relaxed wrap-break-word select-text"
+              >
+                {{ prompt || 'No matching tags extracted from defaults.' }}
+              </p>
+            </div>
+
+            <!-- Categorized Tags Cloud -->
+            <div class="space-y-3.5 pb-2">
               <div
-                class="border-border/80 bg-secondary/30 flex flex-col gap-2.5 rounded-xl border p-3.5"
+                v-if="!tagCountTotal"
+                class="border-border/60 bg-muted/20 flex flex-col items-center justify-center gap-2 rounded-xl border p-6 text-center text-xs"
+              >
+                <Tag class="text-muted-foreground/40 h-6 w-6" />
+                <span class="text-muted-foreground font-medium">
+                  No categorized tags available for this post
+                </span>
+              </div>
+
+              <section
+                v-for="(tags, category) in detail.tags"
+                v-else
+                :key="category"
+                class="space-y-1.5"
               >
                 <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-1.5">
-                    <Sparkles
-                      class="h-3.5 w-3.5 animate-pulse text-amber-400/40"
-                    />
-                    <Skeleton class="h-3 w-28" />
-                  </div>
-                  <Skeleton class="h-3 w-12" />
-                </div>
-                <div
-                  class="border-border/50 bg-background/50 flex flex-col gap-2 rounded-lg border p-3"
-                >
-                  <Skeleton class="h-3 w-full" />
-                  <Skeleton class="h-3 w-5/6" />
-                  <Skeleton class="h-3 w-4/6" />
-                </div>
-              </div>
-
-              <!-- Tags Cloud Skeleton -->
-              <div class="space-y-4 pt-1">
-                <div class="space-y-2">
-                  <div class="flex items-center justify-between">
-                    <Skeleton class="h-3.5 w-20" />
-                    <Skeleton class="h-3 w-6" />
-                  </div>
-                  <div class="flex flex-wrap gap-1.5">
-                    <Skeleton class="h-6 w-16 rounded-md" />
-                    <Skeleton class="h-6 w-24 rounded-md" />
-                    <Skeleton class="h-6 w-20 rounded-md" />
-                    <Skeleton class="h-6 w-28 rounded-md" />
-                    <Skeleton class="h-6 w-14 rounded-md" />
-                  </div>
+                  <h3
+                    class="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold capitalize"
+                  >
+                    <Tag class="h-3 w-3" />
+                    <span>{{ category }}</span>
+                  </h3>
+                  <span class="text-muted-foreground font-mono text-xs">
+                    {{ tags.length }}
+                  </span>
                 </div>
 
-                <div class="space-y-2">
-                  <div class="flex items-center justify-between">
-                    <Skeleton class="h-3.5 w-24" />
-                    <Skeleton class="h-3 w-6" />
-                  </div>
-                  <div class="flex flex-wrap gap-1.5">
-                    <Skeleton class="h-6 w-20 rounded-md" />
-                    <Skeleton class="h-6 w-16 rounded-md" />
-                    <Skeleton class="h-6 w-28 rounded-md" />
-                    <Skeleton class="h-6 w-22 rounded-md" />
-                    <Skeleton class="h-6 w-18 rounded-md" />
-                    <Skeleton class="h-6 w-24 rounded-md" />
-                  </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="tag in tags"
+                    :key="tag"
+                    type="button"
+                    class="cursor-pointer rounded-md border px-2 py-0.5 font-mono text-xs transition-all select-text"
+                    :class="[
+                      categoryBadgeClass(category),
+                      copiedTag === tag ? 'ring-primary scale-105 ring-2' : ''
+                    ]"
+                    :title="`Click to copy: ${formatTag(tag)}`"
+                    @click="copyTag(tag)"
+                  >
+                    <span v-if="copiedTag === tag" class="font-bold"
+                      >✓ {{ formatTag(tag) }}</span
+                    >
+                    <span v-else>{{ formatTag(tag) }}</span>
+                  </button>
                 </div>
-              </div>
-            </template>
+              </section>
+            </div>
+          </template>
 
-            <!-- Loaded Metadata & Tags View -->
-            <template v-else-if="detail">
-              <!-- Action Buttons -->
+          <!-- Error / Empty State Fallback -->
+          <template v-else>
+            <div
+              class="border-destructive/30 bg-destructive/10 text-destructive flex flex-col gap-3 rounded-xl border p-4 text-xs"
+            >
               <div class="flex items-center gap-2">
+                <AlertCircle class="h-4 w-4 shrink-0" />
+                <span class="font-semibold"
+                  >Unable to load metadata & tags</span
+                >
+              </div>
+              <p class="text-muted-foreground text-xs leading-relaxed">
+                {{
+                  detailError ||
+                  'The source provider did not return tags or metadata for this post.'
+                }}
+              </p>
+              <div class="mt-1 flex items-center gap-2">
                 <Button
                   size="sm"
-                  class="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 text-xs font-semibold shadow-xs"
-                  @click="copyPrompt"
+                  variant="outline"
+                  class="h-7 text-xs"
+                  @click="detailActivePost && openDetail(detailActivePost)"
                 >
-                  <Check v-if="copiedPrompt" class="h-3.5 w-3.5" />
-                  <Copy v-else class="h-3.5 w-3.5" />
-                  <span>{{
-                    copiedPrompt
-                      ? 'Copied to Clipboard!'
-                      : 'Copy Extracted Prompt'
+                  <RotateCw class="mr-1.5 h-3 w-3" />
+                  <span>Retry Details</span>
+                </Button>
+                <Button
+                  v-if="detailActivePost?.postUrl"
+                  size="sm"
+                  variant="outline"
+                  class="h-7 text-xs"
+                  @click="openUrl(detailActivePost.postUrl)"
+                >
+                  <ExternalLink class="mr-1.5 h-3 w-3" />
+                  <span>Open in browser</span>
+                </Button>
+              </div>
+            </div>
+
+            <!-- Available Post Summary Info -->
+            <div
+              v-if="detailActivePost"
+              class="border-border/80 bg-secondary/30 flex flex-col gap-2.5 rounded-xl border p-3.5"
+            >
+              <span
+                class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+              >
+                Available Post Info
+              </span>
+              <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+                <div>
+                  <span class="text-muted-foreground">Source:</span>
+                  <span class="text-foreground ml-1.5 font-medium capitalize">{{
+                    detailActivePost.source
                   }}</span>
-                </Button>
-                <Button
-                  v-if="characterTags.length > 0"
-                  size="sm"
-                  variant="outline"
-                  class="border-primary/30 hover:bg-primary/10 text-primary gap-1.5 text-xs font-semibold"
-                  @click="openCreateCharacterFromBooru"
-                >
-                  <BookOpen class="h-3.5 w-3.5" />
-                  <span>Save as Character</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  class="border-border bg-secondary hover:bg-accent text-xs font-medium"
-                  @click="openUrl(detail.postUrl)"
-                >
-                  <ExternalLink class="h-3.5 w-3.5" />
-                  <span>Open Source</span>
-                </Button>
-              </div>
-
-              <!-- Extracted Prompt Box -->
-              <div
-                class="border-border/80 bg-secondary/30 flex flex-col gap-2 rounded-xl border p-3.5"
-              >
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <span
-                    class="text-muted-foreground flex items-center gap-1.5 text-xs font-bold tracking-wider uppercase"
-                  >
-                    <Sparkles class="h-3.5 w-3.5 text-amber-400" />
-                    <span>Extracted Prompt</span>
-                  </span>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      class="h-6 cursor-pointer rounded border px-2 font-mono text-xs transition-colors select-none"
-                      :class="
-                        promptFormatOptions.replaceUnderscores
-                          ? 'border-primary/40 bg-primary/20 text-primary font-semibold shadow-2xs'
-                          : 'border-border/60 bg-background/50 text-muted-foreground hover:text-foreground'
-                      "
-                      title="Replace underscores with spaces in extracted prompt and tags"
-                      @click="
-                        promptFormatOptions.replaceUnderscores =
-                          !promptFormatOptions.replaceUnderscores
-                      "
-                    >
-                      _ &rarr; space
-                    </button>
-                    <button
-                      type="button"
-                      class="h-6 cursor-pointer rounded border px-2 font-mono text-xs transition-colors select-none"
-                      :class="
-                        promptFormatOptions.escapeParentheses
-                          ? 'border-primary/40 bg-primary/20 text-primary font-semibold shadow-2xs'
-                          : 'border-border/60 bg-background/50 text-muted-foreground hover:text-foreground'
-                      "
-                      title="Escape parentheses (\( \)) in extracted prompt and tags"
-                      @click="
-                        promptFormatOptions.escapeParentheses =
-                          !promptFormatOptions.escapeParentheses
-                      "
-                    >
-                      \( \)
-                    </button>
-                    <span class="text-muted-foreground ml-1 font-mono text-xs">
-                      {{ tagCountTotal }} tags
-                    </span>
-                  </div>
                 </div>
-                <p
-                  class="text-foreground border-border/50 bg-background/50 rounded-lg border p-3 font-mono text-xs leading-relaxed wrap-break-word select-text"
-                >
-                  {{ prompt || 'No matching tags extracted from defaults.' }}
-                </p>
-              </div>
-
-              <!-- Categorized Tags Cloud -->
-              <div class="space-y-3.5 pb-2">
-                <div
-                  v-if="!tagCountTotal"
-                  class="border-border/60 bg-muted/20 flex flex-col items-center justify-center gap-2 rounded-xl border p-6 text-center text-xs"
-                >
-                  <Tag class="text-muted-foreground/40 h-6 w-6" />
-                  <span class="text-muted-foreground font-medium">
-                    No categorized tags available for this post
-                  </span>
-                </div>
-
-                <section
-                  v-for="(tags, category) in detail.tags"
-                  v-else
-                  :key="category"
-                  class="space-y-1.5"
-                >
-                  <div class="flex items-center justify-between">
-                    <h3
-                      class="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold capitalize"
-                    >
-                      <Tag class="h-3 w-3" />
-                      <span>{{ category }}</span>
-                    </h3>
-                    <span class="text-muted-foreground font-mono text-xs">
-                      {{ tags.length }}
-                    </span>
-                  </div>
-
-                  <div class="flex flex-wrap gap-1.5">
-                    <button
-                      v-for="tag in tags"
-                      :key="tag"
-                      type="button"
-                      class="cursor-pointer rounded-md border px-2 py-0.5 font-mono text-xs transition-all select-text"
-                      :class="[
-                        categoryBadgeClass(category),
-                        copiedTag === tag ? 'ring-primary scale-105 ring-2' : ''
-                      ]"
-                      :title="`Click to copy: ${formatTag(tag)}`"
-                      @click="copyTag(tag)"
-                    >
-                      <span v-if="copiedTag === tag" class="font-bold"
-                        >✓ {{ formatTag(tag) }}</span
-                      >
-                      <span v-else>{{ formatTag(tag) }}</span>
-                    </button>
-                  </div>
-                </section>
-              </div>
-            </template>
-
-            <!-- Error / Empty State Fallback -->
-            <template v-else>
-              <div
-                class="border-destructive/30 bg-destructive/10 text-destructive flex flex-col gap-3 rounded-xl border p-4 text-xs"
-              >
-                <div class="flex items-center gap-2">
-                  <AlertCircle class="h-4 w-4 shrink-0" />
-                  <span class="font-semibold"
-                    >Unable to load metadata & tags</span
+                <div>
+                  <span class="text-muted-foreground">ID:</span>
+                  <span class="text-foreground ml-1.5 font-medium"
+                    >#{{ detailActivePost.postId }}</span
                   >
                 </div>
-                <p class="text-muted-foreground text-xs leading-relaxed">
-                  {{
-                    detailError ||
-                    'The source provider did not return tags or metadata for this post.'
-                  }}
-                </p>
-                <div class="mt-1 flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    class="h-7 text-xs"
-                    @click="detailActivePost && openDetail(detailActivePost)"
-                  >
-                    <RotateCw class="mr-1.5 h-3 w-3" />
-                    <span>Retry Details</span>
-                  </Button>
-                  <Button
-                    v-if="detailActivePost?.postUrl"
-                    size="sm"
-                    variant="outline"
-                    class="h-7 text-xs"
-                    @click="openUrl(detailActivePost.postUrl)"
-                  >
-                    <ExternalLink class="mr-1.5 h-3 w-3" />
-                    <span>Open in browser</span>
-                  </Button>
+                <div>
+                  <span class="text-muted-foreground">Rating:</span>
+                  <span class="text-foreground ml-1.5 font-medium capitalize">{{
+                    detailActivePost.rating || 'N/A'
+                  }}</span>
+                </div>
+                <div v-if="detailActivePost.score">
+                  <span class="text-muted-foreground">Score:</span>
+                  <span class="text-foreground ml-1.5 font-medium">{{
+                    detailActivePost.score
+                  }}</span>
                 </div>
               </div>
-
-              <!-- Available Post Summary Info -->
-              <div
-                v-if="detailActivePost"
-                class="border-border/80 bg-secondary/30 flex flex-col gap-2.5 rounded-xl border p-3.5"
-              >
-                <span
-                  class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
-                >
-                  Available Post Info
-                </span>
-                <div class="grid grid-cols-2 gap-2 font-mono text-xs">
-                  <div>
-                    <span class="text-muted-foreground">Source:</span>
-                    <span
-                      class="text-foreground ml-1.5 font-medium capitalize"
-                      >{{ detailActivePost.source }}</span
-                    >
-                  </div>
-                  <div>
-                    <span class="text-muted-foreground">ID:</span>
-                    <span class="text-foreground ml-1.5 font-medium"
-                      >#{{ detailActivePost.postId }}</span
-                    >
-                  </div>
-                  <div>
-                    <span class="text-muted-foreground">Rating:</span>
-                    <span
-                      class="text-foreground ml-1.5 font-medium capitalize"
-                      >{{ detailActivePost.rating || 'N/A' }}</span
-                    >
-                  </div>
-                  <div v-if="detailActivePost.score">
-                    <span class="text-muted-foreground">Score:</span>
-                    <span class="text-foreground ml-1.5 font-medium">{{
-                      detailActivePost.score
-                    }}</span>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
+            </div>
+          </template>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </DialogContent>
+  </Dialog>
 
-    <!-- ---------------------------------------------------------------
+  <!-- ---------------------------------------------------------------
          Save Character to Library Modal
     --------------------------------------------------------------- -->
-    <Dialog
-      :open="charModalOpen"
-      @update:open="
-        (v) => {
-          if (!v) closeCharModal();
-          else charModalOpen = true;
-        }
-      "
+  <Dialog
+    :open="charModalOpen"
+    @update:open="
+      (v) => {
+        if (!v) closeCharModal();
+        else charModalOpen = true;
+      }
+    "
+  >
+    <DialogContent
+      class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
     >
-      <DialogContent
-        class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
+      <DialogHeader
+        class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
       >
-        <DialogHeader
-          class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
+        <DialogTitle
+          class="text-foreground flex items-center gap-2 text-sm font-bold"
         >
-          <DialogTitle
-            class="text-foreground flex items-center gap-2 text-sm font-bold"
-          >
-            <BookOpen class="text-primary h-4 w-4" />
-            <span>Save to Character Library</span>
-          </DialogTitle>
-        </DialogHeader>
+          <BookOpen class="text-primary h-4 w-4" />
+          <span>Save to Character Library</span>
+        </DialogTitle>
+      </DialogHeader>
 
-        <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-            <!-- Left (2 cols): Character Inputs -->
-            <div class="flex flex-col gap-4 md:col-span-2">
-              <!-- Character Name -->
-              <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold"
-                  >Character Name <span class="text-destructive">*</span></Label
-                >
-                <Input
-                  v-model="charName"
-                  placeholder="e.g. Hatsune Miku"
-                  class="text-xs"
-                />
-              </div>
-
-              <!-- Trigger Tag -->
-              <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold"
-                  >Trigger Tag <span class="text-destructive">*</span></Label
-                >
-                <Input
-                  v-model="charTrigger"
-                  placeholder="e.g. hatsune_miku"
-                  class="font-mono text-xs"
-                />
-              </div>
-
-              <!-- Series / Copyright -->
-              <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold"
-                  >Series / Copyright (optional)</Label
-                >
-                <Input
-                  v-model="charSeries"
-                  placeholder="e.g. Vocaloid"
-                  class="text-xs"
-                />
-              </div>
-
-              <!-- Tags -->
-              <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold">
-                  Tags & Features
-                  <span class="text-muted-foreground font-normal"
-                    >(comma-separated)</span
-                  >
-                </Label>
-                <Textarea
-                  v-model="charTags"
-                  rows="4"
-                  placeholder="twin tails, sleeveless shirt, necktie..."
-                  class="bg-background font-mono text-xs"
-                />
-              </div>
+      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
+          <!-- Left (2 cols): Character Inputs -->
+          <div class="flex flex-col gap-4 md:col-span-2">
+            <!-- Character Name -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold"
+                >Character Name <span class="text-destructive">*</span></Label
+              >
+              <Input
+                v-model="charName"
+                placeholder="e.g. Hatsune Miku"
+                class="text-xs"
+              />
             </div>
 
-            <!-- Right (1 col): Portrait Thumbnail Preview -->
-            <div class="flex flex-col gap-2 md:col-span-1">
-              <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
-              <div
-                class="border-border bg-muted/30 relative aspect-3/4 w-full overflow-hidden rounded-xl border"
+            <!-- Trigger Tag -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold"
+                >Trigger Tag <span class="text-destructive">*</span></Label
               >
-                <img
-                  v-if="charThumbnailUrl"
-                  :src="charThumbnailUrl"
-                  alt="Character thumbnail"
-                  class="h-full w-full object-cover object-center"
-                />
-                <div
-                  v-else
-                  class="text-muted-foreground flex h-full w-full items-center justify-center text-xs"
+              <Input
+                v-model="charTrigger"
+                placeholder="e.g. hatsune_miku"
+                class="font-mono text-xs"
+              />
+            </div>
+
+            <!-- Series / Copyright -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold"
+                >Series / Copyright (optional)</Label
+              >
+              <Input
+                v-model="charSeries"
+                placeholder="e.g. Vocaloid"
+                class="text-xs"
+              />
+            </div>
+
+            <!-- Tags -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold">
+                Tags & Features
+                <span class="text-muted-foreground font-normal"
+                  >(comma-separated)</span
                 >
-                  No image selected
-                </div>
+              </Label>
+              <Textarea
+                v-model="charTags"
+                rows="4"
+                placeholder="twin tails, sleeveless shirt, necktie..."
+                class="bg-background font-mono text-xs"
+              />
+            </div>
+          </div>
+
+          <!-- Right (1 col): Portrait Thumbnail Preview -->
+          <div class="flex flex-col gap-2 md:col-span-1">
+            <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
+            <div
+              class="border-border bg-muted/30 relative aspect-3/4 w-full overflow-hidden rounded-xl border"
+            >
+              <img
+                v-if="charThumbnailUrl"
+                :src="charThumbnailUrl"
+                alt="Character thumbnail"
+                class="h-full w-full object-cover object-center"
+              />
+              <div
+                v-else
+                class="text-muted-foreground flex h-full w-full items-center justify-center text-xs"
+              >
+                No image selected
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <DialogFooter
-          class="border-border bg-muted/30 shrink-0 border-t px-5 py-3"
+      <DialogFooter
+        class="border-border bg-muted/30 shrink-0 border-t px-5 py-3"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          class="text-xs"
+          @click="closeCharModal"
         >
-          <Button
-            variant="outline"
-            size="sm"
-            class="text-xs"
-            @click="closeCharModal"
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            class="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-xs font-semibold"
-            :disabled="!charName.trim() || isSavingChar"
-            @click="handleSaveCharacterToLibrary"
-          >
-            <Loader2 v-if="isSavingChar" class="h-3.5 w-3.5 animate-spin" />
-            <Check v-else class="h-3.5 w-3.5" />
-            {{ isSavingChar ? 'Saving…' : 'Save to Library' }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </div>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          class="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-xs font-semibold"
+          :disabled="!charName.trim() || isSavingChar"
+          @click="handleSaveCharacterToLibrary"
+        >
+          <Loader2 v-if="isSavingChar" class="h-3.5 w-3.5 animate-spin" />
+          <Check v-else class="h-3.5 w-3.5" />
+          {{ isSavingChar ? 'Saving…' : 'Save to Library' }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>

@@ -24,6 +24,8 @@ import {
   BreadcrumbSeparator
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
+import NoticeBanner from '@/components/layout/NoticeBanner.vue';
+import PageLayout from '@/components/layout/PageLayout.vue';
 import { Input } from '@/components/ui/input';
 import {
   Tooltip,
@@ -155,156 +157,145 @@ async function openOfficial() {
 </script>
 
 <template>
-  <div class="bg-background flex h-full flex-col overflow-hidden select-none">
-    <!-- Top Header & Toolbar (Consistent with Animadex & Civitai views) -->
-    <header
-      class="border-border/80 bg-card/70 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
-    >
-      <!-- Row 1: App Identity + Global Actions -->
-      <div class="flex items-center justify-between gap-4">
-        <!-- Title & Subtitle -->
-        <div class="flex items-center gap-3">
-          <div
-            class="border-primary/30 bg-primary/10 text-primary flex size-9 items-center justify-center rounded-lg border shadow-xs"
-          >
-            <BookOpen class="size-4" />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-xs font-bold tracking-wider uppercase">
-                Danbooru Tag Wiki
-              </h1>
-              <Badge
-                variant="outline"
-                class="border-primary/30 text-primary h-4 px-1.5 text-xs font-normal"
-              >
-                Knowledge Base
-              </Badge>
-            </div>
-            <p class="text-muted-foreground text-xs">
-              {{
-                isIndex
-                  ? 'Explore tag groups, visual taxonomy, and prompt vocabulary'
-                  : 'Tag definition, usage guidelines, and examples from Danbooru'
-              }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Header Actions -->
-        <div class="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-8 gap-1.5 text-xs"
-                :disabled="loading"
-                @click="retry++"
-              >
-                <RefreshCw
-                  class="size-3.5"
-                  :class="{ 'animate-spin': loading }"
-                />
-                <span class="hidden sm:inline">Reload</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reload wiki page</TooltipContent>
-          </Tooltip>
-
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-8 gap-1.5 text-xs"
-            @click="openOfficial"
-          >
-            <ExternalLink class="size-3.5" />
-            <span class="hidden sm:inline">Official Wiki</span>
-          </Button>
-        </div>
-      </div>
-
-      <!-- Row 2: Breadcrumb Navigation & Search Controls -->
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <!-- Breadcrumbs & Quick Jumps -->
-        <div class="flex flex-wrap items-center gap-3">
-          <Breadcrumb class="text-xs">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink as-child>
-                  <RouterLink
-                    to="/danbooru-wiki"
-                    class="hover:text-primary flex items-center gap-1.5 font-medium transition-colors"
-                  >
-                    <Layers class="size-3.5" />
-                    <span>Tag Groups</span>
-                  </RouterLink>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <template v-if="!isIndex">
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage
-                    class="text-foreground max-w-64 truncate font-semibold capitalize"
-                  >
-                    {{ displayTitle }}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </template>
-            </BreadcrumbList>
-          </Breadcrumb>
-
-          <!-- Quick Group Links (only shown on index) -->
-          <div
-            v-if="isIndex"
-            class="hidden items-center gap-1 border-l pl-3 md:flex"
-          >
-            <RouterLink
-              v-for="grp in QUICK_GROUPS.slice(1)"
-              :key="grp.path"
-              :to="grp.path"
-              class="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
+  <PageLayout
+    title="Danbooru Tag Wiki"
+    :subtitle="
+      isIndex
+        ? 'Explore tag groups, visual taxonomy, and prompt vocabulary'
+        : 'Tag definition, usage guidelines, and examples from Danbooru'
+    "
+    content-class="flex flex-col overflow-hidden p-0"
+  >
+    <template #icon>
+      <BookOpen class="size-4" />
+    </template>
+    <template #title-extra>
+      <Badge
+        variant="outline"
+        class="border-primary/30 text-primary h-4 px-1.5 text-xs font-normal"
+      >
+        Knowledge Base
+      </Badge>
+    </template>
+    <template #actions>
+      <div class="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 gap-1.5 text-xs"
+              :disabled="loading"
+              @click="retry++"
             >
-              {{ grp.label }}
-            </RouterLink>
-          </div>
-        </div>
+              <RefreshCw
+                class="size-3.5"
+                :class="{ 'animate-spin': loading }"
+              />
+              <span class="hidden sm:inline">Reload</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Reload wiki page</TooltipContent>
+        </Tooltip>
 
-        <!-- Search Bar -->
-        <form
-          class="flex w-full max-w-xs items-center gap-2 sm:max-w-sm"
-          @submit.prevent="handleSearch"
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-8 gap-1.5 text-xs"
+          @click="openOfficial"
         >
-          <div class="relative flex-1">
-            <Search
-              class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2"
-            />
-            <Input
-              v-model="search"
-              placeholder="Jump to tag wiki (e.g. blue eyes)..."
-              class="border-border bg-secondary/50 focus:bg-background h-8 pr-7 pl-8 text-xs transition-colors"
-              aria-label="Search or jump to tag wiki"
-            />
-            <button
-              v-if="search"
-              type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
-              @click="search = ''"
-            >
-              <X class="size-3" />
-            </button>
-          </div>
-          <Button
-            type="submit"
-            size="sm"
-            class="h-8 px-3 text-xs"
-            :disabled="!search.trim()"
-          >
-            Go
-          </Button>
-        </form>
+          <ExternalLink class="size-3.5" />
+          <span class="hidden sm:inline">Official Wiki</span>
+        </Button>
       </div>
-    </header>
+    </template>
+
+    <template #below-header>
+      <div
+        class="border-border/80 bg-card/70 shrink-0 border-b px-5 py-3.5 backdrop-blur-md"
+      >
+        <!-- Row 2: Breadcrumb Navigation & Search Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <!-- Breadcrumbs & Quick Jumps -->
+          <div class="flex flex-wrap items-center gap-3">
+            <Breadcrumb class="text-xs">
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink as-child>
+                    <RouterLink
+                      to="/danbooru-wiki"
+                      class="hover:text-primary flex items-center gap-1.5 font-medium transition-colors"
+                    >
+                      <Layers class="size-3.5" />
+                      <span>Tag Groups</span>
+                    </RouterLink>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <template v-if="!isIndex">
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage
+                      class="text-foreground max-w-64 truncate font-semibold capitalize"
+                    >
+                      {{ displayTitle }}
+                    </BreadcrumbPage>
+                  </BreadcrumbItem>
+                </template>
+              </BreadcrumbList>
+            </Breadcrumb>
+
+            <!-- Quick Group Links (only shown on index) -->
+            <div
+              v-if="isIndex"
+              class="hidden items-center gap-1 border-l pl-3 md:flex"
+            >
+              <RouterLink
+                v-for="grp in QUICK_GROUPS.slice(1)"
+                :key="grp.path"
+                :to="grp.path"
+                class="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
+              >
+                {{ grp.label }}
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- Search Bar -->
+          <form
+            class="flex w-full max-w-xs items-center gap-2 sm:max-w-sm"
+            @submit.prevent="handleSearch"
+          >
+            <div class="relative flex-1">
+              <Search
+                class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2"
+              />
+              <Input
+                v-model="search"
+                placeholder="Jump to tag wiki (e.g. blue eyes)..."
+                class="border-border bg-secondary/50 focus:bg-background h-8 pr-7 pl-8 text-xs transition-colors"
+                aria-label="Search or jump to tag wiki"
+              />
+              <button
+                v-if="search"
+                type="button"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
+                @click="search = ''"
+              >
+                <X class="size-3" />
+              </button>
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              class="h-8 px-3 text-xs"
+              :disabled="!search.trim()"
+            >
+              Go
+            </Button>
+          </form>
+        </div>
+      </div>
+    </template>
 
     <!-- Main Viewport -->
     <main
@@ -372,23 +363,19 @@ async function openOfficial() {
           </div>
 
           <!-- Image Previews Error Notice -->
-          <div
-            v-if="imageError"
-            class="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300"
-          >
-            <div class="flex items-center gap-2">
-              <AlertCircle class="size-3.5 shrink-0 text-amber-400" />
-              <span>{{ imageError }}</span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-6 px-2 text-xs text-amber-300 hover:bg-amber-500/20"
-              @click="retry++"
-            >
-              Retry
-            </Button>
-          </div>
+          <NoticeBanner v-if="imageError">
+            <span>{{ imageError }}</span>
+            <template #actions>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 px-2 text-xs text-amber-300 hover:bg-amber-500/20"
+                @click="retry++"
+              >
+                Retry
+              </Button>
+            </template>
+          </NoticeBanner>
 
           <!-- Wiki Article Body & Actions -->
           <WikiArticle
@@ -401,5 +388,5 @@ async function openOfficial() {
         </div>
       </template>
     </main>
-  </div>
+  </PageLayout>
 </template>

@@ -28,6 +28,7 @@ import {
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import PageLayout from '@/components/layout/PageLayout.vue';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -422,192 +423,185 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="bg-background flex h-full flex-col overflow-hidden select-none">
-    <!-- Header / Toolbar -->
-    <header
-      class="border-border/80 bg-card/75 flex shrink-0 flex-col gap-3 border-b px-6 py-4 backdrop-blur-md"
-    >
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <div
-            class="border-primary/30 bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs"
-          >
-            <HardDriveDownload class="h-4 w-4" />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-xs font-bold tracking-wider uppercase">
-                Civitai Model Browser
-              </h1>
-            </div>
-            <p class="text-muted-foreground text-xs">
-              Explore AI models for your ComfyUI workspace
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-8 text-xs"
-                :disabled="loading"
-                @click="refreshModels"
-              >
-                <RefreshCw
-                  class="h-3.5 w-3.5"
-                  :class="{ 'animate-spin': loading }"
-                />
-                <span class="hidden sm:inline">Refresh</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reload models list</TooltipContent>
-          </Tooltip>
-
+  <PageLayout
+    title="Civitai Model Browser"
+    subtitle="Explore AI models for your ComfyUI workspace"
+    content-class="flex flex-col overflow-hidden p-0"
+  >
+    <template #icon>
+      <HardDriveDownload class="h-4 w-4" />
+    </template>
+    <template #actions>
+      <Tooltip>
+        <TooltipTrigger as-child>
           <Button
             variant="outline"
             size="sm"
             class="h-8 text-xs"
-            @click="openUrl('https://civitai.com/models')"
+            :disabled="loading"
+            @click="refreshModels"
           >
-            <ExternalLink class="h-3.5 w-3.5" />
-            <span class="hidden sm:inline">Civitai.com</span>
+            <RefreshCw
+              class="h-3.5 w-3.5"
+              :class="{ 'animate-spin': loading }"
+            />
+            <span class="hidden sm:inline">Refresh</span>
           </Button>
-        </div>
-      </div>
+        </TooltipTrigger>
+        <TooltipContent>Reload models list</TooltipContent>
+      </Tooltip>
 
-      <!-- Search & Filters -->
-      <div class="flex flex-col gap-2.5">
-        <form
-          class="flex flex-wrap items-center gap-2"
-          @submit.prevent="loadModels(false)"
-        >
-          <div class="relative min-w-60 flex-1">
-            <Search
-              class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
-            />
-            <Input
-              v-model="query"
-              class="pr-8 pl-9 text-xs"
-              placeholder="Search checkpoints, LoRAs, ControlNets, VAEs..."
-            />
-            <button
-              v-if="query"
-              type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer p-0.5"
-              @click="clearSearch"
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-8 text-xs"
+        @click="openUrl('https://civitai.com/models')"
+      >
+        <ExternalLink class="h-3.5 w-3.5" />
+        <span class="hidden sm:inline">Civitai.com</span>
+      </Button>
+    </template>
+
+    <template #below-header>
+      <div
+        class="border-border/80 bg-card/75 shrink-0 border-b px-6 py-4 backdrop-blur-md"
+      >
+        <!-- Search & Filters -->
+        <div class="flex flex-col gap-2.5">
+          <form
+            class="flex flex-wrap items-center gap-2"
+            @submit.prevent="loadModels(false)"
+          >
+            <div class="relative min-w-60 flex-1">
+              <Search
+                class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+              />
+              <Input
+                v-model="query"
+                class="pr-8 pl-9 text-xs"
+                placeholder="Search checkpoints, LoRAs, ControlNets, VAEs..."
+              />
+              <button
+                v-if="query"
+                type="button"
+                class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer p-0.5"
+                @click="clearSearch"
+              >
+                <X class="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <Select
+              v-model="modelType"
+              @update:model-value="() => loadModels(false)"
             >
-              <X class="h-3.5 w-3.5" />
+              <SelectTrigger class="w-38 text-xs">
+                <SelectValue placeholder="Model type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="Checkpoint">Checkpoint</SelectItem>
+                  <SelectItem value="LORA">LoRA</SelectItem>
+                  <SelectItem value="Controlnet">ControlNet</SelectItem>
+                  <SelectItem value="VAE">VAE</SelectItem>
+                  <SelectItem value="Upscaler">Upscaler</SelectItem>
+                  <SelectItem value="TextualInversion">Embedding</SelectItem>
+                  <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="baseModel"
+              @update:model-value="() => loadModels(false)"
+            >
+              <SelectTrigger class="w-42 text-xs">
+                <SelectValue placeholder="Base model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="all">All base models</SelectItem>
+                  <SelectItem
+                    v-for="value in baseModels"
+                    :key="value"
+                    :value="value"
+                  >
+                    {{ value }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="sort"
+              @update:model-value="() => loadModels(false)"
+            >
+              <SelectTrigger class="w-38 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="Most Downloaded"
+                    >Most Downloaded</SelectItem
+                  >
+                  <SelectItem value="Highest Rated">Highest Rated</SelectItem>
+                  <SelectItem value="Newest">Newest</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="period"
+              @update:model-value="() => loadModels(false)"
+            >
+              <SelectTrigger class="w-32 text-xs">
+                <SelectValue placeholder="Period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="AllTime">All time</SelectItem>
+                  <SelectItem value="Year">Year</SelectItem>
+                  <SelectItem value="Month">Month</SelectItem>
+                  <SelectItem value="Week">Week</SelectItem>
+                  <SelectItem value="Day">Day</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="submit"
+              size="sm"
+              class="h-8 text-xs"
+              :disabled="loading"
+            >
+              <Loader2 v-if="loading" class="h-3.5 w-3.5 animate-spin" />
+              <Search v-else class="h-3.5 w-3.5" />
+              <span>Search</span>
+            </Button>
+          </form>
+
+          <!-- Category Shortcut Pills -->
+          <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <span class="text-muted-foreground mr-1 text-xs">Filter:</span>
+            <button
+              v-for="shortcut in TYPE_SHORTCUTS"
+              :key="shortcut.value"
+              type="button"
+              class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+              :class="
+                modelType === shortcut.value
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+              "
+              @click="selectModelType(shortcut.value)"
+            >
+              {{ shortcut.label }}
             </button>
           </div>
-
-          <Select
-            v-model="modelType"
-            @update:model-value="() => loadModels(false)"
-          >
-            <SelectTrigger class="w-38 text-xs">
-              <SelectValue placeholder="Model type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="Checkpoint">Checkpoint</SelectItem>
-                <SelectItem value="LORA">LoRA</SelectItem>
-                <SelectItem value="Controlnet">ControlNet</SelectItem>
-                <SelectItem value="VAE">VAE</SelectItem>
-                <SelectItem value="Upscaler">Upscaler</SelectItem>
-                <SelectItem value="TextualInversion">Embedding</SelectItem>
-                <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select
-            v-model="baseModel"
-            @update:model-value="() => loadModels(false)"
-          >
-            <SelectTrigger class="w-42 text-xs">
-              <SelectValue placeholder="Base model" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="all">All base models</SelectItem>
-                <SelectItem
-                  v-for="value in baseModels"
-                  :key="value"
-                  :value="value"
-                >
-                  {{ value }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="sort" @update:model-value="() => loadModels(false)">
-            <SelectTrigger class="w-38 text-xs">
-              <SelectValue placeholder="Sort" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="Most Downloaded">Most Downloaded</SelectItem>
-                <SelectItem value="Highest Rated">Highest Rated</SelectItem>
-                <SelectItem value="Newest">Newest</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select
-            v-model="period"
-            @update:model-value="() => loadModels(false)"
-          >
-            <SelectTrigger class="w-32 text-xs">
-              <SelectValue placeholder="Period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem value="AllTime">All time</SelectItem>
-                <SelectItem value="Year">Year</SelectItem>
-                <SelectItem value="Month">Month</SelectItem>
-                <SelectItem value="Week">Week</SelectItem>
-                <SelectItem value="Day">Day</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Button
-            type="submit"
-            size="sm"
-            class="h-8 text-xs"
-            :disabled="loading"
-          >
-            <Loader2 v-if="loading" class="h-3.5 w-3.5 animate-spin" />
-            <Search v-else class="h-3.5 w-3.5" />
-            <span>Search</span>
-          </Button>
-        </form>
-
-        <!-- Category Shortcut Pills -->
-        <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span class="text-muted-foreground mr-1 text-xs">Filter:</span>
-          <button
-            v-for="shortcut in TYPE_SHORTCUTS"
-            :key="shortcut.value"
-            type="button"
-            class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-            :class="
-              modelType === shortcut.value
-                ? 'bg-primary text-primary-foreground shadow-xs'
-                : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-            "
-            @click="selectModelType(shortcut.value)"
-          >
-            {{ shortcut.label }}
-          </button>
         </div>
       </div>
-    </header>
+    </template>
 
     <!-- Main Content Viewport -->
     <div
@@ -900,5 +894,5 @@ onUnmounted(() => {
         All models loaded
       </div>
     </div>
-  </div>
+  </PageLayout>
 </template>

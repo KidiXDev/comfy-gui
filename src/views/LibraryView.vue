@@ -22,6 +22,7 @@ import {
 } from '@lucide/vue';
 import { Badge as _Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import PageLayout from '@/components/layout/PageLayout.vue';
 import {
   Dialog,
   DialogContent,
@@ -483,152 +484,142 @@ const copiedEntryId = ref<string | null>(null);
 </script>
 
 <template>
-  <div class="bg-background flex h-full flex-col overflow-hidden">
-    <!-- Page Header -->
-    <div
-      class="border-border bg-card/60 flex shrink-0 items-center justify-between border-b px-5 py-3 backdrop-blur-sm"
-    >
-      <div class="flex items-center gap-3">
-        <div
-          class="bg-primary/10 border-primary/20 text-primary flex h-9 w-9 items-center justify-center rounded-xl border"
-        >
-          <BookOpen class="h-4.5 w-4.5" />
-        </div>
-        <div>
-          <h1 class="text-foreground text-sm font-bold tracking-tight">
-            Library
-          </h1>
-          <p class="text-muted-foreground text-xs">
-            Centralized presets for prompts, LoRAs, and characters
-          </p>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          class="h-8 gap-1.5 px-3 text-xs"
-          title="Open library folder"
-          @click="LibraryService.openFolder(activeTab)"
-        >
-          <FolderOpen class="h-3.5 w-3.5" />
-          <span>Folder</span>
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          class="h-8 gap-1.5 px-3 text-xs"
-          :disabled="libraryStore.isLoading(activeTab)"
-          @click="refreshCurrentTab"
-        >
-          <RefreshCw
-            class="h-3.5 w-3.5"
-            :class="{ 'animate-spin': libraryStore.isLoading(activeTab) }"
-          />
-          <span>Refresh</span>
-        </Button>
-        <Button
-          size="sm"
-          class="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 px-3 text-xs font-semibold"
-          @click="openCreateEditor"
-        >
-          <Plus class="h-3.5 w-3.5" />
-          <span
-            >Add to
-            {{ categoryTabs.find((t) => t.id === activeTab)?.label }}</span
-          >
-        </Button>
-      </div>
-    </div>
-
-    <!-- Category Tabs -->
-    <div
-      class="border-border bg-muted/20 flex shrink-0 items-center gap-1 border-b px-5 py-2.5"
-    >
-      <button
-        v-for="tab in categoryTabs"
-        :key="tab.id"
-        type="button"
-        class="flex cursor-pointer items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all"
-        :class="
-          activeTab === tab.id
-            ? 'bg-primary text-primary-foreground shadow-sm'
-            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-        "
-        @click="activeTab = tab.id"
+  <PageLayout
+    title="Library"
+    subtitle="Centralized presets for prompts, LoRAs, and characters"
+    header-class="bg-card/60 px-5 py-3"
+    content-class="flex flex-col overflow-hidden p-0"
+    no-select
+  >
+    <template #icon>
+      <BookOpen class="h-4 w-4" />
+    </template>
+    <template #actions>
+      <Button
+        size="sm"
+        variant="outline"
+        class="h-8 gap-1.5 px-3 text-xs"
+        title="Open library folder"
+        @click="LibraryService.openFolder(activeTab)"
       >
-        <component :is="tab.icon" class="h-3.5 w-3.5" />
-        {{ tab.label }}
+        <FolderOpen class="h-3.5 w-3.5" />
+        <span>Folder</span>
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        class="h-8 gap-1.5 px-3 text-xs"
+        :disabled="libraryStore.isLoading(activeTab)"
+        @click="refreshCurrentTab"
+      >
+        <RefreshCw
+          class="h-3.5 w-3.5"
+          :class="{ 'animate-spin': libraryStore.isLoading(activeTab) }"
+        />
+        <span>Refresh</span>
+      </Button>
+      <Button
+        size="sm"
+        class="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 px-3 text-xs font-semibold"
+        @click="openCreateEditor"
+      >
+        <Plus class="h-3.5 w-3.5" />
         <span
-          class="rounded-full px-1.5 py-0.5 font-mono text-xs"
+          >Add to
+          {{ categoryTabs.find((t) => t.id === activeTab)?.label }}</span
+        >
+      </Button>
+    </template>
+
+    <template #below-header>
+      <!-- Category Tabs -->
+      <div
+        class="border-border bg-muted/20 flex shrink-0 items-center gap-1 border-b px-5 py-2.5"
+      >
+        <button
+          v-for="tab in categoryTabs"
+          :key="tab.id"
+          type="button"
+          class="flex cursor-pointer items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all"
           :class="
             activeTab === tab.id
-              ? 'bg-primary-foreground/20 text-primary-foreground'
-              : 'bg-muted text-muted-foreground'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           "
+          @click="activeTab = tab.id"
         >
-          {{ libraryStore.getEntries(tab.id).length }}
+          <component :is="tab.icon" class="h-3.5 w-3.5" />
+          {{ tab.label }}
+          <span
+            class="rounded-full px-1.5 py-0.5 font-mono text-xs"
+            :class="
+              activeTab === tab.id
+                ? 'bg-primary-foreground/20 text-primary-foreground'
+                : 'bg-muted text-muted-foreground'
+            "
+          >
+            {{ libraryStore.getEntries(tab.id).length }}
+          </span>
+        </button>
+      </div>
+
+      <!-- Search bar + Prompt filter -->
+      <div
+        class="border-border bg-card/20 flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-2.5"
+      >
+        <div class="relative min-w-60 flex-1">
+          <Search
+            class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+          />
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search by name or description..."
+            class="bg-background border-border placeholder:text-muted-foreground text-foreground focus:border-primary/60 h-8 w-full rounded-lg border pr-8 pl-8.5 text-xs transition-colors outline-none"
+          />
+          <button
+            v-if="searchQuery"
+            type="button"
+            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
+            @click="searchQuery = ''"
+          >
+            <X class="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <!-- Prompt type scope filter -->
+        <div v-if="activeTab === 'prompts'" class="flex items-center gap-1">
+          <span class="text-muted-foreground mr-1 text-xs font-medium"
+            >Scope:</span
+          >
+          <button
+            v-for="st in [
+              { label: 'All', val: 'all' },
+              { label: 'Both', val: 'both' },
+              { label: '+Pos', val: 'positive' },
+              { label: '-Neg', val: 'negative' }
+            ]"
+            :key="st.val"
+            type="button"
+            class="cursor-pointer rounded-md px-2 py-0.5 font-mono text-xs font-semibold transition-colors"
+            :class="
+              promptTypeFilter === st.val
+                ? 'bg-primary text-primary-foreground shadow-xs'
+                : 'border-border bg-muted text-muted-foreground hover:text-foreground border'
+            "
+            @click="promptTypeFilter = st.val as any"
+          >
+            {{ st.label }}
+          </button>
+        </div>
+
+        <span class="text-muted-foreground font-mono text-xs">
+          {{ currentEntries.length }} item{{
+            currentEntries.length !== 1 ? 's' : ''
+          }}
         </span>
-      </button>
-    </div>
-
-    <!-- Search bar + Prompt filter -->
-    <div
-      class="border-border bg-card/20 flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-2.5"
-    >
-      <div class="relative min-w-60 flex-1">
-        <Search
-          class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
-        />
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search by name or description..."
-          class="bg-background border-border placeholder:text-muted-foreground text-foreground focus:border-primary/60 h-8 w-full rounded-lg border pr-8 pl-8.5 text-xs transition-colors outline-none"
-        />
-        <button
-          v-if="searchQuery"
-          type="button"
-          class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
-          @click="searchQuery = ''"
-        >
-          <X class="h-3.5 w-3.5" />
-        </button>
       </div>
-
-      <!-- Prompt type scope filter -->
-      <div v-if="activeTab === 'prompts'" class="flex items-center gap-1">
-        <span class="text-muted-foreground mr-1 text-xs font-medium"
-          >Scope:</span
-        >
-        <button
-          v-for="st in [
-            { label: 'All', val: 'all' },
-            { label: 'Both', val: 'both' },
-            { label: '+Pos', val: 'positive' },
-            { label: '-Neg', val: 'negative' }
-          ]"
-          :key="st.val"
-          type="button"
-          class="cursor-pointer rounded-md px-2 py-0.5 font-mono text-xs font-semibold transition-colors"
-          :class="
-            promptTypeFilter === st.val
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'border-border bg-muted text-muted-foreground hover:text-foreground border'
-          "
-          @click="promptTypeFilter = st.val as any"
-        >
-          {{ st.label }}
-        </button>
-      </div>
-
-      <span class="text-muted-foreground font-mono text-xs">
-        {{ currentEntries.length }} item{{
-          currentEntries.length !== 1 ? 's' : ''
-        }}
-      </span>
-    </div>
+    </template>
 
     <!-- Content Area -->
     <ScrollArea class="flex-1 px-5 py-4">
@@ -882,415 +873,412 @@ const copiedEntryId = ref<string | null>(null);
         </div>
       </div>
     </ScrollArea>
+  </PageLayout>
 
-    <!-- ---------------------------------------------------------------
-         Item Editor Dialog
-    --------------------------------------------------------------- -->
-    <Dialog :open="isEditorOpen" @update:open="(v) => (isEditorOpen = v)">
-      <DialogContent
-        class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
+  <!-- ---------------------------------------------------------------
+       Item Editor Dialog
+  --------------------------------------------------------------- -->
+  <Dialog :open="isEditorOpen" @update:open="(v) => (isEditorOpen = v)">
+    <DialogContent
+      class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
+    >
+      <DialogHeader
+        class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
       >
-        <DialogHeader
-          class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
+        <DialogTitle
+          class="text-foreground flex items-center gap-2 text-sm font-bold"
         >
-          <DialogTitle
-            class="text-foreground flex items-center gap-2 text-sm font-bold"
-          >
-            <component
-              :is="categoryTabs.find((t) => t.id === activeTab)?.icon"
-              class="text-primary h-4 w-4"
-            />
-            {{
-              editorMode === 'create'
-                ? `Add ${categoryTabs.find((t) => t.id === activeTab)?.label} Entry`
-                : `Edit "${editorName}"`
-            }}
-          </DialogTitle>
-        </DialogHeader>
+          <component
+            :is="categoryTabs.find((t) => t.id === activeTab)?.icon"
+            class="text-primary h-4 w-4"
+          />
+          {{
+            editorMode === 'create'
+              ? `Add ${categoryTabs.find((t) => t.id === activeTab)?.label} Entry`
+              : `Edit "${editorName}"`
+          }}
+        </DialogTitle>
+      </DialogHeader>
 
+      <div
+        v-if="isEditorLoading"
+        class="flex items-center justify-center py-12"
+      >
+        <Loader2 class="text-primary h-6 w-6 animate-spin" />
+      </div>
+
+      <div
+        v-else
+        class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5"
+      >
+        <!-- Error banner -->
         <div
-          v-if="isEditorLoading"
-          class="flex items-center justify-center py-12"
+          v-if="editorSaveError"
+          class="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400"
         >
-          <Loader2 class="text-primary h-6 w-6 animate-spin" />
+          <X class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{{ editorSaveError }}</span>
         </div>
 
-        <div
-          v-else
-          class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5"
-        >
-          <!-- Error banner -->
-          <div
-            v-if="editorSaveError"
-            class="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400"
-          >
-            <X class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ editorSaveError }}</span>
-          </div>
+        <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
+          <!-- Left (2 cols): Core form fields & category-specific inputs -->
+          <div class="flex flex-col gap-4 md:col-span-2">
+            <!-- Common: Name -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold"
+                >Name <span class="text-destructive">*</span></Label
+              >
+              <Input
+                v-model="editorName"
+                placeholder="Give this entry a name..."
+                class="text-xs"
+              />
+            </div>
 
-          <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-            <!-- Left (2 cols): Core form fields & category-specific inputs -->
-            <div class="flex flex-col gap-4 md:col-span-2">
-              <!-- Common: Name -->
+            <!-- Common: Description -->
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-foreground text-xs font-bold"
+                >Description</Label
+              >
+              <Input
+                v-model="editorDescription"
+                placeholder="Short description..."
+                class="text-xs"
+              />
+            </div>
+
+            <div class="border-border border-t" />
+
+            <!-- ── PROMPT FIELDS ── -->
+            <template v-if="activeTab === 'prompts'">
               <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold"
-                  >Name <span class="text-destructive">*</span></Label
+                <Label class="text-foreground text-xs font-bold">Scope</Label>
+                <div class="grid grid-cols-3 gap-2">
+                  <button
+                    v-for="st in [
+                      { val: 'both', title: 'Both', desc: 'Pos & Neg' },
+                      {
+                        val: 'positive',
+                        title: 'Positive',
+                        desc: 'Pos only'
+                      },
+                      { val: 'negative', title: 'Negative', desc: 'Neg only' }
+                    ]"
+                    :key="st.val"
+                    type="button"
+                    class="border-border hover:border-primary/60 flex cursor-pointer flex-col gap-0.5 rounded-lg border p-2 text-left transition-all"
+                    :class="
+                      editorPromptType === st.val
+                        ? 'border-primary bg-primary/10 ring-primary/20 ring-1'
+                        : 'bg-card text-muted-foreground'
+                    "
+                    @click="editorPromptType = st.val as any"
+                  >
+                    <span class="text-foreground text-xs font-bold">{{
+                      st.title
+                    }}</span>
+                    <span class="text-muted-foreground text-xs">{{
+                      st.desc
+                    }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-if="editorPromptType !== 'negative'"
+                class="flex flex-col gap-1.5"
+              >
+                <Label
+                  class="font-mono text-xs font-bold text-emerald-400 uppercase"
+                  >Positive Prompt</Label
                 >
-                <Input
-                  v-model="editorName"
-                  placeholder="Give this entry a name..."
-                  class="text-xs"
+                <Textarea
+                  v-model="editorPositive"
+                  rows="3"
+                  placeholder="Positive prompt text..."
+                  class="bg-background font-mono text-xs"
                 />
               </div>
 
-              <!-- Common: Description -->
-              <div class="flex flex-col gap-1.5">
-                <Label class="text-foreground text-xs font-bold"
-                  >Description</Label
+              <div
+                v-if="editorPromptType !== 'positive'"
+                class="flex flex-col gap-1.5"
+              >
+                <Label
+                  class="font-mono text-xs font-bold text-rose-400 uppercase"
+                  >Negative Prompt</Label
                 >
-                <Input
-                  v-model="editorDescription"
-                  placeholder="Short description..."
-                  class="text-xs"
+                <Textarea
+                  v-model="editorNegative"
+                  rows="3"
+                  placeholder="Negative prompt text..."
+                  class="bg-background font-mono text-xs"
                 />
               </div>
+            </template>
 
-              <div class="border-border border-t" />
-
-              <!-- ── PROMPT FIELDS ── -->
-              <template v-if="activeTab === 'prompts'">
-                <div class="flex flex-col gap-1.5">
-                  <Label class="text-foreground text-xs font-bold">Scope</Label>
-                  <div class="grid grid-cols-3 gap-2">
-                    <button
-                      v-for="st in [
-                        { val: 'both', title: 'Both', desc: 'Pos & Neg' },
-                        {
-                          val: 'positive',
-                          title: 'Positive',
-                          desc: 'Pos only'
-                        },
-                        { val: 'negative', title: 'Negative', desc: 'Neg only' }
-                      ]"
-                      :key="st.val"
-                      type="button"
-                      class="border-border hover:border-primary/60 flex cursor-pointer flex-col gap-0.5 rounded-lg border p-2 text-left transition-all"
-                      :class="
-                        editorPromptType === st.val
-                          ? 'border-primary bg-primary/10 ring-primary/20 ring-1'
-                          : 'bg-card text-muted-foreground'
-                      "
-                      @click="editorPromptType = st.val as any"
-                    >
-                      <span class="text-foreground text-xs font-bold">{{
-                        st.title
-                      }}</span>
-                      <span class="text-muted-foreground text-xs">{{
-                        st.desc
-                      }}</span>
-                    </button>
-                  </div>
+            <!-- ── LORA FIELDS ── -->
+            <template v-else-if="activeTab === 'loras'">
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <Label class="text-foreground text-xs font-bold"
+                    >LoRA Stack</Label
+                  >
+                  <span class="text-muted-foreground font-mono text-xs">
+                    {{ editorLoras.length }} LoRA{{
+                      editorLoras.length !== 1 ? 's' : ''
+                    }}
+                  </span>
                 </div>
 
                 <div
-                  v-if="editorPromptType !== 'negative'"
-                  class="flex flex-col gap-1.5"
+                  v-if="editorLoras.length === 0"
+                  class="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs"
                 >
-                  <Label
-                    class="font-mono text-xs font-bold text-emerald-400 uppercase"
-                    >Positive Prompt</Label
-                  >
-                  <Textarea
-                    v-model="editorPositive"
-                    rows="3"
-                    placeholder="Positive prompt text..."
-                    class="bg-background font-mono text-xs"
-                  />
+                  No LoRAs in stack. This entry will save an empty LoRA stack.
                 </div>
 
                 <div
-                  v-if="editorPromptType !== 'positive'"
-                  class="flex flex-col gap-1.5"
+                  v-else
+                  class="border-border flex max-h-48 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2"
                 >
-                  <Label
-                    class="font-mono text-xs font-bold text-rose-400 uppercase"
-                    >Negative Prompt</Label
-                  >
-                  <Textarea
-                    v-model="editorNegative"
-                    rows="3"
-                    placeholder="Negative prompt text..."
-                    class="bg-background font-mono text-xs"
-                  />
-                </div>
-              </template>
-
-              <!-- ── LORA FIELDS ── -->
-              <template v-else-if="activeTab === 'loras'">
-                <div class="flex flex-col gap-2">
-                  <div class="flex items-center justify-between">
-                    <Label class="text-foreground text-xs font-bold"
-                      >LoRA Stack</Label
-                    >
-                    <span class="text-muted-foreground font-mono text-xs">
-                      {{ editorLoras.length }} LoRA{{
-                        editorLoras.length !== 1 ? 's' : ''
-                      }}
-                    </span>
-                  </div>
-
                   <div
-                    v-if="editorLoras.length === 0"
-                    class="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs"
+                    v-for="(lora, i) in editorLoras"
+                    :key="i"
+                    class="border-border bg-card/60 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs"
                   >
-                    No LoRAs in stack. This entry will save an empty LoRA stack.
-                  </div>
-
-                  <div
-                    v-else
-                    class="border-border flex max-h-48 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2"
-                  >
-                    <div
-                      v-for="(lora, i) in editorLoras"
-                      :key="i"
-                      class="border-border bg-card/60 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs"
-                    >
-                      <span class="truncate font-mono">{{
-                        lora.name || '(No model)'
-                      }}</span>
-                      <div class="flex shrink-0 items-center gap-2">
-                        <span
-                          class="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
-                          :class="
-                            lora.enabled
-                              ? 'bg-emerald-500/10 text-emerald-400'
-                              : 'bg-muted text-muted-foreground'
-                          "
-                        >
-                          {{ lora.enabled ? 'ON' : 'OFF' }}
-                        </span>
-                        <span
-                          class="border-border bg-muted text-primary rounded border px-1.5 py-0.5 font-mono text-xs font-bold"
-                        >
-                          {{ lora.strength }}x
-                        </span>
-                      </div>
+                    <span class="truncate font-mono">{{
+                      lora.name || '(No model)'
+                    }}</span>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <span
+                        class="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
+                        :class="
+                          lora.enabled
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-muted text-muted-foreground'
+                        "
+                      >
+                        {{ lora.enabled ? 'ON' : 'OFF' }}
+                      </span>
+                      <span
+                        class="border-border bg-muted text-primary rounded border px-1.5 py-0.5 font-mono text-xs font-bold"
+                      >
+                        {{ lora.strength }}x
+                      </span>
                     </div>
                   </div>
-
-                  <p class="text-muted-foreground text-xs">
-                    The LoRA stack above is pre-filled from your current
-                    workflow. Edit from the workflow panel before saving.
-                  </p>
                 </div>
-              </template>
 
-              <!-- ── CHARACTER FIELDS ── -->
-              <template v-else-if="activeTab === 'characters'">
+                <p class="text-muted-foreground text-xs">
+                  The LoRA stack above is pre-filled from your current workflow.
+                  Edit from the workflow panel before saving.
+                </p>
+              </div>
+            </template>
+
+            <!-- ── CHARACTER FIELDS ── -->
+            <template v-else-if="activeTab === 'characters'">
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-foreground text-xs font-bold">
+                  Trigger Tag <span class="text-destructive">*</span>
+                </Label>
+                <Input
+                  v-model="editorCharTrigger"
+                  placeholder="e.g. hatsune_miku"
+                  class="font-mono text-xs"
+                />
+              </div>
+
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-foreground text-xs font-bold"
+                  >Series / Copyright</Label
+                >
+                <Input
+                  v-model="editorCharSeries"
+                  placeholder="e.g. Vocaloid"
+                  class="text-xs"
+                />
+              </div>
+
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-foreground text-xs font-bold">
+                  Additional Tags
+                </Label>
+                <Textarea
+                  v-model="editorCharTags"
+                  rows="3"
+                  placeholder="long hair, blue hair, twin tails, teal eyes, detached sleeves, ..."
+                  class="bg-background font-mono text-xs"
+                />
+                <p class="text-muted-foreground text-xs">
+                  Include clothing, hair, eyes, accessories — the more complete
+                  the better.
+                </p>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
                 <div class="flex flex-col gap-1.5">
-                  <Label class="text-foreground text-xs font-bold">
-                    Trigger Tag <span class="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    v-model="editorCharTrigger"
-                    placeholder="e.g. hatsune_miku"
-                    class="font-mono text-xs"
-                  />
+                  <Label class="text-foreground text-xs font-bold"
+                    >Source</Label
+                  >
+                  <Select v-model="editorCharSource">
+                    <SelectTrigger class="h-8 w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="local"
+                          >Local (manually entered)</SelectItem
+                        >
+                        <SelectItem value="animadex"
+                          >Imported from Animadex</SelectItem
+                        >
+                        <SelectItem value="manual"
+                          >Manual verification</SelectItem
+                        >
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div class="flex flex-col gap-1.5">
                   <Label class="text-foreground text-xs font-bold"
-                    >Series / Copyright</Label
+                    >Animadex Slug</Label
                   >
                   <Input
-                    v-model="editorCharSeries"
-                    placeholder="e.g. Vocaloid"
-                    class="text-xs"
+                    v-model="editorCharAnimadexSlug"
+                    placeholder="e.g. hatsune-miku"
+                    class="font-mono text-xs"
                   />
                 </div>
+              </div>
+            </template>
+          </div>
 
-                <div class="flex flex-col gap-1.5">
-                  <Label class="text-foreground text-xs font-bold">
-                    Additional Tags
-                  </Label>
-                  <Textarea
-                    v-model="editorCharTags"
-                    rows="3"
-                    placeholder="long hair, blue hair, twin tails, teal eyes, detached sleeves, ..."
-                    class="bg-background font-mono text-xs"
-                  />
-                  <p class="text-muted-foreground text-xs">
-                    Include clothing, hair, eyes, accessories — the more
-                    complete the better.
+          <!-- Right (1 col): Portrait Thumbnail Box -->
+          <div class="flex flex-col gap-2 md:col-span-1">
+            <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
+            <div
+              class="border-border hover:border-primary/50 bg-muted/20 relative flex aspect-3/4 w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed transition-colors"
+              @click="pickThumbnail"
+              @dragover.prevent
+              @drop.prevent="handleThumbnailDrop"
+            >
+              <img
+                v-if="editorThumbnailPreview"
+                :src="editorThumbnailPreview"
+                alt="Thumbnail preview"
+                class="h-full w-full object-cover object-center"
+              />
+              <div
+                v-else
+                class="flex flex-col items-center gap-2 p-4 text-center"
+              >
+                <div
+                  class="bg-muted text-muted-foreground flex h-10 w-10 items-center justify-center rounded-full"
+                >
+                  <ImageIcon class="h-5 w-5 opacity-60" />
+                </div>
+                <div>
+                  <p class="text-foreground text-xs font-semibold">
+                    Drop portrait image
+                  </p>
+                  <p class="text-muted-foreground mt-0.5 text-xs">
+                    or click to browse
                   </p>
                 </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
-                    <Label class="text-foreground text-xs font-bold"
-                      >Source</Label
-                    >
-                    <Select v-model="editorCharSource">
-                      <SelectTrigger class="h-8 w-full text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="local"
-                            >Local (manually entered)</SelectItem
-                          >
-                          <SelectItem value="animadex"
-                            >Imported from Animadex</SelectItem
-                          >
-                          <SelectItem value="manual"
-                            >Manual verification</SelectItem
-                          >
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div class="flex flex-col gap-1.5">
-                    <Label class="text-foreground text-xs font-bold"
-                      >Animadex Slug</Label
-                    >
-                    <Input
-                      v-model="editorCharAnimadexSlug"
-                      placeholder="e.g. hatsune-miku"
-                      class="font-mono text-xs"
-                    />
-                  </div>
-                </div>
-              </template>
-            </div>
-
-            <!-- Right (1 col): Portrait Thumbnail Box -->
-            <div class="flex flex-col gap-2 md:col-span-1">
-              <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
-              <div
-                class="border-border hover:border-primary/50 bg-muted/20 relative flex aspect-3/4 w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed transition-colors"
-                @click="pickThumbnail"
-                @dragover.prevent
-                @drop.prevent="handleThumbnailDrop"
-              >
-                <img
-                  v-if="editorThumbnailPreview"
-                  :src="editorThumbnailPreview"
-                  alt="Thumbnail preview"
-                  class="h-full w-full object-cover object-center"
-                />
-                <div
-                  v-else
-                  class="flex flex-col items-center gap-2 p-4 text-center"
+                <span
+                  class="border-border bg-muted/60 text-muted-foreground mt-1 rounded px-2 py-0.5 font-mono text-xs"
                 >
-                  <div
-                    class="bg-muted text-muted-foreground flex h-10 w-10 items-center justify-center rounded-full"
-                  >
-                    <ImageIcon class="h-5 w-5 opacity-60" />
-                  </div>
-                  <div>
-                    <p class="text-foreground text-xs font-semibold">
-                      Drop portrait image
-                    </p>
-                    <p class="text-muted-foreground mt-0.5 text-xs">
-                      or click to browse
-                    </p>
-                  </div>
-                  <span
-                    class="border-border bg-muted/60 text-muted-foreground mt-1 rounded px-2 py-0.5 font-mono text-xs"
-                  >
-                    3:4 / Portrait
-                  </span>
-                </div>
-                <button
-                  v-if="editorThumbnailPreview"
-                  type="button"
-                  class="absolute top-2 right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black/90"
-                  title="Remove thumbnail"
-                  @click.stop="
-                    editorThumbnailId = '';
-                    editorThumbnailPreview = '';
-                  "
-                >
-                  <X class="h-3.5 w-3.5" />
-                </button>
+                  3:4 / Portrait
+                </span>
               </div>
+              <button
+                v-if="editorThumbnailPreview"
+                type="button"
+                class="absolute top-2 right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black/90"
+                title="Remove thumbnail"
+                @click.stop="
+                  editorThumbnailId = '';
+                  editorThumbnailPreview = '';
+                "
+              >
+                <X class="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         </div>
+      </div>
 
-        <DialogFooter
-          class="border-border bg-muted/30 flex shrink-0 items-center justify-between border-t px-5 py-3 sm:justify-between"
-        >
-          <div>
-            <Button
-              v-if="editorMode === 'edit'"
-              variant="ghost"
-              size="default"
-              class="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 gap-1 px-2.5 text-xs"
-              @click="requestDeleteFromEditor"
-            >
-              <Trash2 class="h-3.5 w-3.5" />
-              <span>Delete</span>
-            </Button>
-          </div>
-          <div class="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="default"
-              class="text-xs"
-              @click="isEditorOpen = false"
-            >
-              Cancel
-            </Button>
-            <Button
-              size="default"
-              class="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-xs font-semibold"
-              :disabled="!editorName.trim() || editorIsSaving"
-              @click="handleSave"
-            >
-              Save
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter
+        class="border-border bg-muted/30 flex shrink-0 items-center justify-between border-t px-5 py-3 sm:justify-between"
+      >
+        <div>
+          <Button
+            v-if="editorMode === 'edit'"
+            variant="ghost"
+            size="default"
+            class="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 gap-1 px-2.5 text-xs"
+            @click="requestDeleteFromEditor"
+          >
+            <Trash2 class="h-3.5 w-3.5" />
+            <span>Delete</span>
+          </Button>
+        </div>
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="default"
+            class="text-xs"
+            @click="isEditorOpen = false"
+          >
+            Cancel
+          </Button>
+          <Button
+            size="default"
+            class="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-xs font-semibold"
+            :disabled="!editorName.trim() || editorIsSaving"
+            @click="handleSave"
+          >
+            Save
+          </Button>
+        </div>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 
-    <!-- ---------------------------------------------------------------
+  <!-- ---------------------------------------------------------------
          Delete Confirmation Dialog
     --------------------------------------------------------------- -->
-    <AlertDialog
-      :open="isDeleteDialogOpen"
-      @update:open="(v) => (isDeleteDialogOpen = v)"
-    >
-      <AlertDialogContent class="border-border bg-card sm:max-w-md">
-        <AlertDialogHeader>
-          <AlertDialogTitle class="text-foreground text-base font-bold">
-            Delete Preset?
-          </AlertDialogTitle>
-          <AlertDialogDescription class="text-muted-foreground leading-relaxed">
-            Are you sure you want to delete
-            <span class="text-foreground font-semibold"
-              >"{{ itemToDelete?.name }}"</span
-            >? This will permanently remove this item from your
-            {{ itemToDelete?.category ?? 'preset' }} library.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter class="gap-2 sm:gap-2">
-          <AlertDialogCancel> Cancel </AlertDialogCancel>
-          <AlertDialogAction
-            class="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-semibold"
-            :disabled="isDeleting"
-            @click="confirmDelete"
-          >
-            <Loader2
-              v-if="isDeleting"
-              class="mr-1.5 h-3.5 w-3.5 animate-spin"
-            />
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  </div>
+  <AlertDialog
+    :open="isDeleteDialogOpen"
+    @update:open="(v) => (isDeleteDialogOpen = v)"
+  >
+    <AlertDialogContent class="border-border bg-card sm:max-w-md">
+      <AlertDialogHeader>
+        <AlertDialogTitle class="text-foreground text-base font-bold">
+          Delete Preset?
+        </AlertDialogTitle>
+        <AlertDialogDescription class="text-muted-foreground leading-relaxed">
+          Are you sure you want to delete
+          <span class="text-foreground font-semibold"
+            >"{{ itemToDelete?.name }}"</span
+          >? This will permanently remove this item from your
+          {{ itemToDelete?.category ?? 'preset' }} library.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter class="gap-2 sm:gap-2">
+        <AlertDialogCancel> Cancel </AlertDialogCancel>
+        <AlertDialogAction
+          class="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-semibold"
+          :disabled="isDeleting"
+          @click="confirmDelete"
+        >
+          <Loader2 v-if="isDeleting" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          Delete
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>
