@@ -63,6 +63,19 @@ export interface ChatMessageAttachment {
   dataUrl: string;
 }
 
+export interface ChatMessageMention {
+  id: string;
+  source: 'booru' | 'animadex-character';
+  sourceId: string;
+  label: string;
+  detail: string;
+  metadata: string;
+  imageUrl?: string;
+  imageDataUrl?: string;
+  includeImage: boolean;
+  imageUnavailable?: boolean;
+}
+
 export type AgentStep =
   | 'thinking'
   | 'inspecting'
@@ -86,6 +99,7 @@ export interface ChatMessage {
   parts?: ChatMessagePart[];
   createdAt: number;
   attachments?: ChatMessageAttachment[];
+  mentions?: ChatMessageMention[];
   toolInvocations?: ToolInvocation[];
   reasoning?: string;
   currentStep?: AgentStep;

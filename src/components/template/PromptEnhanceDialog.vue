@@ -75,7 +75,10 @@ watch(promptTarget, (newTarget) => {
     newTarget === 'positive'
       ? POSITIVE_ENHANCE_PRESETS
       : NEGATIVE_ENHANCE_PRESETS;
-  if (!presets.some((p) => p.id === selectedStyle.value)) {
+  if (
+    selectedStyle.value !== 'custom' &&
+    !presets.some((p) => p.id === selectedStyle.value)
+  ) {
     selectedStyle.value = presets[0].id;
   }
 });
@@ -102,6 +105,15 @@ const currentPresets = computed(() =>
     ? POSITIVE_ENHANCE_PRESETS
     : NEGATIVE_ENHANCE_PRESETS
 );
+
+const isCustomMode = computed(() => selectedStyle.value === 'custom');
+const activeStyleLabel = computed(() => {
+  if (isCustomMode.value) return 'Custom instruction';
+  return (
+    currentPresets.value.find((preset) => preset.id === selectedStyle.value)
+      ?.label || selectedStyle.value
+  );
+});
 
 function selectPreset(id: string) {
   selectedStyle.value = id;
@@ -133,13 +145,21 @@ async function runEnhance() {
     : NEGATIVE_ENHANCE_PRESETS;
   const activePreset =
     presets.find((p) => p.id === selectedStyle.value) || presets[0];
+  const styleInstruction = isCustomMode.value
+    ? customInstruction.value.trim()
+    : activePreset.instruction;
+  if (!styleInstruction) {
+    errorMsg.value = 'Enter an instruction for Custom mode.';
+    isStreaming.value = false;
+    return;
+  }
 
   const userPrompt = buildEnhancerUserPrompt(
     isPositive,
     props.originalPrompt,
-    activePreset.instruction,
-    customInstruction.value,
-    styleContext.value
+    styleInstruction,
+    isCustomMode.value ? undefined : customInstruction.value,
+    isCustomMode.value ? undefined : styleContext.value
   );
 
   try {
@@ -259,7 +279,7 @@ async function copyEnhanced() {
           <div
             class="grid grid-cols-2 gap-2 sm:grid-cols-3"
             :class="
-              promptTarget === 'positive' ? 'md:grid-cols-5' : 'md:grid-cols-3'
+              promptTarget === 'positive' ? 'md:grid-cols-6' : 'md:grid-cols-4'
             "
           >
             <button
@@ -284,12 +304,42 @@ async function copyEnhanced() {
                 preset.desc
               }}</span>
             </button>
+            <button
+              type="button"
+              class="flex cursor-pointer flex-col items-start rounded-lg border p-2.5 text-left text-xs transition-all"
+              :class="
+                isCustomMode
+                  ? 'border-primary bg-primary/5 text-foreground ring-primary/30 ring-1'
+                  : 'border-border bg-card text-muted-foreground hover:border-border/80 hover:text-foreground'
+              "
+              @click="selectPreset('custom')"
+            >
+              <span class="text-foreground flex items-center gap-1.5 font-medium">
+                <Wand2 class="text-primary h-3 w-3" />
+                Custom
+              </span>
+              <span class="text-muted-foreground mt-1 line-clamp-2 text-xs">
+                Apply one instruction to the current prompt
+              </span>
+            </button>
           </div>
         </div>
 
         <!-- Context & Custom Instruction Inputs -->
         <div class="flex flex-col gap-2.5">
-          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div v-if="isCustomMode" class="flex flex-col gap-1">
+            <label class="text-muted-foreground text-xs font-medium">
+              Custom Instruction
+            </label>
+            <input
+              v-model="customInstruction"
+              type="text"
+              placeholder="e.g. Change pose into a dynamic running pose..."
+              class="border-border bg-background placeholder:text-muted-foreground/60 focus:ring-primary rounded-lg border px-3 py-1.5 text-xs focus:ring-1 focus:outline-none"
+              @keydown.enter.prevent="runEnhance"
+            />
+          </div>
+          <div v-else class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <!-- Thematic / Universe Context -->
             <div class="flex flex-col gap-1">
               <div class="flex items-center justify-between">
@@ -336,13 +386,11 @@ async function copyEnhanced() {
               class="text-muted-foreground flex items-center gap-1.5 text-xs"
             >
               <span class="text-foreground font-medium">Active Preset:</span>
-              <span class="capitalize">
-                {{
-                  currentPresets.find((p) => p.id === selectedStyle)?.label ||
-                  selectedStyle
-                }}
-              </span>
-              <span v-if="styleContext.trim()" class="text-primary font-medium">
+              <span>{{ activeStyleLabel }}</span>
+              <span
+                v-if="!isCustomMode && styleContext.trim()"
+                class="text-primary font-medium"
+              >
                 • Theme: "{{ styleContext.trim() }}"
               </span>
             </div>

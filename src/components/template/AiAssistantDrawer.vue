@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AssistantMessage from '@/components/ai/AssistantMessage.vue';
+import AiMentionChip from '@/components/ai/AiMentionChip.vue';
 import { formatRelativeTime } from '@/utils/formatters';
 import mayaMascot from '@/assets/maya-mascot.png';
 import { computed, nextTick, ref, watch } from 'vue';
@@ -40,6 +41,7 @@ import {
 import { useAiStore } from '../../stores/aiStore';
 import { useComfyStore } from '../../stores/comfyStore';
 import type { ChatMessage, ChatMessageAttachment } from '../../types/ai';
+import { supportsVision } from '@/utils/aiMentions';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 
@@ -52,6 +54,9 @@ const attachments = ref<ChatMessageAttachment[]>([]);
 const { context: messageScroll } = provideMessageScroller({ autoScroll: true });
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDraggingOver = ref(false);
+const visionSupported = computed(() =>
+  supportsVision(aiStore.selectedModelInfo)
+);
 
 const activeSession = computed(() => aiStore.activeSession);
 const messages = computed(() => aiStore.activeMessages);
@@ -259,15 +264,17 @@ watch(
 async function handleSend() {
   const text = messageInput.value.trim();
   const currentAtts = [...attachments.value];
-  if (!text && currentAtts.length === 0) return;
+  const currentMentions = [...aiStore.draftMentions];
+  if (!text && currentAtts.length === 0 && currentMentions.length === 0) return;
   if (aiStore.isGenerating) return;
 
   messageInput.value = '';
   attachments.value = [];
+  aiStore.clearDraftMentions();
   nextTick(() => messageScroll.scrollToEnd());
 
   try {
-    await aiStore.sendMessage(text, currentAtts);
+    await aiStore.sendMessage(text, currentAtts, currentMentions);
   } catch (err) {
     console.error('Error sending message:', err);
   }
@@ -739,6 +746,17 @@ function navigateToSettings() {
                     </div>
                   </div>
 
+                  <div
+                    v-if="msg.mentions && msg.mentions.length > 0"
+                    class="flex max-w-full flex-wrap justify-end gap-1.5"
+                  >
+                    <AiMentionChip
+                      v-for="mention in msg.mentions"
+                      :key="mention.id"
+                      :mention="mention"
+                    />
+                  </div>
+
                   <!-- Text Content -->
                   <div
                     v-if="editingMessageId === msg.id"
@@ -845,6 +863,21 @@ function navigateToSettings() {
             </div>
           </div>
 
+          <div
+            v-if="aiStore.draftMentions.length > 0"
+            class="flex flex-wrap gap-1.5"
+          >
+            <AiMentionChip
+              v-for="mention in aiStore.draftMentions"
+              :key="mention.id"
+              editable
+              :mention="mention"
+              :vision-supported="visionSupported"
+              @remove="aiStore.removeDraftMention(mention.id)"
+              @toggle-image="aiStore.toggleDraftMentionImage(mention.id)"
+            />
+          </div>
+
           <!-- Input Textarea & Send Control -->
           <div
             class="border-border bg-background focus-within:ring-primary focus-within:border-primary relative flex flex-col rounded-xl border transition-all focus-within:ring-1"
@@ -940,7 +973,11 @@ function navigateToSettings() {
                   v-else
                   type="button"
                   size="sm"
-                  :disabled="!messageInput.trim() && attachments.length === 0"
+                  :disabled="
+                    !messageInput.trim() &&
+                    attachments.length === 0 &&
+                    aiStore.draftMentions.length === 0
+                  "
                   class="bg-primary text-primary-foreground h-7 shrink-0 gap-1.5 text-xs shadow-xs"
                   @click="handleSend"
                 >

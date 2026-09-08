@@ -9,6 +9,7 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  MessageSquare,
   RotateCw,
   Sparkles,
   Tag
@@ -40,10 +41,13 @@ import {
   type BooruSettings
 } from '@/services/booruGallery';
 import { useLauncherStore } from '@/stores/launcherStore';
+import { useAiStore } from '@/stores/aiStore';
 import { ratingColorClass } from '@/utils/booruPresentation';
+import { createBooruMention } from '@/utils/aiMentions';
 
 const props = defineProps<{ settings: BooruSettings | null }>();
 const launcherStore = useLauncherStore();
+const aiStore = useAiStore();
 function readableError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -297,6 +301,15 @@ function handleDetailImageError() {
   } else {
     detailImageError.value = true;
   }
+}
+
+function mentionInMaya() {
+  if (!detail.value) return;
+  aiStore.addDraftMention(
+    createBooruMention(detail.value, detailActiveImgUrl.value, props.settings)
+  );
+  detailOpen.value = false;
+  aiStore.isDrawerOpen = true;
 }
 function retryDetailImage() {
   detailFallbackAttempted.value = false;
@@ -588,6 +601,15 @@ defineExpose({ open: openDetail });
               >
                 <BookOpen class="h-3.5 w-3.5" />
                 <span>Save as Character</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                class="border-primary/30 hover:bg-primary/10 text-primary gap-1.5 text-xs font-semibold"
+                @click="mentionInMaya"
+              >
+                <MessageSquare class="h-3.5 w-3.5" />
+                <span>Mention in Maya</span>
               </Button>
               <Button
                 variant="outline"

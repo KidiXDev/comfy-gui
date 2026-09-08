@@ -19,12 +19,14 @@ import type {
   AiConfig,
   ChatMessage,
   ChatMessageAttachment,
+  ChatMessageMention,
   ChatMessagePart,
   ChatSession,
   OpenRouterModel,
   ToolInvocation,
   ToolName
 } from '../types/ai';
+import { mentionReference, supportsVision } from '../utils/aiMentions';
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
 
@@ -131,6 +133,37 @@ function limitChatContext<T extends { role: string; content: unknown }>(
   return messages.slice(startIndex);
 }
 
+async function prepareMentionImages(
+  mentions: ChatMessageMention[],
+  canUseVision: boolean
+) {
+  return await Promise.all(
+    mentions.map(async (mention) => {
+      if (
+        !canUseVision ||
+        !mention.includeImage ||
+        !mention.imageUrl ||
+        mention.imageDataUrl
+      )
+        return mention;
+      try {
+        const response = await fetch(mention.imageUrl);
+        if (!response.ok) throw new Error('Image request failed');
+        const blob = await response.blob();
+        const imageDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        return { ...mention, imageDataUrl, imageUnavailable: false };
+      } catch {
+        return { ...mention, imageUnavailable: true };
+      }
+    })
+  );
+}
+
 export const useAiStore = defineStore('ai', () => {
   const workflowStore = useWorkflowStore();
   const comfyStore = useComfyStore();
@@ -142,6 +175,7 @@ export const useAiStore = defineStore('ai', () => {
   const models = ref<OpenRouterModel[]>([...POPULAR_MODELS]);
   const isLoadingModels = ref(false);
   const isGenerating = ref(false);
+  const draftMentions = ref<ChatMessageMention[]>([]);
   const isLoaded = ref(false);
   let currentAbortController: AbortController | null = null;
   const approvals = new Map<
@@ -319,8 +353,9 @@ export const useAiStore = defineStore('ai', () => {
     );
     if (index === -1) return;
     const attachments = session.messages[index].attachments ?? [];
+    const mentions = session.messages[index].mentions ?? [];
     session.messages.splice(index);
-    await sendMessage(text, attachments);
+    await sendMessage(text, attachments, mentions);
   }
 
   async function refreshModels(force = false) {
@@ -344,9 +379,40 @@ export const useAiStore = defineStore('ai', () => {
     }
   }
 
+  function addDraftMention(mention: ChatMessageMention) {
+    const existing = draftMentions.value.findIndex(
+      (item) =>
+        item.source === mention.source && item.sourceId === mention.sourceId
+    );
+    if (existing === -1) {
+      draftMentions.value.push(mention);
+    } else {
+      draftMentions.value[existing] = {
+        ...mention,
+        includeImage: draftMentions.value[existing].includeImage
+      };
+    }
+  }
+
+  function removeDraftMention(id: string) {
+    draftMentions.value = draftMentions.value.filter(
+      (mention) => mention.id !== id
+    );
+  }
+
+  function toggleDraftMentionImage(id: string) {
+    const mention = draftMentions.value.find((item) => item.id === id);
+    if (mention) mention.includeImage = !mention.includeImage;
+  }
+
+  function clearDraftMentions() {
+    draftMentions.value = [];
+  }
+
   async function sendMessage(
     text: string,
-    attachments: ChatMessageAttachment[] = []
+    attachments: ChatMessageAttachment[] = [],
+    mentions: ChatMessageMention[] = []
   ) {
     if (isGenerating.value) return;
     if (!config.value.apiKey.trim()) {
@@ -360,13 +426,18 @@ export const useAiStore = defineStore('ai', () => {
       session = createSession();
     }
 
+    const preparedMentions = await prepareMentionImages(
+      mentions,
+      supportsVision(selectedModelInfo.value)
+    );
     const userMessageId = `msg-${Date.now()}-user`;
     const userMsg: ChatMessage = {
       id: userMessageId,
       role: 'user',
       content: text,
       createdAt: Date.now(),
-      attachments: attachments.length > 0 ? [...attachments] : undefined
+      attachments: attachments.length > 0 ? [...attachments] : undefined,
+      mentions: preparedMentions.length > 0 ? preparedMentions : undefined
     };
     session.messages.push(userMsg);
     session.updatedAt = Date.now();
@@ -435,16 +506,35 @@ export const useAiStore = defineStore('ai', () => {
         .filter((m) => m.role === 'user' || m.content.trim())
         .map((m) => {
           if (m.role === 'user') {
-            if (m.attachments && m.attachments.length > 0) {
+            const textWithReferences = [
+              m.content,
+              ...(m.mentions ?? []).map((mention) => mentionReference(mention))
+            ]
+              .filter(Boolean)
+              .join('\n\n');
+            const mentionImages = supportsVision(selectedModelInfo.value)
+              ? (m.mentions ?? []).filter(
+                  (mention) => mention.includeImage && mention.imageDataUrl
+                )
+              : [];
+            if (
+              (m.attachments && m.attachments.length > 0) ||
+              mentionImages.length > 0
+            ) {
               const parts: Array<
                 | { type: 'text'; text: string }
                 | { type: 'image'; image: string }
               > = [];
-              if (m.content) {
-                parts.push({ type: 'text', text: m.content });
+              if (textWithReferences) {
+                parts.push({ type: 'text', text: textWithReferences });
               }
-              for (const att of m.attachments) {
+              for (const att of m.attachments ?? []) {
                 parts.push({ type: 'image', image: att.dataUrl });
+              }
+              for (const mention of mentionImages) {
+                if (mention.imageDataUrl) {
+                  parts.push({ type: 'image', image: mention.imageDataUrl });
+                }
               }
               return {
                 role: 'user' as const,
@@ -453,7 +543,7 @@ export const useAiStore = defineStore('ai', () => {
             }
             return {
               role: 'user' as const,
-              content: m.content
+              content: textWithReferences
             };
           }
           return {
@@ -904,6 +994,7 @@ export const useAiStore = defineStore('ai', () => {
     models,
     isLoadingModels,
     isGenerating,
+    draftMentions,
     isLoaded,
     hasApiKey,
     selectedModelInfo,
@@ -922,6 +1013,10 @@ export const useAiStore = defineStore('ai', () => {
     refreshModels,
     sendMessage,
     stopGeneration,
+    addDraftMention,
+    removeDraftMention,
+    toggleDraftMentionImage,
+    clearDraftMentions,
     applyToolInvocation,
     rejectToolInvocation
   };

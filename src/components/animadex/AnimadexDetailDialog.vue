@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Layers,
   Loader2,
+  MessageSquare,
   Palette,
   Plus,
   Replace,
@@ -36,12 +37,14 @@ import { resolveAnimadexMediaUrl } from '@/services/animadexApi';
 import { LibraryService } from '@/services/libraryService';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
+import { useAiStore } from '@/stores/aiStore';
 import type {
   AnimaDexArtist,
   AnimaDexCharacter,
   AnimaDexCopyright
 } from '@/types/animadex';
 import type { CharacterData } from '@/types/library';
+import { createAnimadexMention } from '@/utils/aiMentions';
 
 const props = defineProps<{
   open: boolean;
@@ -57,6 +60,7 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const workflowStore = useWorkflowStore();
+const aiStore = useAiStore();
 
 const imageLoaded = ref(false);
 const imageError = ref(false);
@@ -181,6 +185,13 @@ function handleAppendToWorkflow(promptText: string, andNavigate = false) {
     emit('update:open', false);
     router.push('/workflow');
   }
+}
+
+function mentionInMaya() {
+  if (!character.value) return;
+  aiStore.addDraftMention(createAnimadexMention(character.value));
+  emit('update:open', false);
+  aiStore.isDrawerOpen = true;
 }
 
 function handleReplaceWorkflow(promptText: string, andNavigate = false) {
@@ -528,6 +539,17 @@ async function handleSaveCharacterToLibrary() {
                   >
                     <BookOpen class="h-3.5 w-3.5" />
                     <span>Save to Character Library</span>
+                  </Button>
+
+                  <Button
+                    v-if="props.type === 'character'"
+                    size="sm"
+                    variant="outline"
+                    class="border-primary/30 hover:bg-primary/10 text-primary h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
+                    @click="mentionInMaya"
+                  >
+                    <MessageSquare class="h-3.5 w-3.5" />
+                    <span>Mention in Maya</span>
                   </Button>
 
                   <Button
