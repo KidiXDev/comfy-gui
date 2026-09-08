@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AlertTriangle, Loader2 } from '@lucide/vue';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { RouterView } from 'vue-router';
+import ConfirmDialogProvider from '@/components/common/ConfirmDialogProvider.vue';
 import AppSidebar from '@/components/template/AppSidebar.vue';
 import AppTitlebar from '@/components/template/AppTitlebar.vue';
 import AiAssistantDrawer from '@/components/template/AiAssistantDrawer.vue';
@@ -88,9 +89,10 @@ onUnmounted(() => {
 
 <template>
   <TooltipProvider :delay-duration="150">
-    <div
-      class="bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden antialiased select-none"
-    >
+    <ConfirmDialogProvider>
+      <div
+        class="bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden antialiased select-none"
+      >
       <!-- Custom Frameless Window Titlebar with Drag Region -->
       <AppTitlebar />
 
@@ -155,6 +157,7 @@ onUnmounted(() => {
         </Dialog>
         <Toaster position="bottom-right" richColors />
       </div>
-    </div>
+      </div>
+    </ConfirmDialogProvider>
   </TooltipProvider>
 </template>

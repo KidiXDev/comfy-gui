@@ -54,7 +54,6 @@ import { Separator } from '@/components/ui/separator';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import {
@@ -348,8 +347,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <TooltipProvider :delay-duration="200">
-    <PageLayout
+  <PageLayout
       title="Output Gallery"
       :subtitle="`${filteredImages.length} of ${images.length} images • Recursive ComfyUI Output`"
       header-class="bg-card/60 h-13 px-4"
@@ -784,5 +782,4 @@ onUnmounted(() => {
 
     <!-- High-End Detail Lightbox & Generation Data Inspector Modal -->
     <OutputImageInspector ref="imageInspector" :images="filteredImages" />
-  </TooltipProvider>
 </template>

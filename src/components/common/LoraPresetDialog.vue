@@ -7,7 +7,6 @@ import {
   FolderOpen,
   Layers,
   Library,
-  Loader2,
   Plus,
   PlusCircle,
   RefreshCw,
@@ -17,6 +16,7 @@ import {
   Zap
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import {
   Dialog,
   DialogContent,
@@ -24,16 +24,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -53,6 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const workflowStore = useWorkflowStore();
+const { confirm } = useConfirmDialog();
 
 const stack = defineModel<LoraItem[]>('loras');
 const loras = computed({
@@ -162,27 +153,18 @@ async function handleSavePreset() {
   }, 900);
 }
 
-const itemToDelete = ref<LibraryListEntry | null>(null);
-const isDeleteDialogOpen = ref(false);
-const isDeleting = ref(false);
+async function requestDelete(entry: LibraryListEntry) {
+  const confirmed = await confirm({
+    title: 'Delete LoRA Preset?',
+    description: `Are you sure you want to delete "${entry.name}"? This will permanently remove this preset from your LoRA library.`
+  });
+  if (!confirmed) return;
 
-function requestDelete(entry: LibraryListEntry) {
-  itemToDelete.value = entry;
-  isDeleteDialogOpen.value = true;
-}
-
-async function confirmDelete() {
-  if (!itemToDelete.value) return;
-  isDeleting.value = true;
   try {
-    await LibraryService.deleteItem(itemToDelete.value.id, 'loras');
+    await LibraryService.deleteItem(entry.id, 'loras');
     await fetchEntries();
-    isDeleteDialogOpen.value = false;
-    itemToDelete.value = null;
   } catch (err) {
     console.error('Failed to delete LoRA preset:', err);
-  } finally {
-    isDeleting.value = false;
   }
 }
 </script>
@@ -558,35 +540,4 @@ async function confirmDelete() {
     </DialogContent>
   </Dialog>
 
-  <!-- Delete Confirmation Dialog -->
-  <AlertDialog
-    :open="isDeleteDialogOpen"
-    @update:open="(v) => (isDeleteDialogOpen = v)"
-  >
-    <AlertDialogContent class="border-border bg-card sm:max-w-md">
-      <AlertDialogHeader>
-        <AlertDialogTitle class="text-foreground text-base font-bold">
-          Delete LoRA Preset?
-        </AlertDialogTitle>
-        <AlertDialogDescription class="text-muted-foreground text-xs leading-relaxed">
-          Are you sure you want to delete
-          <span class="text-foreground font-semibold">"{{ itemToDelete?.name }}"</span>?
-          This will permanently remove this preset from your LoRA library.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter class="gap-2 sm:gap-2">
-        <AlertDialogCancel class="h-8 text-xs">
-          Cancel
-        </AlertDialogCancel>
-        <AlertDialogAction
-          class="bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 text-xs font-semibold"
-          :disabled="isDeleting"
-          @click="confirmDelete"
-        >
-          <Loader2 v-if="isDeleting" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          Delete
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
 </template>

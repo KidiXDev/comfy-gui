@@ -10,7 +10,6 @@ import {
   Copy,
   FolderOpen,
   Layers,
-  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -22,16 +21,7 @@ import {
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import PageLayout from '@/components/layout/PageLayout.vue';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from '@/components/ui/alert-dialog';
+import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatShortDate } from '@/utils/formatters';
 import { LibraryService } from '../services/libraryService';
@@ -50,6 +40,7 @@ const route = useRoute();
 const router = useRouter();
 const libraryStore = useLibraryStore();
 const workflowStore = useWorkflowStore();
+const { confirm } = useConfirmDialog();
 
 // ---------------------------------------------------------------------------
 // Category tab state
@@ -187,28 +178,18 @@ async function injectCharacterToPrompt(entry: LibraryListEntry) {
 // Delete Confirmation
 // ---------------------------------------------------------------------------
 
-const itemToDelete = ref<LibraryListEntry | null>(null);
-const isDeleteDialogOpen = ref(false);
-const isDeleting = ref(false);
+async function requestDelete(entry: LibraryListEntry) {
+  const confirmed = await confirm({
+    title: 'Delete Preset?',
+    description: `Are you sure you want to delete "${entry.name}"? This will permanently remove this item from your ${entry.category} library.`
+  });
+  if (!confirmed) return;
 
-function requestDelete(entry: LibraryListEntry) {
-  itemToDelete.value = entry;
-  isDeleteDialogOpen.value = true;
-}
-
-async function confirmDelete() {
-  if (!itemToDelete.value) return;
-  isDeleting.value = true;
   try {
-    const target = itemToDelete.value;
-    await libraryStore.deleteItem(target.id, target.category);
-    entryEditor.value?.closeDeleted(target.id);
-    isDeleteDialogOpen.value = false;
-    itemToDelete.value = null;
+    await libraryStore.deleteItem(entry.id, entry.category);
+    entryEditor.value?.closeDeleted(entry.id);
   } catch (err) {
     console.error('Failed to delete library item:', err);
-  } finally {
-    isDeleting.value = false;
   }
 }
 
@@ -619,37 +600,4 @@ const copiedEntryId = ref<string | null>(null);
     @delete="requestDelete"
   />
 
-  <!-- ---------------------------------------------------------------
-         Delete Confirmation Dialog
-    --------------------------------------------------------------- -->
-  <AlertDialog
-    :open="isDeleteDialogOpen"
-    @update:open="(v) => (isDeleteDialogOpen = v)"
-  >
-    <AlertDialogContent class="border-border bg-card sm:max-w-md">
-      <AlertDialogHeader>
-        <AlertDialogTitle class="text-foreground text-base font-bold">
-          Delete Preset?
-        </AlertDialogTitle>
-        <AlertDialogDescription class="text-muted-foreground leading-relaxed">
-          Are you sure you want to delete
-          <span class="text-foreground font-semibold"
-            >"{{ itemToDelete?.name }}"</span
-          >? This will permanently remove this item from your
-          {{ itemToDelete?.category ?? 'preset' }} library.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter class="gap-2 sm:gap-2">
-        <AlertDialogCancel> Cancel </AlertDialogCancel>
-        <AlertDialogAction
-          class="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-semibold"
-          :disabled="isDeleting"
-          @click="confirmDelete"
-        >
-          <Loader2 v-if="isDeleting" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          Delete
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
 </template>

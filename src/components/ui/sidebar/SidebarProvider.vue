@@ -6,7 +6,6 @@ import {
   useMediaQuery,
   useVModel
 } from '@vueuse/core';
-import { TooltipProvider } from 'reka-ui';
 import { computed, ref } from 'vue';
 import { cn } from '@/lib/utils';
 import {
@@ -88,8 +87,7 @@ provideSidebarContext({
 </script>
 
 <template>
-  <TooltipProvider :delay-duration="0">
-    <div
+  <div
       data-slot="sidebar-wrapper"
       :style="{
         '--sidebar-width': SIDEBAR_WIDTH,
@@ -103,7 +101,6 @@ provideSidebarContext({
       "
       v-bind="$attrs"
     >
-      <slot />
-    </div>
-  </TooltipProvider>
+    <slot />
+  </div>
 </template>

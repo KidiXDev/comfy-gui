@@ -41,7 +41,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
@@ -340,8 +339,7 @@ const negativeTokenInfo = computed(() =>
 </script>
 
 <template>
-  <TooltipProvider>
-    <div
+  <div
       class="flex flex-col gap-3.5"
       :class="{ invisible: !textareaSizesReady }"
       @keydown="handleContainerKeydown"
@@ -1031,6 +1029,5 @@ const negativeTokenInfo = computed(() =>
         "
         @apply="handleEnhanceApply"
       />
-    </div>
-  </TooltipProvider>
+  </div>
 </template>

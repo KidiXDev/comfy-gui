@@ -17,7 +17,6 @@ import { Slider } from '@/components/ui/slider';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import SeedControl from '../common/SeedControl.vue';
@@ -139,8 +138,7 @@ function setSeedValue(value: string | number) {
 </script>
 
 <template>
-  <TooltipProvider>
-    <div class="flex flex-col gap-3.5">
+  <div class="flex flex-col gap-3.5">
       <!-- Header & Subtitle -->
       <div class="flex flex-col gap-0.5">
         <span
@@ -490,6 +488,5 @@ function setSeedValue(value: string | number) {
           </div>
         </div>
       </div>
-    </div>
-  </TooltipProvider>
+  </div>
 </template>
