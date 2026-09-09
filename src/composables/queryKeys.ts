@@ -31,12 +31,12 @@ export const queryKeys = {
   },
   booru: {
     all: ['booru'] as const,
-    sources: (url: string) => ['booru', 'sources', url] as const,
-    search: (url: string, options: Record<string, unknown>) =>
-      ['booru', 'search', url, options] as const,
-    detail: (url: string, source: string, postId: string) =>
-      ['booru', 'detail', url, source, postId] as const,
-    settings: (url: string) => ['booru', 'settings', url] as const
+    sources: () => ['booru', 'sources'] as const,
+    search: (options: Record<string, unknown>) =>
+      ['booru', 'search', options] as const,
+    detail: (source: string, postId: string) =>
+      ['booru', 'detail', source, postId] as const,
+    settings: () => ['booru', 'settings'] as const
   },
   civitai: {
     all: ['civitai'] as const,

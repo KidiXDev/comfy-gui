@@ -5,6 +5,7 @@ import type { ChatMessageMention } from '@/types/ai';
 defineProps<{
   mention: ChatMessageMention;
   editable?: boolean;
+  showImage?: boolean;
   visionSupported?: boolean;
 }>();
 
@@ -19,7 +20,7 @@ defineEmits<{
     class="border-primary/25 bg-primary/5 flex max-w-full items-center gap-2 rounded-lg border p-1.5 text-xs"
   >
     <img
-      v-if="mention.imageDataUrl || mention.imageUrl"
+      v-if="showImage !== false && (mention.imageDataUrl || mention.imageUrl)"
       :src="mention.imageDataUrl || mention.imageUrl"
       :alt="mention.label"
       class="h-9 w-9 shrink-0 rounded object-cover"

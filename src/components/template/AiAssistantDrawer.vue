@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import AssistantMessage from '@/components/ai/AssistantMessage.vue';
 import AiMentionChip from '@/components/ai/AiMentionChip.vue';
+import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { formatRelativeTime } from '@/utils/formatters';
 import mayaMascot from '@/assets/maya-mascot.png';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   ArrowUpRight,
@@ -51,6 +52,7 @@ const router = useRouter();
 
 const messageInput = ref('');
 const attachments = ref<ChatMessageAttachment[]>([]);
+const lightboxImage = shallowRef<{ src: string; title?: string } | null>(null);
 const { context: messageScroll } = provideMessageScroller({ autoScroll: true });
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDraggingOver = ref(false);
@@ -195,6 +197,14 @@ function processImageFile(file: File): Promise<void> {
 
 function removeAttachment(id: string) {
   attachments.value = attachments.value.filter((a) => a.id !== id);
+}
+
+function openChatImage(src: string, title?: string) {
+  lightboxImage.value = { src, title };
+}
+
+function closeChatImage(open: boolean) {
+  if (!open) lightboxImage.value = null;
 }
 
 // Attach current preview or last generated image from studio
@@ -731,30 +741,53 @@ function navigateToSettings() {
                   <!-- Attachments if any -->
                   <div
                     v-if="msg.attachments && msg.attachments.length > 0"
-                    class="flex flex-wrap justify-end gap-1.5"
+                    class="flex w-full flex-col items-end gap-2"
                   >
-                    <div
+                    <button
                       v-for="att in msg.attachments"
                       :key="att.id"
-                      class="border-primary/30 relative h-16 w-16 overflow-hidden rounded-lg border shadow-xs"
+                      type="button"
+                      class="border-primary/30 bg-muted/20 hover:border-primary/60 relative max-h-80 w-full max-w-sm cursor-zoom-in overflow-hidden rounded-xl border shadow-xs transition-colors"
+                      :aria-label="`View ${att.name || 'attached image'} fullscreen`"
+                      @click="openChatImage(att.dataUrl, att.name)"
                     >
                       <img
                         :src="att.dataUrl"
-                        alt=""
-                        class="h-full w-full object-cover"
+                        :alt="att.name || 'Attached image'"
+                        class="max-h-80 w-full object-contain"
                       />
-                    </div>
+                    </button>
                   </div>
 
                   <div
                     v-if="msg.mentions && msg.mentions.length > 0"
-                    class="flex max-w-full flex-wrap justify-end gap-1.5"
+                    class="flex w-full flex-col items-end gap-2"
                   >
-                    <AiMentionChip
+                    <div
                       v-for="mention in msg.mentions"
                       :key="mention.id"
-                      :mention="mention"
-                    />
+                      class="flex w-full max-w-sm flex-col items-end gap-1.5"
+                    >
+                      <button
+                        v-if="mention.imageDataUrl || mention.imageUrl"
+                        type="button"
+                        class="border-primary/30 bg-muted/20 hover:border-primary/60 max-h-80 w-full cursor-zoom-in overflow-hidden rounded-xl border shadow-xs transition-colors"
+                        :aria-label="`View ${mention.label} fullscreen`"
+                        @click="
+                          openChatImage(
+                            mention.imageDataUrl || mention.imageUrl || '',
+                            mention.label
+                          )
+                        "
+                      >
+                        <img
+                          :src="mention.imageDataUrl || mention.imageUrl"
+                          :alt="mention.label"
+                          class="max-h-80 w-full object-contain"
+                        />
+                      </button>
+                      <AiMentionChip :mention="mention" :show-image="false" />
+                    </div>
                   </div>
 
                   <!-- Text Content -->
@@ -990,5 +1023,13 @@ function navigateToSettings() {
         </div>
       </template>
     </aside>
+
+    <ImageLightboxModal
+      :open="lightboxImage !== null"
+      :src="lightboxImage?.src"
+      :alt="lightboxImage?.title"
+      :title="lightboxImage?.title"
+      @update:open="closeChatImage"
+    />
   </div>
 </template>

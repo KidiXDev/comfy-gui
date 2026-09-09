@@ -1,5 +1,19 @@
 import assert from 'node:assert/strict';
-import { buildBooruPrompt, formatBooruWarnings } from './booruGallery';
+import {
+  buildBooruPrompt,
+  formatBooruWarnings,
+  normalizeBooruRatings
+} from './booruGallery';
+
+assert.deepEqual(normalizeBooruRatings([], ['general']), []);
+assert.deepEqual(normalizeBooruRatings(['safe'], []), ['safe']);
+assert.deepEqual(
+  normalizeBooruRatings(['general', 'explicit'], ['explicit', 'unknown']),
+  ['explicit']
+);
+assert.deepEqual(normalizeBooruRatings(['general', 'explicit'], ['unknown']), [
+  'general'
+]);
 
 assert.equal(
   buildBooruPrompt(

@@ -729,7 +729,7 @@ void loadNetworkCacheStats();
         />
       </SettingsSection>
 
-      <BooruSettings :server-url="serverUrl" @saved="showSaved" />
+      <BooruSettings @saved="showSaved" />
 
       <SettingsSection title="Civitai API" icon-class="text-orange-400">
         <template #icon>

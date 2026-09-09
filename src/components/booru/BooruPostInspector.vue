@@ -40,13 +40,11 @@ import {
   type BooruPostDetail,
   type BooruSettings
 } from '@/services/booruGallery';
-import { useLauncherStore } from '@/stores/launcherStore';
 import { useAiStore } from '@/stores/aiStore';
 import { ratingColorClass } from '@/utils/booruPresentation';
 import { createBooruMention } from '@/utils/aiMentions';
 
 const props = defineProps<{ settings: BooruSettings | null }>();
-const launcherStore = useLauncherStore();
 const aiStore = useAiStore();
 function readableError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -253,7 +251,6 @@ const detailActiveImgUrl = computed(() => {
       detail.value?.previewUrl || detailActivePost.value?.previewUrl || '';
     return rawUrl
       ? getBooruMediaUrl(
-          launcherStore.config.serverUrl,
           detail.value?.source || detailActivePost.value?.source || '',
           rawUrl
         )
@@ -265,22 +262,14 @@ const detailActiveImgUrl = computed(() => {
       detail.value.mediaUrl ||
       detail.value.previewUrl;
     return rawUrl
-      ? getBooruMediaUrl(
-          launcherStore.config.serverUrl,
-          detail.value.source,
-          rawUrl
-        )
+      ? getBooruMediaUrl(detail.value.source, rawUrl)
       : '';
   }
   if (detailActivePost.value) {
     const rawUrl =
       detailActivePost.value.sampleUrl || detailActivePost.value.previewUrl;
     return rawUrl
-      ? getBooruMediaUrl(
-          launcherStore.config.serverUrl,
-          detailActivePost.value.source,
-          rawUrl
-        )
+      ? getBooruMediaUrl(detailActivePost.value.source, rawUrl)
       : '';
   }
   return '';
@@ -328,11 +317,7 @@ async function openDetail(post: BooruPost) {
   copiedPrompt.value = false;
   copiedTag.value = null;
   try {
-    detail.value = await fetchBooruDetail(
-      launcherStore.config.serverUrl,
-      post.source,
-      post.postId
-    );
+    detail.value = await fetchBooruDetail(post.source, post.postId);
   } catch (error) {
     detailError.value = readableError(error);
   } finally {

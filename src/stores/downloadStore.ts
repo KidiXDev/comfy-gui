@@ -12,10 +12,16 @@ import {
 } from '../services/downloadManager';
 import { cleanPath } from './launcherStore';
 
+export function shouldPollDownloads(records: Pick<DownloadRecord, 'status'>[]) {
+  return records.some((record) =>
+    ['active', 'waiting'].includes(record.status)
+  );
+}
+
 export const useDownloadStore = defineStore('downloads', () => {
   const items = ref<DownloadRecord[]>([]);
   const errorMessage = ref('');
-  let refreshTimer: ReturnType<typeof setInterval> | null = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   const activeCount = computed(
     () =>
@@ -34,10 +40,19 @@ export const useDownloadStore = defineStore('downloads', () => {
     }
   }
 
+  function scheduleRefresh() {
+    if (refreshTimer || !shouldPollDownloads(items.value)) return;
+    refreshTimer = setTimeout(async () => {
+      refreshTimer = null;
+      await refresh();
+      scheduleRefresh();
+    }, 1000);
+  }
+
   async function init() {
     if (refreshTimer) return;
     await refresh();
-    refreshTimer = setInterval(() => void refresh(), 1000);
+    scheduleRefresh();
   }
 
   async function enqueueCivitai(options: {
@@ -59,6 +74,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     const index = items.value.findIndex((item) => item.gid === record.gid);
     if (index === -1) items.value.unshift(record);
     else items.value[index] = record;
+    scheduleRefresh();
     return record;
   }
 
@@ -70,6 +86,7 @@ export const useDownloadStore = defineStore('downloads', () => {
   async function resume(gid: string) {
     await resumeDownload(gid);
     await refresh();
+    scheduleRefresh();
   }
 
   async function cancel(gid: string) {
@@ -96,7 +113,7 @@ export const useDownloadStore = defineStore('downloads', () => {
   }
 
   function stop() {
-    if (refreshTimer) clearInterval(refreshTimer);
+    if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = null;
   }
 

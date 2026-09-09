@@ -36,13 +36,9 @@ import {
   type BooruSettingsUpdate
 } from '@/services/booruGallery';
 import { loadAppData, saveAppData } from '@/services/appStorage';
-import { useComfyStore } from '@/stores/comfyStore';
-import { cleanPath } from '@/stores/launcherStore';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import SettingsSection from '@/components/layout/SettingsSection.vue';
 
-const props = defineProps<{ serverUrl: string }>();
-const comfyStore = useComfyStore();
 const emit = defineEmits<{ saved: [] }>();
 function showSaved() {
   emit('saved');
@@ -127,24 +123,14 @@ function applyGallerySettings(settings: BooruSettings) {
   }
 }
 async function loadGallerySettings() {
-  if (!comfyStore.isConnected) {
-    booruAvailable.value = null;
-    booruSettings.value = null;
-    return;
-  }
   try {
-    applyGallerySettings(await fetchBooruSettings(props.serverUrl));
+    applyGallerySettings(await fetchBooruSettings());
     booruAvailable.value = true;
   } catch {
     booruAvailable.value = false;
     booruSettings.value = null;
   }
 }
-watch(
-  () => comfyStore.isConnected,
-  () => void loadGallerySettings(),
-  { immediate: true }
-);
 function parseTagList(value: string) {
   return [
     ...new Set(
@@ -197,7 +183,7 @@ async function saveGalleryPreferences() {
       ...(Object.keys(credentials).length > 0 ? { credentials } : {})
     };
     applyGallerySettings(
-      await saveBooruSettings(cleanPath(props.serverUrl), update)
+      await saveBooruSettings(update)
     );
     if (Object.keys(credentials).length > 0) {
       applyingGallerySettings = true;
@@ -241,7 +227,7 @@ async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
   booruTesting.value = source;
   booruResult.value = null;
   try {
-    await testBooruCredentials(cleanPath(props.serverUrl), source, {
+    await testBooruCredentials(source, {
       ...booruCredentials.value[source]
     });
     booruResult.value = {
@@ -262,14 +248,17 @@ async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
 async function clearGalleryCache() {
   booruCacheMessage.value = '';
   try {
-    await clearBooruCache(cleanPath(props.serverUrl));
+    await clearBooruCache();
     booruCacheMessage.value = 'Gallery cache cleared successfully.';
   } catch (error) {
     booruCacheMessage.value =
       error instanceof Error ? error.message : String(error);
   }
 }
-onMounted(loadBooruPromptFormatOptions);
+onMounted(() => {
+  void loadBooruPromptFormatOptions();
+  void loadGallerySettings();
+});
 </script>
 <template>
   <SettingsSection
@@ -290,15 +279,7 @@ onMounted(loadBooruPromptFormatOptions);
     </template>
 
     <NoticeBanner v-if="!booruAvailable">
-      <span v-if="!comfyStore.isConnected">
-        Start the ComfyUI server to configure the Booru Gallery.
-      </span>
-      <span v-else>
-        The
-        <code class="font-mono font-semibold">comfyui-aaalice-nodes</code>
-        custom node is not detected. Install it into ComfyUI's
-        <code class="font-mono">custom_nodes</code> to enable the gallery.
-      </span>
+      Native Booru Gallery settings could not be loaded.
     </NoticeBanner>
 
     <!-- General Booru Config -->
@@ -481,7 +462,7 @@ onMounted(loadBooruPromptFormatOptions);
         Provider API Credentials
       </span>
       <span class="text-muted-foreground text-xs">
-        Credentials are encrypted and stored locally by the custom node
+        Credentials are stored locally in ComfyGUI settings
       </span>
     </div>
 

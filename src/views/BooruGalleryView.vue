@@ -23,7 +23,6 @@ import {
   Image as ImageIcon,
   Loader2,
   Search,
-  WifiOff,
   ZoomIn
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
@@ -51,21 +50,22 @@ import {
   fetchBooruSources,
   formatBooruWarnings,
   getBooruMediaUrl,
+  normalizeBooruRatings,
   searchBooru,
   type BooruPost,
   type BooruSettings,
   type BooruSource
 } from '../services/booruGallery';
-import { useComfyStore } from '../stores/comfyStore';
-import { useLauncherStore } from '../stores/launcherStore';
+import { loadAppData, saveAppData } from '../services/appStorage';
+
+interface BooruGalleryState {
+  ratingsBySource?: Record<string, unknown>;
+}
 
 const detailDialog = ref<InstanceType<typeof BooruPostInspector>>();
 function openDetail(post: BooruPost) {
   detailDialog.value?.open(post);
 }
-
-const comfyStore = useComfyStore();
-const launcherStore = useLauncherStore();
 
 const sources = ref<BooruSource[]>([]);
 const settings = ref<BooruSettings | null>(null);
@@ -80,6 +80,7 @@ const isLoading = ref(false);
 const isSetupLoading = ref(false);
 const errorMessage = ref('');
 const warnings = ref<string[]>([]);
+let ratingsBySource: Record<string, unknown> = {};
 
 const scrollViewport = ref<HTMLElement | null>(null);
 const gridWidth = ref(1200);
@@ -144,9 +145,16 @@ const rowVirtualizer = useVirtualizer(
 const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems());
 const totalVirtualHeight = computed(() => rowVirtualizer.value.getTotalSize());
 
-function defaultRatings(source: string) {
-  if (source === 'aitag') return [];
-  return source === 'safebooru' ? ['safe'] : ['general'];
+function ratingsForSource(source: string) {
+  const available =
+    sources.value.find((item) => item.source === source)?.ratings ?? [];
+  const saved = ratingsBySource[source];
+  return normalizeBooruRatings(
+    available,
+    Array.isArray(saved)
+      ? saved.filter((rating): rating is string => typeof rating === 'string')
+      : undefined
+  );
 }
 
 function formatSortLabel(sort: string): string {
@@ -182,11 +190,7 @@ function onImageLoad(key: string) {
 }
 
 function mediaUrl(post: BooruPost) {
-  return getBooruMediaUrl(
-    launcherStore.config.serverUrl,
-    post.source,
-    post.previewUrl || post.sampleUrl
-  );
+  return getBooruMediaUrl(post.source, post.previewUrl || post.sampleUrl);
 }
 
 function readableError(error: unknown) {
@@ -194,16 +198,27 @@ function readableError(error: unknown) {
 }
 
 async function loadSources() {
-  if (!comfyStore.isConnected || isSetupLoading.value) return;
+  if (isSetupLoading.value) return;
   isSetupLoading.value = true;
   errorMessage.value = '';
   try {
-    const [availableSources, remoteSettings] = await Promise.all([
-      fetchBooruSources(launcherStore.config.serverUrl),
-      fetchBooruSettings(launcherStore.config.serverUrl)
+    const [availableSources, remoteSettings, savedState] = await Promise.all([
+      fetchBooruSources(),
+      fetchBooruSettings(),
+      loadAppData<BooruGalleryState>('booru_gallery_state').catch((error) => {
+        console.error('Failed to load Booru gallery state:', error);
+        return null;
+      })
     ]);
     sources.value = availableSources;
     settings.value = remoteSettings;
+    const storedRatings = savedState?.ratingsBySource;
+    ratingsBySource =
+      storedRatings &&
+      typeof storedRatings === 'object' &&
+      !Array.isArray(storedRatings)
+        ? storedRatings
+        : {};
     selectedSource.value = availableSources.some(
       (source) => source.source === remoteSettings.defaultSource
     )
@@ -212,10 +227,10 @@ async function loadSources() {
     selectedSort.value =
       activeSource.value?.sortValues[0] ||
       (selectedSource.value === 'aitag' ? 'new' : 'latest');
-    selectedRatings.value = defaultRatings(selectedSource.value);
+    selectedRatings.value = ratingsForSource(selectedSource.value);
     if (selectedSource.value) await runSearch(true);
   } catch (error) {
-    errorMessage.value = `${readableError(error)}. Make sure comfyui-aaalice-nodes is installed in custom_nodes.`;
+    errorMessage.value = readableError(error);
   } finally {
     isSetupLoading.value = false;
   }
@@ -224,14 +239,22 @@ async function loadSources() {
 async function changeSource(source: string) {
   selectedSource.value = source;
   selectedSort.value = activeSource.value?.sortValues[0] || 'latest';
-  selectedRatings.value = defaultRatings(source);
+  selectedRatings.value = ratingsForSource(source);
   await runSearch(true);
 }
 
 function toggleRating(rating: string) {
-  selectedRatings.value = selectedRatings.value.includes(rating)
+  const nextRatings = selectedRatings.value.includes(rating)
     ? selectedRatings.value.filter((item) => item !== rating)
     : [...selectedRatings.value, rating];
+  selectedRatings.value = normalizeBooruRatings(
+    activeSource.value?.ratings ?? [],
+    nextRatings
+  );
+  ratingsBySource[selectedSource.value] = selectedRatings.value;
+  void saveAppData('booru_gallery_state', { ratingsBySource }).catch((error) =>
+    console.error('Failed to save Booru gallery state:', error)
+  );
 }
 
 async function runSearch(reset = false) {
@@ -247,7 +270,7 @@ async function runSearch(reset = false) {
     scrollViewport.value?.scrollTo({ top: 0 });
   }
   try {
-    const page = await searchBooru(launcherStore.config.serverUrl, {
+    const page = await searchBooru({
       source: selectedSource.value,
       query: query.value.trim(),
       ratings: selectedRatings.value,
@@ -310,19 +333,10 @@ function copyPostUrl(url: string) {
   void navigator.clipboard.writeText(url);
 }
 
-watch(
-  () => comfyStore.isConnected,
-  (connected) => {
-    if (connected && isViewActive.value && sources.value.length === 0) {
-      void loadSources();
-    }
-  }
-);
-
 async function activateView() {
   isViewActive.value = true;
   if (scrollViewport.value) resizeObserver?.observe(scrollViewport.value);
-  if (comfyStore.isConnected && sources.value.length === 0) {
+  if (sources.value.length === 0) {
     void loadSources();
   }
   await nextTick();
@@ -483,25 +497,9 @@ onUnmounted(deactivateView);
       class="flex-1 overflow-y-auto p-5"
       @scroll.passive="handleScroll"
     >
-      <!-- Disconnected State -->
-      <div
-        v-if="!comfyStore.isConnected"
-        class="border-border/80 bg-card/80 mx-auto mt-20 max-w-md rounded-2xl border p-8 text-center shadow-md backdrop-blur-xs"
-      >
-        <div
-          class="border-border bg-secondary text-muted-foreground mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border"
-        >
-          <WifiOff class="h-6 w-6" />
-        </div>
-        <h2 class="text-foreground text-sm font-semibold">ComfyUI Offline</h2>
-        <p class="text-muted-foreground mt-1.5 text-xs leading-relaxed">
-          Start the local ComfyUI server to connect to the Booru Gallery proxy.
-        </p>
-      </div>
-
       <!-- Initial Setup Loading State -->
       <div
-        v-else-if="isSetupLoading"
+        v-if="isSetupLoading"
         class="border-border/80 bg-card/80 mx-auto mt-20 max-w-md rounded-2xl border p-8 text-center shadow-md backdrop-blur-xs"
       >
         <div
@@ -513,8 +511,7 @@ onUnmounted(deactivateView);
           Initializing Booru Gallery
         </h2>
         <p class="text-muted-foreground mt-1.5 text-xs leading-relaxed">
-          Connecting to ComfyUI custom node bridge and configuring source
-          endpoints…
+          Preparing native provider connections and gallery settings…
         </p>
       </div>
 

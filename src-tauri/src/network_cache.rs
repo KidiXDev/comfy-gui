@@ -97,7 +97,14 @@ pub async fn clear_network_cache(
     app_handle: AppHandle,
     namespace: Option<String>,
 ) -> Result<(), String> {
-    let root = cache_root(&app_handle)?;
+    clear_network_cache_sync(&app_handle, namespace.as_deref())
+}
+
+pub(crate) fn clear_network_cache_sync(
+    app_handle: &AppHandle,
+    namespace: Option<&str>,
+) -> Result<(), String> {
+    let root = cache_root(app_handle)?;
     let target = match namespace {
         Some(ns) => root.join(ns),
         None => root,

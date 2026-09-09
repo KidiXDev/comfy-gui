@@ -41,6 +41,14 @@ function hydrateThumbnail(entry: { thumbnailId?: string; thumbnailUrl?: string }
   }
 }
 
+export function isBooruMediaUrl(url: string): boolean {
+  const parsedUrl = new URL(url);
+  return (
+    parsedUrl.hostname === 'booru-image.localhost' ||
+    parsedUrl.protocol === 'booru-image:'
+  );
+}
+
 // ---------------------------------------------------------------------------
 // LibraryService
 // ---------------------------------------------------------------------------
@@ -131,6 +139,19 @@ export const LibraryService = {
   async saveThumbnailFromUrl(itemId: string, url: string): Promise<string> {
     if (url.startsWith('data:')) {
       return this.saveThumbnailFromDataUrl(itemId, url);
+    }
+    if (isBooruMediaUrl(url)) {
+      const response = await fetch(url);
+      if (!response.ok)
+        throw new Error(`Server returned HTTP ${response.status}`);
+      const blob = await response.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      return this.saveThumbnailFromDataUrl(itemId, dataUrl);
     }
     return await invoke<string>('library_save_thumbnail_from_url', {
       itemId,

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 type AppDataName =
   | 'ai_config'
   | 'booru_prompt_format_options'
+  | 'booru_gallery_state'
   | 'chat_sessions'
   | 'civitai_browser_state'
   | 'civitai_settings'
@@ -17,11 +18,10 @@ type AppDataName =
   | 'workflow_session_state';
 
 type DataFile = 'config' | 'history' | 'state' | 'chat' | 'ai_config';
-type DataContainer = Partial<Record<AppDataName, unknown>>;
-
 const dataFiles: Record<AppDataName, DataFile> = {
   ai_config: 'ai_config',
   booru_prompt_format_options: 'state',
+  booru_gallery_state: 'state',
   chat_sessions: 'chat',
   civitai_browser_state: 'state',
   civitai_settings: 'config',
@@ -44,16 +44,10 @@ const pendingWrites: Record<DataFile, Promise<void>> = {
   ai_config: Promise.resolve()
 };
 
-async function loadDataFile(file: DataFile): Promise<DataContainer> {
-  const value = await invoke<string | null>('load_app_data', { name: file });
-  return value ? (JSON.parse(value) as DataContainer) : {};
-}
-
 export async function loadAppData<T>(name: AppDataName): Promise<T | null> {
   const file = dataFiles[name];
   await pendingWrites[file].catch(console.error);
-  const data = await loadDataFile(file);
-  return (data[name] as T | undefined) ?? null;
+  return await invoke<T | null>('get_app_data_entry', { name: file, key: name });
 }
 
 export async function saveAppData(
@@ -62,11 +56,10 @@ export async function saveAppData(
 ): Promise<void> {
   const file = dataFiles[name];
   const write = pendingWrites[file].catch(console.error).then(async () => {
-    const data = await loadDataFile(file);
-    data[name] = value;
-    await invoke('save_app_data', {
+    await invoke('set_app_data_entry', {
       name: file,
-      value: JSON.stringify(data)
+      key: name,
+      value
     });
   });
   pendingWrites[file] = write;
@@ -76,11 +69,9 @@ export async function saveAppData(
 export async function deleteAppData(name: AppDataName): Promise<void> {
   const file = dataFiles[name];
   const write = pendingWrites[file].catch(console.error).then(async () => {
-    const data = await loadDataFile(file);
-    delete data[name];
-    await invoke('save_app_data', {
+    await invoke('remove_app_data_entry', {
       name: file,
-      value: JSON.stringify(data)
+      key: name
     });
   });
   pendingWrites[file] = write;

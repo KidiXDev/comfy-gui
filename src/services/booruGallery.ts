@@ -1,16 +1,24 @@
-import { http } from './httpClient';
-
-const API_PATH = '/aaalice/booru-gallery';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface BooruSource {
   source: string;
   displayName: string;
   ratings: string[];
   sortValues: string[];
+  pagination: string;
   maxPageSize: number;
   authFields: string[];
   authRequired: boolean;
   credentialsUrl: string;
+  categorizedTags: boolean;
+  favoriteRead: boolean;
+  favoriteWrite: boolean;
+  rankingPeriods: string[];
+  pageJump: boolean;
+  detailHydration: boolean;
+  download: boolean;
+  tagSearch: boolean;
+  maxSearchTags: number | null;
 }
 
 export interface BooruPost {
@@ -33,6 +41,7 @@ export interface BooruPostDetail extends BooruPost {
   fileExt: string;
   fileSize: number;
   tags: Record<string, string[]>;
+  complete: boolean;
 }
 
 export interface BooruPage {
@@ -41,6 +50,7 @@ export interface BooruPage {
   ended: boolean;
   warnings: string[];
   page: number;
+  total?: number;
 }
 
 export interface BooruSettings {
@@ -62,26 +72,21 @@ export interface BooruCredentials {
   gelbooru: { userId: string; apiKey: string };
 }
 
-function apiUrl(serverUrl: string, path: string): string {
-  return `${serverUrl.trim().replace(/\/+$/u, '')}${API_PATH}${path}`;
+export function normalizeBooruRatings(
+  available: string[],
+  saved?: string[]
+): string[] {
+  if (available.length < 2) return [...available];
+  const supported = saved?.filter((rating) => available.includes(rating));
+  if (saved?.length === 0 || supported?.length) return supported ?? [];
+  return available.includes('general') ? ['general'] : [available[0]];
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  if (init?.method?.toUpperCase() === 'POST') {
-    const data = init.body ? JSON.parse(init.body as string) : undefined;
-    return await http.post<T>(url, data);
-  }
-  return await http.get<T>(url);
-}
-
-export async function fetchBooruSources(serverUrl: string) {
-  return (
-    await request<{ sources: BooruSource[] }>(apiUrl(serverUrl, '/sources'))
-  ).sources;
+export function fetchBooruSources() {
+  return invoke<BooruSource[]>('booru_sources');
 }
 
 export function searchBooru(
-  serverUrl: string,
   options: {
     source: string;
     query: string;
@@ -89,39 +94,26 @@ export function searchBooru(
     sort: string;
     cursor?: string | null;
     limit?: number;
+    page?: number;
+    random?: boolean;
   }
 ) {
-  const params = new URLSearchParams({
-    source: options.source,
-    query: options.query,
-    sort: options.sort,
-    limit: String(options.limit ?? 60)
-  });
-  if (options.cursor) params.set('cursor', options.cursor);
-  for (const rating of options.ratings) params.append('rating', rating);
-  return request<BooruPage>(apiUrl(serverUrl, `/search?${params}`));
+  return invoke<BooruPage>('booru_search', { request: options });
 }
 
-export function fetchBooruDetail(
-  serverUrl: string,
-  source: string,
-  postId: string
-) {
-  const params = new URLSearchParams({ source, postId });
-  return request<BooruPostDetail>(apiUrl(serverUrl, `/detail?${params}`));
+export function fetchBooruDetail(source: string, postId: string) {
+  return invoke<BooruPostDetail>('booru_detail', { source, postId });
 }
 
-export function getBooruMediaUrl(
-  serverUrl: string,
-  source: string,
-  url: string
-) {
-  const params = new URLSearchParams({ source, url });
-  return apiUrl(serverUrl, `/media?${params}`);
+export function getBooruMediaUrl(source: string, url: string) {
+  const query = new URLSearchParams({ source, url });
+  return navigator.userAgent.includes('Windows')
+    ? `http://booru-image.localhost/?${query}`
+    : `booru-image://localhost/?${query}`;
 }
 
-export function fetchBooruSettings(serverUrl: string) {
-  return request<BooruSettings>(apiUrl(serverUrl, '/settings'));
+export function fetchBooruSettings() {
+  return invoke<BooruSettings>('booru_settings_get');
 }
 
 export interface BooruSettingsUpdate {
@@ -132,34 +124,58 @@ export interface BooruSettingsUpdate {
   timeout: number;
   cacheBudgetMiB: number;
   credentials?: Partial<BooruCredentials>;
+  clearCredentials?: Partial<Record<keyof BooruCredentials, string[]>>;
 }
 
-export function saveBooruSettings(
-  serverUrl: string,
-  update: BooruSettingsUpdate
-) {
-  return request<BooruSettings>(apiUrl(serverUrl, '/settings/save'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(update)
-  });
+export function saveBooruSettings(update: BooruSettingsUpdate) {
+  return invoke<BooruSettings>('booru_settings_save', { update });
 }
 
-export function clearBooruCache(serverUrl: string) {
-  return request<{ ok: boolean }>(apiUrl(serverUrl, '/cache/clear'), {
-    method: 'POST'
-  });
+export function clearBooruCache() {
+  return invoke<{ ok: boolean }>('booru_clear_cache');
 }
 
 export function testBooruCredentials(
-  serverUrl: string,
   source: keyof BooruCredentials,
   credentials: Record<string, string>
 ) {
-  return request<{ ok: boolean }>(apiUrl(serverUrl, '/test'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source, credentials })
+  return invoke<{ ok: boolean }>('booru_test_credentials', {
+    source,
+    credentials
+  });
+}
+
+export function fetchBooruRanking(request: {
+  source: string;
+  period: string;
+  ratings: string[];
+  cursor?: string | null;
+  limit?: number;
+  page?: number;
+  random?: boolean;
+}) {
+  return invoke<BooruPage>('booru_ranking', { request });
+}
+
+export function fetchBooruFavorites(request: {
+  source: string;
+  cursor?: string | null;
+  limit?: number;
+  page?: number;
+  random?: boolean;
+}) {
+  return invoke<BooruPage>('booru_favorites', { request });
+}
+
+export function setBooruFavorite(
+  source: string,
+  postId: string,
+  favorite: boolean
+) {
+  return invoke<{ favorite: boolean }>('booru_favorite_set', {
+    source,
+    postId,
+    favorite
   });
 }
 

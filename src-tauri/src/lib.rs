@@ -1,4 +1,5 @@
 mod animadex;
+mod booru;
 mod civitai;
 mod danbooru_wiki;
 mod download_manager;
@@ -11,6 +12,7 @@ mod prompt_suggestions;
 
 use process_manager::ProcessManager;
 use std::fs;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager, State};
 
 #[cfg(windows)]
@@ -41,6 +43,7 @@ fn style_native_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
 }
 
 const DATA_KEY: &[u8] = b"comfy-gui";
+static APP_DATA_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn app_data_path(app_handle: &AppHandle, name: &str) -> Result<std::path::PathBuf, String> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -53,9 +56,8 @@ fn app_data_path(app_handle: &AppHandle, name: &str) -> Result<std::path::PathBu
         .join(format!("{name}.dat")))
 }
 
-#[tauri::command]
-fn save_app_data(app_handle: AppHandle, name: String, value: String) -> Result<(), String> {
-    let path = app_data_path(&app_handle, &name)?;
+fn save_app_data_unlocked(app_handle: &AppHandle, name: &str, value: &str) -> Result<(), String> {
+    let path = app_data_path(app_handle, name)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -67,9 +69,8 @@ fn save_app_data(app_handle: AppHandle, name: String, value: String) -> Result<(
     fs::write(path, data).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn load_app_data(app_handle: AppHandle, name: String) -> Result<Option<String>, String> {
-    let path = app_data_path(&app_handle, &name)?;
+fn load_app_data_unlocked(app_handle: &AppHandle, name: &str) -> Result<Option<String>, String> {
+    let path = app_data_path(app_handle, name)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -84,8 +85,123 @@ fn load_app_data(app_handle: AppHandle, name: String) -> Result<Option<String>, 
         .map_err(|e| e.to_string())
 }
 
+pub(crate) fn load_app_data_entry(
+    app_handle: &AppHandle,
+    name: &str,
+    key: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    let _guard = APP_DATA_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let Some(value) = load_app_data_unlocked(app_handle, name)? else {
+        return Ok(None);
+    };
+    let data: serde_json::Value = serde_json::from_str(&value).map_err(|e| e.to_string())?;
+    Ok(data.get(key).cloned())
+}
+
+pub(crate) fn save_app_data_entry(
+    app_handle: &AppHandle,
+    name: &str,
+    key: &str,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    let _guard = APP_DATA_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let mut data = load_app_data_unlocked(app_handle, name)?
+        .map(|raw| serde_json::from_str(&raw))
+        .transpose()
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| serde_json::json!({}));
+    let object = data
+        .as_object_mut()
+        .ok_or_else(|| format!("{name}.dat root must be an object"))?;
+    object.insert(key.to_string(), value);
+    save_app_data_unlocked(
+        app_handle,
+        name,
+        &serde_json::to_string(&data).map_err(|e| e.to_string())?,
+    )
+}
+
+fn delete_app_data_entry_value(
+    app_handle: &AppHandle,
+    name: &str,
+    key: &str,
+) -> Result<(), String> {
+    let _guard = APP_DATA_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let Some(raw) = load_app_data_unlocked(app_handle, name)? else {
+        return Ok(());
+    };
+    let mut data: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    data.as_object_mut()
+        .ok_or_else(|| format!("{name}.dat root must be an object"))?
+        .remove(key);
+    save_app_data_unlocked(
+        app_handle,
+        name,
+        &serde_json::to_string(&data).map_err(|e| e.to_string())?,
+    )
+}
+
+#[tauri::command]
+fn get_app_data_entry(
+    app_handle: AppHandle,
+    name: String,
+    key: String,
+) -> Result<Option<serde_json::Value>, String> {
+    load_app_data_entry(&app_handle, &name, &key)
+}
+
+#[tauri::command]
+fn set_app_data_entry(
+    app_handle: AppHandle,
+    name: String,
+    key: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    save_app_data_entry(&app_handle, &name, &key, value)
+}
+
+#[tauri::command]
+fn remove_app_data_entry(
+    app_handle: AppHandle,
+    name: String,
+    key: String,
+) -> Result<(), String> {
+    delete_app_data_entry_value(&app_handle, &name, &key)
+}
+
+#[tauri::command]
+fn save_app_data(app_handle: AppHandle, name: String, value: String) -> Result<(), String> {
+    let _guard = APP_DATA_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|error| error.to_string())?;
+    save_app_data_unlocked(&app_handle, &name, &value)
+}
+
+#[tauri::command]
+fn load_app_data(app_handle: AppHandle, name: String) -> Result<Option<String>, String> {
+    let _guard = APP_DATA_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|error| error.to_string())?;
+    load_app_data_unlocked(&app_handle, &name)
+}
+
 #[tauri::command]
 fn delete_app_data(app_handle: AppHandle, name: String) -> Result<(), String> {
+    let _guard = APP_DATA_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|error| error.to_string())?;
     let path = app_data_path(&app_handle, &name)?;
     if path.exists() {
         fs::remove_file(path).map_err(|e| e.to_string())?;
@@ -315,6 +431,29 @@ pub fn run() {
             },
         )
         .register_asynchronous_uri_scheme_protocol(
+            "booru-image",
+            move |context, request, responder| {
+                let uri = request.uri().to_string();
+                let app = context.app_handle().clone();
+                std::thread::spawn(move || {
+                    let response = match booru::handle_media_uri(&app, &uri) {
+                        Ok((bytes, content_type)) => tauri::http::Response::builder()
+                            .header(tauri::http::header::CONTENT_TYPE, content_type)
+                            .header(tauri::http::header::CACHE_CONTROL, "private, max-age=86400")
+                            .header("X-Content-Type-Options", "nosniff")
+                            .header("Access-Control-Allow-Origin", "*")
+                            .body(bytes)
+                            .unwrap(),
+                        Err(_) => tauri::http::Response::builder()
+                            .status(404)
+                            .body(Vec::new())
+                            .unwrap(),
+                    };
+                    responder.respond(response);
+                });
+            },
+        )
+        .register_asynchronous_uri_scheme_protocol(
             "danbooru-image",
             move |_context, request, responder| {
                 let path = request.uri().path().trim_matches('/').to_string();
@@ -381,6 +520,9 @@ pub fn run() {
             save_app_data,
             load_app_data,
             delete_app_data,
+            get_app_data_entry,
+            set_app_data_entry,
+            remove_app_data_entry,
             pick_directory,
             pick_file,
             start_comfyui,
@@ -390,6 +532,16 @@ pub fn run() {
             install_custom_node,
             show_in_folder,
             danbooru_wiki::danbooru_wiki_request,
+            booru::booru_sources,
+            booru::booru_search,
+            booru::booru_ranking,
+            booru::booru_detail,
+            booru::booru_settings_get,
+            booru::booru_settings_save,
+            booru::booru_test_credentials,
+            booru::booru_favorites,
+            booru::booru_favorite_set,
+            booru::booru_clear_cache,
             civitai::models,
             civitai::model_by_id,
             civitai::enums,
