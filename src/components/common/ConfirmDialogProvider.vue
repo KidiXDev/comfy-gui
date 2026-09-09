@@ -42,7 +42,7 @@ onUnmounted(() => finish(false));
         </AlertDialogCancel>
         <AlertDialogAction
           class="bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 text-xs font-semibold"
-          @click="finish(true)"
+          @click.capture="finish(true)"
         >
           {{ options.confirmLabel ?? 'Delete' }}
         </AlertDialogAction>

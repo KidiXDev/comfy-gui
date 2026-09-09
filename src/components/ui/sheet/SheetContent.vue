@@ -7,9 +7,11 @@ import {
   DialogClose,
   DialogContent,
   DialogPortal,
+  injectDialogRootContext,
   useForwardPropsEmits
 } from 'reka-ui';
 import { cn } from '@/lib/utils';
+import { useOverlayLayer } from '@/composables/useOverlayLayer';
 import SheetOverlay from './SheetOverlay.vue';
 
 interface SheetContentProps extends DialogContentProps {
@@ -29,11 +31,18 @@ const emits = defineEmits<DialogContentEmits>();
 const delegatedProps = reactiveOmit(props, 'class', 'side');
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+const { isTop: isTopOverlay, style: overlayStyle } = useOverlayLayer(
+  injectDialogRootContext().open
+);
+
+function preventInactiveDismiss(event: Event) {
+  if (!isTopOverlay.value) event.preventDefault();
+}
 </script>
 
 <template>
   <DialogPortal defer to="#app-content">
-    <SheetOverlay />
+    <SheetOverlay :style="overlayStyle" />
     <DialogContent
       data-slot="sheet-content"
       :class="
@@ -51,6 +60,9 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
         )
       "
       v-bind="{ ...$attrs, ...forwarded }"
+      :style="overlayStyle"
+      @interact-outside="preventInactiveDismiss"
+      @escape-key-down="preventInactiveDismiss"
     >
       <slot />
 

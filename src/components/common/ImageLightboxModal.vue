@@ -2,6 +2,7 @@
 import { ref, watch, onUnmounted } from 'vue';
 import { RotateCcw, X, ZoomIn, ZoomOut } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
+import { useOverlayLayer } from '@/composables/useOverlayLayer';
 
 interface Props {
   open: boolean;
@@ -20,6 +21,9 @@ const emit = defineEmits<{
   (e: 'update:open', value: boolean): void;
   (e: 'close'): void;
 }>();
+const { style: overlayStyle } = useOverlayLayer(
+  () => props.open && Boolean(props.src)
+);
 
 const zoom = ref(1);
 const panX = ref(0);
@@ -144,7 +148,8 @@ onUnmounted(() => {
     >
       <div
         v-if="open && src"
-        class="absolute inset-0 z-100 flex items-center justify-center overflow-hidden bg-black/70 backdrop-blur-md select-none"
+        class="absolute inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/70 backdrop-blur-md select-none"
+        :style="overlayStyle"
         @click="handleBackdropClick"
         @wheel.prevent.stop="handleZoom"
       >

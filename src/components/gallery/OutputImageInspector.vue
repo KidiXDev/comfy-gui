@@ -58,6 +58,7 @@ import {
 import { useLauncherStore } from '@/stores/launcherStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { toRef } from 'vue';
+import { useOverlayLayer } from '@/composables/useOverlayLayer';
 
 const props = defineProps<{ images: OutputImage[] }>();
 const filteredImages = toRef(props, 'images');
@@ -66,6 +67,9 @@ let stopPanning = () => {};
 const router = useRouter();
 const workflowStore = useWorkflowStore();
 const selectedImage = ref<OutputImage>();
+const { style: overlayStyle } = useOverlayLayer(() =>
+  Boolean(selectedImage.value)
+);
 const metadata = ref<OutputImageMetadata>();
 const metadataLoading = ref(false);
 const showRaw = ref(false);
@@ -316,7 +320,8 @@ defineExpose({ open: openImage });
     >
       <div
         v-if="selectedImage"
-        class="absolute inset-0 z-100 flex overflow-hidden bg-black/70 backdrop-blur-md"
+        class="absolute inset-0 z-50 flex overflow-hidden bg-black/70 backdrop-blur-md"
+        :style="overlayStyle"
         @click.self="selectedImage = undefined"
       >
         <!-- Center Canvas Viewport -->

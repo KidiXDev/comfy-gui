@@ -497,27 +497,9 @@ onUnmounted(deactivateView);
       class="flex-1 overflow-y-auto p-5"
       @scroll.passive="handleScroll"
     >
-      <!-- Initial Setup Loading State -->
-      <div
-        v-if="isSetupLoading"
-        class="border-border/80 bg-card/80 mx-auto mt-20 max-w-md rounded-2xl border p-8 text-center shadow-md backdrop-blur-xs"
-      >
-        <div
-          class="border-border bg-secondary text-primary mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border"
-        >
-          <Loader2 class="h-6 w-6 animate-spin" />
-        </div>
-        <h2 class="text-foreground text-sm font-semibold">
-          Initializing Booru Gallery
-        </h2>
-        <p class="text-muted-foreground mt-1.5 text-xs leading-relaxed">
-          Preparing native provider connections and gallery settings…
-        </p>
-      </div>
-
       <!-- Error State -->
       <div
-        v-else-if="errorMessage && !posts.length"
+        v-if="errorMessage && !posts.length"
         class="border-destructive/30 bg-destructive/10 text-destructive mx-auto mt-12 max-w-lg rounded-xl border p-5 text-xs leading-relaxed shadow-sm"
       >
         <div class="flex items-start gap-3">
@@ -531,7 +513,7 @@ onUnmounted(deactivateView);
 
       <!-- Full-Page Skeleton Loader on Initial Search -->
       <div
-        v-else-if="isLoading && !posts.length"
+        v-else-if="(isSetupLoading || isLoading) && !posts.length"
         class="grid gap-3.5"
         :style="{
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`

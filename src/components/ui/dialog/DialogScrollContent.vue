@@ -13,9 +13,11 @@ import {
   DialogContent,
   DialogOverlay,
   DialogPortal,
+  injectDialogRootContext,
   useForwardPropsEmits
 } from 'reka-ui';
 import { cn } from '@/lib/utils';
+import { useOverlayLayer } from '@/composables/useOverlayLayer';
 
 defineOptions({
   inheritAttrs: false
@@ -29,10 +31,19 @@ const emits = defineEmits<DialogContentEmits>();
 const delegatedProps = reactiveOmit(props, 'class');
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+const { isTop: isTopOverlay, style: overlayStyle } = useOverlayLayer(
+  injectDialogRootContext().open
+);
+
+function preventInactiveDismiss(event: Event) {
+  if (!isTopOverlay.value) event.preventDefault();
+}
 
 function preventTitlebarDismiss(
   event: FocusOutsideEvent | PointerDownOutsideEvent
 ) {
+  preventInactiveDismiss(event);
+  if (event.defaultPrevented) return;
   const target = event.detail.originalEvent.target;
   if (
     target instanceof Node &&
@@ -47,6 +58,7 @@ function preventTitlebarDismiss(
   <DialogPortal defer to="#app-content">
     <DialogOverlay
       class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 absolute inset-0 z-50 grid place-items-center overflow-y-auto bg-black/80"
+      :style="overlayStyle"
     >
       <DialogContent
         :class="
@@ -56,7 +68,9 @@ function preventTitlebarDismiss(
           )
         "
         v-bind="{ ...$attrs, ...forwarded }"
+        :style="overlayStyle"
         @interact-outside="preventTitlebarDismiss"
+        @escape-key-down="preventInactiveDismiss"
         @pointer-down-outside="
           (event) => {
             const originalEvent = event.detail.originalEvent;

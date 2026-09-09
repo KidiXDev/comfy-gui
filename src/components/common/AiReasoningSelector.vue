@@ -11,9 +11,13 @@ import { Brain } from '@lucide/vue';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { supportsReasoning } from '@/services/aiService';
 import { useAiStore } from '@/stores/aiStore';
+import { useOverlayLayer } from '@/composables/useOverlayLayer';
+import { shallowRef } from 'vue';
 
 defineProps<{ disabled?: boolean; compact?: boolean }>();
 const aiStore = useAiStore();
+const menuOpen = shallowRef(false);
+const { style: overlayStyle } = useOverlayLayer(menuOpen);
 const efforts = [
   'default',
   'none',
@@ -33,6 +37,7 @@ const efforts = [
     <FieldLabel v-if="!compact" class="text-xs">Reasoning Effort</FieldLabel>
     <Select
       v-model="aiStore.config.reasoningEffort"
+      v-model:open="menuOpen"
       :disabled="disabled"
       @update:model-value="aiStore.saveConfig()"
     >
@@ -50,7 +55,16 @@ const efforts = [
           <SelectValue placeholder="Default" />
         </span>
       </SelectTrigger>
-      <SelectContent class="z-150">
+      <Teleport defer to="#app-content">
+        <div
+          v-if="menuOpen"
+          class="absolute inset-0 z-50"
+          :style="overlayStyle"
+          @pointerdown.prevent.stop="menuOpen = false"
+          @wheel.prevent.stop
+        />
+      </Teleport>
+      <SelectContent class="z-50" :style="overlayStyle">
         <SelectGroup class="max-h-40 overflow-y-auto">
           <SelectItem
             v-for="effort in efforts"

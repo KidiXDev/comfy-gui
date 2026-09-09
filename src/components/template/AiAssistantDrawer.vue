@@ -45,6 +45,7 @@ import type { ChatMessage, ChatMessageAttachment } from '../../types/ai';
 import { supportsVision } from '@/utils/aiMentions';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
+import { useOverlayLayer } from '@/composables/useOverlayLayer';
 
 const aiStore = useAiStore();
 const comfyStore = useComfyStore();
@@ -59,6 +60,7 @@ const isDraggingOver = ref(false);
 const visionSupported = computed(() =>
   supportsVision(aiStore.selectedModelInfo)
 );
+const { style: overlayStyle } = useOverlayLayer(() => aiStore.isDrawerOpen);
 
 const activeSession = computed(() => aiStore.activeSession);
 const messages = computed(() => aiStore.activeMessages);
@@ -306,13 +308,15 @@ function navigateToSettings() {
     <!-- Backdrop Overlay (allows clicking to dismiss) -->
     <div
       v-if="aiStore.isDrawerOpen"
-      class="absolute inset-0 z-40 bg-black/40 backdrop-blur-xs transition-opacity duration-300"
+      class="absolute inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity duration-300"
+      :style="overlayStyle"
       @click="aiStore.isDrawerOpen = false"
     />
 
     <!-- Slide-over Drawer -->
     <aside
       class="border-border bg-sidebar absolute top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-2xl"
+      :style="overlayStyle"
       :class="aiStore.isDrawerOpen ? 'translate-x-0' : 'translate-x-full'"
     >
       <!-- Hidden File Input for Image Attachments -->
