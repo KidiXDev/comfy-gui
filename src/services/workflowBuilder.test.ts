@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { createWorkflowSnapshot } from '../composables/useComfyUiWorkspace';
 import type { WorkflowState } from '../types/workflow';
 import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
-import { buildWorkflowPrompt } from './workflowBuilder';
+import {
+  buildWorkflowPrompt,
+  prepareWorkflowForQueue
+} from './workflowBuilder';
 
 const state: WorkflowState = {
   positivePrompt: 'test',
@@ -104,6 +108,15 @@ const state: WorkflowState = {
   }
 };
 
+state.sampler.seed = -1;
+state.sampler.randomizeSeed = true;
+const randomSeedState = prepareWorkflowForQueue(state);
+assert.equal(state.sampler.seed, -1);
+assert.ok(randomSeedState.sampler.seed >= 0);
+assert.ok(randomSeedState.sampler.seed < 10_000_000_000);
+state.sampler.seed = 1;
+state.sampler.randomizeSeed = false;
+
 const img2img = buildWorkflowPrompt(state) as Record<
   string,
   { class_type: string }
@@ -201,6 +214,20 @@ assert.equal(standardInpaint['9'].inputs.cfg, 4);
 // Each Detailer prompt has its own conditioning, independent of generation.
 for (const mode of ['text2img', 'img2img', 'inpaint'] as const) {
   state.imageInput.mode = mode;
+  state.sampler.randomizeSeed = true;
+  const beforeSnapshot = structuredClone(state);
+  const snapshot = createWorkflowSnapshot(state, 'http://127.0.0.1:8188/');
+  assert.deepEqual(snapshot.prompt, buildWorkflowPrompt(state));
+  assert.deepEqual(
+    state,
+    beforeSnapshot,
+    'Viewing must not mutate state or randomize the seed'
+  );
+  assert.equal(snapshot.serverUrl, 'http://127.0.0.1:8188');
+  assert.notEqual(
+    snapshot.filename,
+    createWorkflowSnapshot(state, snapshot.serverUrl).filename
+  );
   state.positivePrompt = 'generation positive';
   state.negativePrompt = 'generation negative';
   state.advanced.auraFlowEnabled = false;

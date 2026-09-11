@@ -937,7 +937,12 @@ export const useAiStore = defineStore('ai', () => {
         assistantMsg.content += stopNotice;
         appendTextPart(assistantMsg.parts, stopNotice);
       } else {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'string'
+              ? err
+              : JSON.stringify(err) || 'Unknown error';
         const errNotice = `\n\n**Error:** ${errorMsg}`;
         assistantMsg.content += errNotice;
         appendTextPart(assistantMsg.parts, errNotice);

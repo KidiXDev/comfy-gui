@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { Folder, History, Images, Loader2 } from '@lucide/vue';
+import { Folder, History, Images, Loader2, Workflow } from '@lucide/vue';
+import { useRouter } from 'vue-router';
+import { toast } from 'vue-sonner';
+import { useComfyUiWorkspace } from '@/composables/useComfyUiWorkspace';
 import ModelSection from '@/components/template/ModelSection.vue';
 import AdvancedSettingsSection from '@/components/template/AdvancedSettingsSection.vue';
 import PromptSection from '@/components/template/PromptSection.vue';
@@ -24,6 +27,24 @@ import { useWorkflowStore } from '../stores/workflowStore';
 const workflowStore = useWorkflowStore();
 const launcherStore = useLauncherStore();
 const historyStore = useHistoryStore();
+const router = useRouter();
+const { pending, openSnapshot, finishSnapshot } = useComfyUiWorkspace();
+
+async function viewWorkflow() {
+  let requestId: string | undefined;
+  try {
+    openSnapshot(
+      workflowStore.getFullWorkflowState(),
+      launcherStore.config.serverUrl
+    );
+    requestId = pending.value?.id;
+    const failure = await router.push('/comfyui');
+    if (failure && pending.value) finishSnapshot(pending.value.id);
+  } catch (error) {
+    if (requestId) finishSnapshot(requestId);
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
+}
 
 async function openOutputFolder() {
   const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
@@ -81,6 +102,17 @@ async function openOutputFolder() {
         </button>
 
         <!-- Output Folder Quick Button -->
+        <button
+          type="button"
+          title="Open the current workflow in ComfyUI"
+          :disabled="!!pending"
+          class="border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          @click="viewWorkflow"
+        >
+          <Workflow class="h-3 w-3" />
+          <span>View Workflow</span>
+        </button>
+
         <button
           type="button"
           title="Open Output Folder"

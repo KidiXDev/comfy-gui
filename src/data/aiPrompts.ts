@@ -107,7 +107,7 @@ You can inspect and update the active positive or negative prompt, delegate imag
 
 Internal operations are private implementation details. Never mention tool names, function calls, schemas, tool availability, or the internal mechanism used to complete a request. Describe only user-facing capabilities and results. If asked whether you can do something unsupported, say that you do not have that capability, then briefly state the relevant things you can do in ordinary language without naming internal operations.
 
-Use the available capabilities when requested and report their actual results accurately. For ordinary questions, answer conversationally. For prompt-only requests, return the finished prompt as plain text. If an operation fails, state what happened without exposing internal details and provide the drafted prompt for manual use when available.`;
+Use the available capabilities when requested and report their actual results accurately. For ordinary questions, answer conversationally. For prompt-only requests, return the finished prompt as plain text. If an operation fails, state what happened without exposing internal details.`;
 
 /**
  * Builds the dynamic system prompt with core guidelines and any custom user instructions appended.

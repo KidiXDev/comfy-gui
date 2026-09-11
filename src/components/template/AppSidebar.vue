@@ -9,6 +9,7 @@ import {
   Image,
   Images,
   Library,
+  Workflow,
   Scaling,
   ScanFace,
   Settings,
@@ -69,6 +70,13 @@ const navItems = [
     label: 'Workflow Generator',
     icon: Image,
     route: '/workflow',
+    group: 'create'
+  },
+  {
+    id: 'comfyui',
+    label: 'ComfyUI',
+    icon: Workflow,
+    route: '/comfyui',
     group: 'create'
   },
   {
@@ -169,6 +177,10 @@ function navigate(path: string) {
             <TooltipTrigger as-child>
               <button
                 type="button"
+                :aria-label="item.label"
+                :aria-current="
+                  route.path.startsWith(item.route) ? 'page' : undefined
+                "
                 class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg transition-all duration-150"
                 :class="[
                   route.path.startsWith(item.route)

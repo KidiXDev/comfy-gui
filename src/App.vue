@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AlertTriangle, Loader2 } from '@lucide/vue';
-import { onMounted, onUnmounted, ref } from 'vue';
-import { RouterView } from 'vue-router';
+import {
+  computed,
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch
+} from 'vue';
+import { RouterView, useRoute } from 'vue-router';
 import ConfirmDialogProvider from '@/components/common/ConfirmDialogProvider.vue';
 import AppSidebar from '@/components/template/AppSidebar.vue';
 import AppTitlebar from '@/components/template/AppTitlebar.vue';
@@ -32,6 +39,19 @@ const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const promptSuggestionStore = usePromptSuggestionStore();
 const civitaiStore = useCivitaiStore();
+const route = useRoute();
+const ComfyUiWorkspace = defineAsyncComponent(
+  () => import('@/components/template/ComfyUiWorkspace.vue')
+);
+const isComfyUi = computed(() => route.name === 'comfyui');
+const comfyUiVisited = ref(false);
+watch(
+  isComfyUi,
+  (active) => {
+    if (active) comfyUiVisited.value = true;
+  },
+  { immediate: true }
+);
 const shutdownDialogOpen = ref(false);
 const isShuttingDown = ref(false);
 const shutdownError = ref('');
@@ -93,70 +113,71 @@ onUnmounted(() => {
       <div
         class="bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden antialiased select-none"
       >
-      <!-- Custom Frameless Window Titlebar with Drag Region -->
-      <AppTitlebar />
+        <!-- Custom Frameless Window Titlebar with Drag Region -->
+        <AppTitlebar />
 
-      <!-- Main Application Body: Sidebar + Active Router View -->
-      <div
-        id="app-content"
-        class="relative flex min-h-0 w-full flex-1 overflow-hidden"
-      >
-        <!-- Icon-only Sidebar Rail -->
-        <AppSidebar />
-
-        <!-- Main Viewport Workspace -->
-        <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-          <RouterView v-slot="{ Component }">
-            <KeepAlive
-              include="BooruGalleryView,CivitaiBrowserView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView,DanbooruWikiView"
-              :max="10"
-            >
-              <component :is="Component" />
-            </KeepAlive>
-          </RouterView>
-        </main>
-        <!-- Global Terminal Slide-over Drawer -->
-        <TerminalDrawer />
-
-        <!-- Global AI Assistant Slide-over Drawer -->
-        <AiAssistantDrawer />
-
-        <Dialog
-          :open="shutdownDialogOpen"
-          @update:open="(open) => !open && cancelShutdown()"
+        <!-- Main Application Body: Sidebar + Active Router View -->
+        <div
+          id="app-content"
+          class="relative flex min-h-0 w-full flex-1 overflow-hidden"
         >
-          <DialogContent>
-            <DialogHeader>
-              <div class="flex items-center gap-2">
-                <AlertTriangle class="h-5 w-5 text-amber-400" />
-                <DialogTitle>ComfyUI is still running</DialogTitle>
-              </div>
-              <DialogDescription>
-                Cancel generation and shut down ComfyUI?
-              </DialogDescription>
-            </DialogHeader>
+          <!-- Icon-only Sidebar Rail -->
+          <AppSidebar />
 
-            <p v-if="shutdownError" class="text-destructive text-xs">
-              {{ shutdownError }}
-            </p>
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                :disabled="isShuttingDown"
-                @click="cancelShutdown"
+          <!-- Main Viewport Workspace -->
+          <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+            <ComfyUiWorkspace v-if="comfyUiVisited" v-show="isComfyUi" />
+            <RouterView v-slot="{ Component }">
+              <KeepAlive
+                include="BooruGalleryView,CivitaiBrowserView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView,DanbooruWikiView"
+                :max="10"
               >
-                Cancel
-              </Button>
-              <Button :disabled="isShuttingDown" @click="continueShutdown">
-                <Loader2 v-if="isShuttingDown" class="h-4 w-4 animate-spin" />
-                {{ isShuttingDown ? 'Shutting down...' : 'Continue' }}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <Toaster position="bottom-right" richColors />
-      </div>
+                <component :is="Component" />
+              </KeepAlive>
+            </RouterView>
+          </main>
+          <!-- Global Terminal Slide-over Drawer -->
+          <TerminalDrawer />
+
+          <!-- Global AI Assistant Slide-over Drawer -->
+          <AiAssistantDrawer />
+
+          <Dialog
+            :open="shutdownDialogOpen"
+            @update:open="(open) => !open && cancelShutdown()"
+          >
+            <DialogContent>
+              <DialogHeader>
+                <div class="flex items-center gap-2">
+                  <AlertTriangle class="h-5 w-5 text-amber-400" />
+                  <DialogTitle>ComfyUI is still running</DialogTitle>
+                </div>
+                <DialogDescription>
+                  Cancel generation and shut down ComfyUI?
+                </DialogDescription>
+              </DialogHeader>
+
+              <p v-if="shutdownError" class="text-destructive text-xs">
+                {{ shutdownError }}
+              </p>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  :disabled="isShuttingDown"
+                  @click="cancelShutdown"
+                >
+                  Cancel
+                </Button>
+                <Button :disabled="isShuttingDown" @click="continueShutdown">
+                  <Loader2 v-if="isShuttingDown" class="h-4 w-4 animate-spin" />
+                  {{ isShuttingDown ? 'Shutting down...' : 'Continue' }}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Toaster position="bottom-right" richColors />
+        </div>
       </div>
     </ConfirmDialogProvider>
   </TooltipProvider>

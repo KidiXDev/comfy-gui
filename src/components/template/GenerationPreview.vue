@@ -109,11 +109,7 @@ onUnmounted(() => {
 
 function handleGenerate() {
   if (!comfyStore.isConnected || comfyStore.isQueueing) return;
-  const state = workflowStore.getFullWorkflowState();
-  if (state.sampler.randomizeSeed) {
-    state.sampler.seed = Math.floor(Math.random() * 10_000_000_000);
-  }
-  comfyStore.generateImage(state);
+  comfyStore.generateImage(workflowStore.getFullWorkflowState());
 }
 
 function handleGenerateShortcut(event: KeyboardEvent) {
@@ -222,12 +218,6 @@ const durationText = computed(() => {
         <h2 class="text-foreground text-sm font-bold tracking-tight">
           Preview Output
         </h2>
-        <span
-          v-if="comfyStore.isConnected"
-          class="rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-400"
-        >
-          LIVE
-        </span>
       </div>
 
       <!-- Action Buttons -->

@@ -15,6 +15,12 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/comfyui',
+      name: 'comfyui',
+      // The editor is mounted persistently by App.vue to preserve its iframe.
+      component: { render: () => null }
+    },
+    {
       path: '/danbooru-wiki/:title?',
       name: 'danbooru-wiki',
       component: () => import('../views/DanbooruWikiView.vue')

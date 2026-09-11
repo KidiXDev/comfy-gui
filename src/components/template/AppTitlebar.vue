@@ -26,6 +26,7 @@ const isMaximized = ref(false);
 let unlistenResize: (() => void) | null = null;
 
 const activeViewTitle = computed(() => {
+  if (route.path.startsWith('/comfyui')) return 'ComfyUI Editor';
   if (route.path.startsWith('/danbooru-wiki')) return 'Danbooru Tag Wiki';
   if (route.path.startsWith('/server')) return 'Server Terminal';
   if (route.path.startsWith('/settings')) return 'Preferences';

@@ -15,6 +15,14 @@ function variationInputs(state: WorkflowState) {
   };
 }
 
+export function prepareWorkflowForQueue(state: WorkflowState): WorkflowState {
+  const queuedState = structuredClone(state);
+  if (queuedState.sampler.randomizeSeed || queuedState.sampler.seed < 0) {
+    queuedState.sampler.seed = Math.floor(Math.random() * 10_000_000_000);
+  }
+  return queuedState;
+}
+
 export function buildWorkflowPrompt(
   state: WorkflowState
 ): Record<string, unknown> {

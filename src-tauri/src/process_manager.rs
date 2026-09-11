@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
 const BRIDGE_NODE_INIT: &str = include_str!("../../comfyui-comfygui-bridge/__init__.py");
+const BRIDGE_WORKSPACE_JS: &str = include_str!("../../comfyui-comfygui-bridge/web/workspace.js");
 
 #[derive(Clone, serde::Serialize)]
 pub struct LogPayload {
@@ -54,6 +55,20 @@ fn auto_inject_bridge_node(exec_work_dir: &Path, app_handle: &AppHandle) {
     }
 
     let target_init_py = target_bridge_dir.join("__init__.py");
+
+    let web_dir = target_bridge_dir.join("web");
+    if let Err(err) = fs::create_dir_all(&web_dir).and_then(|_| {
+        let target = web_dir.join("workspace.js");
+        if fs::read_to_string(&target).ok().as_deref() != Some(BRIDGE_WORKSPACE_JS) {
+            fs::write(target, BRIDGE_WORKSPACE_JS)?;
+        }
+        Ok(())
+    }) {
+        emit_sys_log(
+            app_handle,
+            format!("Failed to inject ComfyUI workspace extension: {}", err),
+        );
+    }
 
     let should_write = match fs::read_to_string(&target_init_py) {
         Ok(existing) => existing != BRIDGE_NODE_INIT,

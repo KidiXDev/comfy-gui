@@ -4,7 +4,10 @@ import { queryKeys } from '../composables/queryKeys';
 import { queryClient } from '../lib/queryClient';
 import { ComfyApi } from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
-import { buildWorkflowPrompt } from '../services/workflowBuilder';
+import {
+  buildWorkflowPrompt,
+  prepareWorkflowForQueue
+} from '../services/workflowBuilder';
 import type {
   BridgeModelsResponse,
   BridgeSystemResponse,
@@ -624,7 +627,8 @@ export const useComfyStore = defineStore('comfy', () => {
     executionError.value = null;
 
     try {
-      const promptPayload = buildWorkflowPrompt(workflowState);
+      const queuedWorkflowState = prepareWorkflowForQueue(workflowState);
+      const promptPayload = buildWorkflowPrompt(queuedWorkflowState);
       const res = await ComfyApi.queuePrompt(
         launcherStore.config.serverUrl,
         promptPayload,
@@ -633,7 +637,7 @@ export const useComfyStore = defineStore('comfy', () => {
       const entry: PendingGeneration = {
         id: res.prompt_id,
         nodes: promptPayload as Record<string, Record<string, unknown>>,
-        workflowState,
+        workflowState: queuedWorkflowState,
         queuedAt: Date.now()
       };
       pendingGenerations.set(entry.id, entry);
