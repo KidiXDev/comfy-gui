@@ -275,12 +275,21 @@ async function handleSolveCloudflare() {
   try {
     await solveBooruCloudflare('konachan.com');
     errorMessage.value = '';
-    await runSearch(true);
+    if (posts.value.length > 0) {
+      await runSearch(false);
+    } else {
+      await runSearch(true);
+    }
   } catch (error) {
     errorMessage.value = readableError(error);
   } finally {
     isSolvingCloudflare.value = false;
   }
+}
+
+async function retryPagination() {
+  errorMessage.value = '';
+  await runSearch(false);
 }
 
 async function runSearch(reset = false) {
@@ -325,7 +334,13 @@ function handleScroll(e: Event) {
   const target = e.target as HTMLElement;
   if (!target) return;
   savedScrollTop = target.scrollTop;
-  if (isLoading.value || ended.value || posts.value.length === 0) return;
+  if (
+    isLoading.value ||
+    ended.value ||
+    Boolean(errorMessage.value) ||
+    posts.value.length === 0
+  )
+    return;
   const bottomThreshold = 600;
   if (
     target.scrollHeight - target.scrollTop - target.clientHeight <
@@ -342,6 +357,7 @@ watch(virtualRows, (rows) => {
     rows.length === 0 ||
     isLoading.value ||
     ended.value ||
+    Boolean(errorMessage.value) ||
     posts.value.length === 0
   )
     return;
@@ -819,9 +835,50 @@ onUnmounted(deactivateView);
         </div>
 
         <!-- Bottom Infinite Scroll Loading Indicator & End Notice -->
-        <div class="flex justify-center py-6">
+        <div class="flex flex-col items-center justify-center gap-3 py-6">
+          <!-- Cloudflare Challenge Banner during pagination -->
           <div
-            v-if="isLoading && posts.length"
+            v-if="isCloudflareBlocked && posts.length"
+            class="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 shadow-xs"
+          >
+            <div class="flex items-center gap-2">
+              <ShieldAlert class="h-4 w-4 shrink-0 text-amber-400" />
+              <span>Cloudflare verification required to load more posts.</span>
+            </div>
+            <Button
+              size="sm"
+              class="h-7 cursor-pointer bg-amber-600 px-3 text-xs text-white hover:bg-amber-500"
+              @click="handleSolveCloudflare"
+              :disabled="isSolvingCloudflare"
+            >
+              <Loader2
+                v-if="isSolvingCloudflare"
+                class="mr-1.5 h-3 w-3 animate-spin"
+              />
+              <ShieldCheck v-else class="mr-1.5 h-3 w-3" />
+              {{ isSolvingCloudflare ? 'Verifying...' : 'Solve Challenge' }}
+            </Button>
+          </div>
+
+          <!-- Generic Pagination Error Banner -->
+          <div
+            v-else-if="errorMessage && posts.length"
+            class="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+          >
+            <AlertCircle class="h-4 w-4 shrink-0" />
+            <span>{{ errorMessage }}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-7 text-xs"
+              @click="retryPagination"
+            >
+              Retry
+            </Button>
+          </div>
+
+          <div
+            v-else-if="isLoading && posts.length"
             class="border-border/80 bg-card/80 text-muted-foreground flex items-center gap-2.5 rounded-full border px-4 py-2 text-xs font-medium shadow-sm backdrop-blur-md"
           >
             <Loader2 class="text-primary h-4 w-4 animate-spin" />

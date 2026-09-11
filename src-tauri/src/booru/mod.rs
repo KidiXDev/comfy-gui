@@ -1117,6 +1117,24 @@ pub async fn booru_solve_cloudflare(
 
     let parsed_url = Url::parse(&target_url).map_err(|e| e.to_string())?;
 
+    let old_cookie = {
+        let current = settings(&app_handle)?;
+        current
+            .credentials
+            .konachan
+            .get("cookie")
+            .cloned()
+            .unwrap_or_default()
+    };
+    let old_clearance = old_cookie.split(';').find_map(|pair| {
+        let mut parts = pair.trim().splitn(2, '=');
+        if parts.next()? == "cf_clearance" {
+            parts.next().map(str::to_string)
+        } else {
+            None
+        }
+    });
+
     let banner_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
             const banner = document.createElement('div');
@@ -1146,6 +1164,7 @@ pub async fn booru_solve_cloudflare(
     )
     .title("Konachan Cloudflare Verification - ComfyGUI")
     .inner_size(620.0, 720.0)
+    .incognito(true)
     .user_agent(CLOUDFLARE_SOLVER_UA)
     .initialization_script(banner_script)
     .build()
@@ -1164,10 +1183,20 @@ pub async fn booru_solve_cloudflare(
             };
 
             if let Ok(cookies) = window.cookies() {
-                let has_clearance = cookies.iter().any(|c| c.name() == "cf_clearance");
-                if has_clearance {
+                let clearance_cookie = cookies.iter().find(|c| c.name() == "cf_clearance");
+                let is_new_clearance = match (&clearance_cookie, &old_clearance) {
+                    (Some(c), Some(old)) => !c.value().is_empty() && c.value() != old,
+                    (Some(c), None) => !c.value().is_empty(),
+                    _ => false,
+                };
+
+                if is_new_clearance {
+                    // Brief delay to allow Cloudflare redirects to complete and set remaining session cookies
+                    thread::sleep(Duration::from_millis(1000));
+
+                    let final_cookies = window.cookies().unwrap_or(cookies);
                     let mut cookie_header_parts = Vec::new();
-                    for c in &cookies {
+                    for c in &final_cookies {
                         let name = c.name();
                         let val = c.value();
                         cookie_header_parts.push(format!("{name}={val}"));
