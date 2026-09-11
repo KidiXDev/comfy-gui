@@ -263,15 +263,7 @@ async function copyTags() {
           </div>
 
           <Badge
-            v-if="isAvailable"
-            variant="outline"
-            class="border-emerald-500/30 bg-emerald-500/10 font-mono text-xs font-semibold text-emerald-400"
-          >
-            <span class="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            READY
-          </Badge>
-          <Badge
-            v-else
+            v-if="!isAvailable"
             variant="outline"
             class="border-border bg-muted text-muted-foreground font-mono text-xs"
           >

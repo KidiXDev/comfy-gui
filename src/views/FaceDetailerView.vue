@@ -261,18 +261,12 @@ onUnmounted(() => {
         </div>
 
         <StatusDot
-          :tone="
-            comfyStore.isConnected && comfyStore.isFaceDetailerAvailable
-              ? 'emerald'
-              : 'amber'
-          "
-          :pulse="comfyStore.isConnected && comfyStore.isFaceDetailerAvailable"
+          v-if="!comfyStore.isConnected || !comfyStore.isFaceDetailerAvailable"
+          tone="amber"
           :label="
             !comfyStore.isConnected
               ? 'ComfyUI Offline'
-              : comfyStore.isFaceDetailerAvailable
-                ? 'Impact Ready'
-                : 'Impact Unavailable'
+              : 'Impact Unavailable'
           "
         />
 

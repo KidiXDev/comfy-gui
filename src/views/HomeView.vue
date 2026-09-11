@@ -95,10 +95,10 @@ onMounted(() => {
                 <span>Render Viewport</span>
               </CardTitle>
               <span
-                v-if="comfyStore.isConnected"
-                class="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400"
+                v-if="!comfyStore.isConnected"
+                class="rounded bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400"
               >
-                Engine Ready
+                Offline
               </span>
             </div>
           </CardHeader>

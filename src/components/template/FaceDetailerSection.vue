@@ -147,33 +147,14 @@ watch(
       </div>
       <div class="flex items-center gap-2">
         <Badge
+          v-if="!comfyStore.isConnected || !comfyStore.isFaceDetailerAvailable"
           variant="outline"
-          :class="
-            !comfyStore.isConnected
-              ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-              : comfyStore.isFaceDetailerAvailable
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-          "
-          class="font-mono text-xs"
+          class="border-amber-500/30 bg-amber-500/10 font-mono text-xs text-amber-400"
         >
           <span
-            class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full"
-            :class="
-              !comfyStore.isConnected
-                ? 'bg-amber-400'
-                : comfyStore.isFaceDetailerAvailable
-                  ? 'bg-emerald-400'
-                  : 'bg-amber-400'
-            "
+            class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400"
           />
-          {{
-            !comfyStore.isConnected
-              ? 'Offline'
-              : comfyStore.isFaceDetailerAvailable
-                ? 'Ready'
-                : 'Unavailable'
-          }}
+          {{ !comfyStore.isConnected ? 'Offline' : 'Unavailable' }}
         </Badge>
         <Switch
           v-if="showEnabled"

@@ -469,9 +469,9 @@ onUnmounted(() => {
         </div>
 
         <StatusDot
-          :tone="comfyStore.isConnected ? 'emerald' : 'amber'"
-          :pulse="comfyStore.isConnected"
-          :label="comfyStore.isConnected ? 'ComfyUI Ready' : 'ComfyUI Offline'"
+          v-if="!comfyStore.isConnected"
+          tone="amber"
+          label="ComfyUI Offline"
         />
 
         <!-- Output Folder Quick Button -->

@@ -52,21 +52,12 @@ const vaeOptions = computed(() => {
       <!-- Checkpoint (UNET) -->
       <WorkflowField label="Checkpoint / UNET" class="md:col-span-6">
         <template #action>
-          <div class="flex items-center gap-1.5">
-            <span
-              v-if="comfyStore.isConnected && comfyStore.availableUnets.length"
-              class="flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-bold text-emerald-400"
-            >
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              LIVE
-            </span>
-            <span
-              v-else-if="!comfyStore.isConnected"
-              class="border-border bg-muted text-muted-foreground/80 rounded border px-1.5 py-0.5 font-mono text-xs font-semibold"
-            >
-              LOCKED
-            </span>
-          </div>
+          <span
+            v-if="!comfyStore.isConnected"
+            class="border-border bg-muted text-muted-foreground/80 rounded border px-1.5 py-0.5 font-mono text-xs font-semibold"
+          >
+            LOCKED
+          </span>
         </template>
         <div class="flex items-center gap-1.5">
           <Select
@@ -119,14 +110,7 @@ const vaeOptions = computed(() => {
       <WorkflowField label="VAE" class="md:col-span-6">
         <template #action>
           <span
-            v-if="comfyStore.isConnected && comfyStore.availableVaes.length"
-            class="flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-bold text-emerald-400"
-          >
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            LIVE
-          </span>
-          <span
-            v-else-if="!comfyStore.isConnected"
+            v-if="!comfyStore.isConnected"
             class="border-border bg-muted text-muted-foreground/80 rounded border px-1.5 py-0.5 font-mono text-xs font-semibold"
           >
             LOCKED
@@ -187,14 +171,7 @@ const vaeOptions = computed(() => {
       <WorkflowField label="CLIP Model">
         <template #action>
           <span
-            v-if="comfyStore.isConnected && comfyStore.availableClips.length"
-            class="flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-bold text-emerald-400"
-          >
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            LIVE
-          </span>
-          <span
-            v-else-if="!comfyStore.isConnected"
+            v-if="!comfyStore.isConnected"
             class="border-border bg-muted text-muted-foreground/80 rounded border px-1.5 py-0.5 font-mono text-xs font-semibold"
           >
             LOCKED
