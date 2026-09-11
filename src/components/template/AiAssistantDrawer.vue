@@ -46,6 +46,7 @@ import { supportsVision } from '@/utils/aiMentions';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 import { useOverlayLayer } from '@/composables/useOverlayLayer';
+import { useConfirmDialog } from '@/composables/useConfirmDialog';
 
 const aiStore = useAiStore();
 const comfyStore = useComfyStore();
@@ -61,6 +62,7 @@ const visionSupported = computed(() =>
   supportsVision(aiStore.selectedModelInfo)
 );
 const { style: overlayStyle } = useOverlayLayer(() => aiStore.isDrawerOpen);
+const { confirm } = useConfirmDialog();
 
 const activeSession = computed(() => aiStore.activeSession);
 const messages = computed(() => aiStore.activeMessages);
@@ -129,6 +131,19 @@ function confirmDeleteSession(sessionId: string) {
 
 function cancelDeleteSession() {
   deletingSessionId.value = null;
+}
+
+async function handleClearAllSessions() {
+  if (
+    await confirm({
+      title: 'Clear all conversations?',
+      description: 'This permanently deletes every assistant conversation.',
+      confirmLabel: 'Clear all'
+    })
+  ) {
+    aiStore.clearAllSessions();
+    sessionSearchQuery.value = '';
+  }
 }
 
 function startMessageEdit(message: ChatMessage) {
@@ -478,6 +493,17 @@ function navigateToSettings() {
               <X class="h-3 w-3" />
             </button>
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            :disabled="aiStore.sessions.length === 0"
+            class="text-muted-foreground hover:text-destructive shrink-0"
+            title="Clear all conversations"
+            @click="handleClearAllSessions"
+          >
+            <Trash2 class="h-3.5 w-3.5" />
+          </Button>
         </div>
 
         <!-- Sessions Scroll List -->
@@ -859,7 +885,11 @@ function navigateToSettings() {
                 </div>
 
                 <!-- Assistant Message -->
-                <AssistantMessage v-else :msg="msg" />
+                <AssistantMessage
+                  v-else
+                  :msg="msg"
+                  @open-image="openChatImage"
+                />
               </template>
             </MessageScrollerContent>
           </MessageScrollerViewport>

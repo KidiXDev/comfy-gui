@@ -63,7 +63,12 @@ async function handleMinimize() {
   }
 }
 
-async function handleToggleMaximize() {
+async function handleToggleMaximize(event?: MouseEvent) {
+  if (
+    (event?.currentTarget as Element | null)?.matches('header') &&
+    (event?.target as Element | null)?.closest('button')
+  )
+    return;
   try {
     const appWindow = getCurrentWindow();
     await appWindow.toggleMaximize();

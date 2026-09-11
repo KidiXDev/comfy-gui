@@ -27,6 +27,9 @@ import type { ChatMessage, ChatMessagePart } from '@/types/ai';
 import { formatRelativeTime } from '@/utils/formatters';
 
 defineProps<{ msg: ChatMessage }>();
+defineEmits<{
+  openImage: [src: string, title?: string];
+}>();
 const aiStore = useAiStore();
 const messages = computed(() => aiStore.activeMessages);
 const expandedThoughts = ref<Record<string, boolean>>({});
@@ -582,15 +585,29 @@ function renderMarkdown(content: string): string {
             >
               {{ part.invocation.args.reason }}
             </p>
-            <img
+            <button
               v-if="(part.invocation.result as any)?.image?.url"
-              :src="(part.invocation.result as any).image.url"
-              :alt="
+              type="button"
+              class="mt-2 block w-full cursor-zoom-in"
+              :aria-label="`Open ${(part.invocation.result as any).image.filename || 'generated image'} fullscreen`"
+              @click="
+                $emit(
+                  'openImage',
+                  (part.invocation.result as any).image.url,
+                  (part.invocation.result as any).image.filename ||
+                    'Generated image'
+                )
+              "
+            >
+              <img
+                :src="(part.invocation.result as any).image.url"
+                :alt="
                 (part.invocation.result as any).image.filename ||
                 'Generated image'
               "
-              class="border-border mt-2 max-h-72 w-full rounded-lg border object-contain"
-            />
+                class="border-border max-h-72 w-full rounded-lg border object-contain"
+              />
+            </button>
             <div
               v-if="part.invocation.state === 'building'"
               class="text-muted-foreground flex items-center gap-2 py-2"

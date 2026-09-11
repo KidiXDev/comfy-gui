@@ -3,6 +3,7 @@ export interface AiConfig {
   selectedModel: string;
   customSystemPrompt: string;
   enhancerSystemPrompt?: string;
+  enhancerUsesAssistantInstruction?: boolean;
   autoApply: boolean;
   temperature: number;
   contextTokenLimit: number;

@@ -167,7 +167,11 @@ async function runEnhance() {
 
     const result = streamText({
       model,
-      system: buildEnhancerSystemPrompt(aiStore.config.enhancerSystemPrompt),
+      system: buildEnhancerSystemPrompt(
+        aiStore.config.enhancerUsesAssistantInstruction
+          ? aiStore.config.customSystemPrompt
+          : aiStore.config.enhancerSystemPrompt
+      ),
       prompt: userPrompt,
       temperature: aiStore.config.temperature,
       maxOutputTokens: aiStore.config.maxOutputTokens,

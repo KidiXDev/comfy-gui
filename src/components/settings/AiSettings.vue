@@ -351,13 +351,37 @@ onMounted(loadAiSettings);
 
     <!-- Prompt Enhancer Custom Instructions -->
     <Field class="gap-1.5">
-      <FieldLabel class="text-xs">
-        Prompt Enhancer Instructions (Optional)
-      </FieldLabel>
+      <div class="flex items-center justify-between gap-3">
+        <FieldLabel class="text-xs">
+          Prompt Enhancer Instructions (Optional)
+        </FieldLabel>
+        <Label
+          for="enhancer-use-assistant-instruction"
+          class="flex cursor-pointer items-center gap-2 text-xs"
+        >
+          Use assistant instruction
+          <Switch
+            id="enhancer-use-assistant-instruction"
+            :model-value="aiStore.config.enhancerUsesAssistantInstruction"
+            @update:model-value="
+              (val: boolean) => {
+                aiStore.config.enhancerUsesAssistantInstruction = val;
+                void aiStore.saveConfig();
+                showSaved();
+              }
+            "
+          />
+        </Label>
+      </div>
       <Textarea
         :model-value="aiStore.config.enhancerSystemPrompt"
+        :disabled="aiStore.config.enhancerUsesAssistantInstruction"
         rows="3"
-        placeholder="Enter custom guidelines for the Prompt Enhancer modal..."
+        :placeholder="
+          aiStore.config.enhancerUsesAssistantInstruction
+            ? 'Using Chatbot Assistant Instructions'
+            : 'Enter custom guidelines for the Prompt Enhancer modal...'
+        "
         class="resize-y font-mono text-xs leading-relaxed"
         @update:model-value="
           (val) => {

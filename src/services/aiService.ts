@@ -7,6 +7,7 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   selectedModel: 'deepseek/deepseek-v4-flash-vision-exp',
   customSystemPrompt: '',
   enhancerSystemPrompt: '',
+  enhancerUsesAssistantInstruction: false,
   autoApply: false,
   temperature: 0.7,
   contextTokenLimit: 32768,
