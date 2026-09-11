@@ -46,7 +46,6 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   fetchBooruSettings,
   fetchBooruSources,
@@ -97,16 +96,7 @@ const isViewActive = ref(true);
 const GRID_GAP = 14;
 
 const CARD_ASPECT_RATIO = 4 / 3;
-const CARD_FOOTER_HEIGHT = 44;
 const OVERSCAN_ROWS = 3;
-
-const POPULAR_SUGGESTIONS = [
-  '1girl, solo, masterpiece',
-  'scenery, landscape, fantasy',
-  'cyberpunk, city, neon',
-  'cat_ears, cute, smile',
-  'aesthetic, highres, vibrant'
-];
 
 const activeSource = computed(() =>
   sources.value.find((source) => source.source === selectedSource.value)
@@ -128,9 +118,7 @@ const cardWidth = computed(() => {
   return Math.max(80, (gridWidth.value - totalGapWidth) / columns.value);
 });
 const cardImageHeight = computed(() => cardWidth.value * CARD_ASPECT_RATIO);
-const rowHeight = computed(
-  () => cardImageHeight.value + CARD_FOOTER_HEIGHT + GRID_GAP
-);
+const rowHeight = computed(() => cardImageHeight.value + GRID_GAP);
 const totalRows = computed(() => Math.ceil(posts.value.length / columns.value));
 
 // TanStack Virtualizer for hardware-accelerated smooth scrolling
@@ -367,10 +355,6 @@ watch(virtualRows, (rows) => {
   }
 });
 
-function applySuggestion(suggestedQuery: string) {
-  query.value = suggestedQuery;
-}
-
 function copyPostUrl(url: string) {
   void navigator.clipboard.writeText(url);
 }
@@ -600,17 +584,9 @@ onUnmounted(deactivateView);
         <div
           v-for="i in columns * 3"
           :key="i"
-          class="border-border/70 bg-card/60 flex flex-col overflow-hidden rounded-xl border"
+          class="border-border/60 bg-muted/20 relative flex aspect-3/4 w-full animate-pulse items-center justify-center overflow-hidden rounded-xl border"
         >
-          <div
-            class="bg-muted/40 relative flex aspect-3/4 w-full animate-pulse items-center justify-center overflow-hidden"
-          >
-            <ImageIcon class="text-muted-foreground/20 h-8 w-8" />
-          </div>
-          <div class="flex items-center justify-between p-2.5">
-            <Skeleton class="h-3 w-16" />
-            <Skeleton class="h-3 w-8" />
-          </div>
+          <ImageIcon class="text-muted-foreground/20 h-8 w-8" />
         </div>
       </div>
 
@@ -680,112 +656,67 @@ onUnmounted(deactivateView);
                 <div
                   role="button"
                   tabindex="0"
-                  class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-border relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 [content-visibility:auto]"
+                  class="group border-border/60 bg-muted/20 hover:border-primary/50 relative flex aspect-3/4 w-full cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-all duration-300 [content-visibility:auto] hover:shadow-xl hover:shadow-black/30"
                   @click="openDetail(post)"
                   @keydown.enter="openDetail(post)"
                   @keydown.space.prevent="openDetail(post)"
                 >
-                  <!-- Card Image Viewport with Skeleton Preloader -->
+                  <!-- Skeleton placeholder displayed until image is fully loaded -->
                   <div
-                    class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden"
+                    v-if="!isImageLoaded(`${post.source}:${post.postId}`)"
+                    class="bg-muted/50 absolute inset-0 flex animate-pulse items-center justify-center"
                   >
-                    <!-- Skeleton placeholder displayed until image is fully loaded -->
-                    <div
-                      v-if="!isImageLoaded(`${post.source}:${post.postId}`)"
-                      class="bg-muted/50 absolute inset-0 flex animate-pulse items-center justify-center"
-                    >
-                      <ImageIcon class="text-muted-foreground/30 h-7 w-7" />
-                    </div>
-
-                    <!-- High-Performance Lazy Decoded Image -->
-                    <img
-                      :src="mediaUrl(post)"
-                      :alt="`${post.source} post ${post.postId}`"
-                      loading="lazy"
-                      decoding="async"
-                      class="h-full w-full object-cover transition-opacity duration-300"
-                      :class="
-                        isImageLoaded(`${post.source}:${post.postId}`)
-                          ? 'opacity-100'
-                          : 'opacity-0'
-                      "
-                      @load="onImageLoad(`${post.source}:${post.postId}`)"
-                    />
-
-                    <!-- Floating Source Badge (Top Left) -->
-                    <div
-                      v-if="post.source"
-                      class="absolute top-2 left-2 z-10 flex items-center gap-1 transition-opacity duration-200"
-                    >
-                      <Badge
-                        variant="secondary"
-                        class="border-white/10 bg-black/60 font-mono text-[10px] font-medium text-white/90 capitalize shadow-sm backdrop-blur-md"
-                      >
-                        {{ post.source }}
-                      </Badge>
-                    </div>
-
-                    <!-- Floating Rating Badge (Top Right) -->
-                    <div class="absolute top-2 right-2 z-10">
-                      <Badge
-                        variant="outline"
-                        :class="ratingColorClass(post.rating)"
-                        class="px-1.5 py-0 text-[10px] font-bold tracking-wider uppercase backdrop-blur-md"
-                      >
-                        {{ post.rating || 'G' }}
-                      </Badge>
-                    </div>
-
-                    <!-- Floating Action Overlay on Hover with black-to-transparent gradient to top -->
-                    <div
-                      class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1.5 bg-linear-to-t from-black/90 via-black/50 to-transparent px-2.5 pt-6 pb-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                    >
-                      <Button
-                        size="iconSm"
-                        variant="secondary"
-                        class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                        title="View Post Details & Tags"
-                        @click.stop="openDetail(post)"
-                      >
-                        <ZoomIn class="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="iconSm"
-                        variant="secondary"
-                        class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                        title="Open in Source Provider"
-                        @click.stop="openUrl(post.postUrl)"
-                      >
-                        <ExternalLink class="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    <ImageIcon class="text-muted-foreground/30 h-7 w-7" />
                   </div>
 
-                  <!-- Card Footer Metadata -->
-                  <div class="flex flex-col justify-between p-2.5">
-                    <p
-                      class="text-foreground truncate font-mono text-xs font-medium transition-colors"
-                      :title="`Post #${post.postId}`"
+                  <!-- High-Performance Lazy Decoded Image -->
+                  <img
+                    :src="mediaUrl(post)"
+                    :alt="`${post.source} post ${post.postId}`"
+                    loading="lazy"
+                    decoding="async"
+                    class="h-full w-full object-cover transition-opacity duration-300"
+                    :class="
+                      isImageLoaded(`${post.source}:${post.postId}`)
+                        ? 'opacity-100'
+                        : 'opacity-0'
+                    "
+                    @load="onImageLoad(`${post.source}:${post.postId}`)"
+                  />
+
+                  <!-- Floating Rating Badge (Top Right) -->
+                  <div v-if="post.rating" class="absolute top-2 right-2 z-10">
+                    <Badge
+                      variant="outline"
+                      :class="ratingColorClass(post.rating)"
+                      class="border-white/10 bg-black/60 px-1.5 py-0 font-mono text-[10px] font-bold tracking-wider uppercase shadow-xs backdrop-blur-md"
                     >
-                      #{{ post.postId }}
-                    </p>
-                    <div
-                      class="text-muted-foreground mt-1 flex items-center justify-between font-mono text-xs"
+                      {{ post.rating }}
+                    </Badge>
+                  </div>
+
+                  <!-- Floating Action Overlay on Hover -->
+                  <div
+                    class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-2 bg-linear-to-t from-black/90 via-black/40 to-transparent px-3 pt-8 pb-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                  >
+                    <Button
+                      size="iconSm"
+                      variant="secondary"
+                      class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
+                      title="View Post Details & Tags"
+                      @click.stop="openDetail(post)"
                     >
-                      <span class="truncate capitalize">{{ post.source }}</span>
-                      <span
-                        v-if="post.width && post.height"
-                        class="shrink-0 font-mono text-[10px]"
-                      >
-                        {{ post.width }}×{{ post.height }}
-                      </span>
-                      <span
-                        v-else
-                        class="shrink-0 font-mono text-[10px] capitalize"
-                      >
-                        {{ post.rating || 'G' }}
-                      </span>
-                    </div>
+                      <ZoomIn class="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="iconSm"
+                      variant="secondary"
+                      class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
+                      title="Open in Source Provider"
+                      @click.stop="openUrl(post.postUrl)"
+                    >
+                      <ExternalLink class="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
               </ContextMenuTrigger>
@@ -817,21 +748,8 @@ onUnmounted(deactivateView);
           </div>
           <h3 class="text-foreground text-sm font-semibold">No posts found</h3>
           <p class="text-muted-foreground mt-1 text-xs">
-            Try adjusting your search tags, rating filters, or try a suggested
-            query:
+            Try adjusting your search tags, rating filters.
           </p>
-
-          <div class="mt-4 flex flex-wrap justify-center gap-1.5">
-            <button
-              v-for="suggestion in POPULAR_SUGGESTIONS"
-              :key="suggestion"
-              type="button"
-              class="border-border bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer rounded-lg border px-2.5 py-1 font-mono text-xs transition-colors"
-              @click="applySuggestion(suggestion)"
-            >
-              {{ suggestion }}
-            </button>
-          </div>
         </div>
 
         <!-- Bottom Infinite Scroll Loading Indicator & End Notice -->
@@ -863,7 +781,7 @@ onUnmounted(deactivateView);
           <!-- Generic Pagination Error Banner -->
           <div
             v-else-if="errorMessage && posts.length"
-            class="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+            class="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-3 rounded-lg border px-4 py-2 text-xs"
           >
             <AlertCircle class="h-4 w-4 shrink-0" />
             <span>{{ errorMessage }}</span>
