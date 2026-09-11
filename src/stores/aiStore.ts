@@ -637,7 +637,12 @@ export const useAiStore = defineStore('ai', () => {
               image
             };
           }
-          return { status: 'applied', prompt: input.prompt };
+          return {
+            status: 'applied',
+            prompt: input.prompt,
+            message:
+              'The prompt is applied and already displayed in the injection card. Confirm briefly without repeating the prompt. This has not generated an image; continue to generation only if the user requested it.'
+          };
         } catch (error) {
           if (
             inv.state === 'building' ||
@@ -717,7 +722,7 @@ export const useAiStore = defineStore('ai', () => {
 
         inject_positive_prompt: tool({
           description:
-            'Propose or inject a new or enhanced positive prompt into the studio.',
+            'Use this for requests to create an image or create, improve, replace, or apply the studio positive prompt. Writing prompt text in chat does not apply it. For edits, inspect the current prompt first. The UI displays the full prompt and handles approval; after success, confirm briefly without repeating it. Wait for this result before calling generation. Do not use for explicitly text-only drafts or explanations.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced positive prompt text'),
             reason: z
@@ -731,7 +736,7 @@ export const useAiStore = defineStore('ai', () => {
 
         inject_negative_prompt: tool({
           description:
-            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use the positive prompt capability and preserve the current negative prompt.',
+            'Change only the negative prompt, and only when the user explicitly requests a negative prompt change. Generic prompt improvements must use the positive prompt capability and preserve the current negative prompt. The UI displays the full prompt and handles approval; after success, confirm briefly without repeating it.',
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced negative prompt text'),
             reason: z
@@ -745,7 +750,7 @@ export const useAiStore = defineStore('ai', () => {
 
         queue_generation: tool({
           description:
-            'Delegate the current workflow to ComfyUI and wait for that exact job to finish. The completed result includes the generated image so you can report completion and discuss the result with the user.',
+            'Use when the user requests image generation, not merely prompt preparation. Delegate the current workflow to ComfyUI and wait for that exact job to finish. If the requested scene needs a prompt update, call injection first and wait for its successful result in a separate step; never queue alongside an unresolved or rejected injection. The completed result includes the generated image so you can briefly report completion without repeating the prompt.',
           inputSchema: z.object({
             reason: z
               .string()

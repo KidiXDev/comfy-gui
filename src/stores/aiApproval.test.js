@@ -173,7 +173,7 @@ for (const decision of ['accept', 'decline', 'stop', 'queue', 'negative']) {
 }
 for (const file of [
   '../components/template/AiAssistantDrawer.vue',
-  '../views/SettingsView.vue'
+  '../components/settings/AiSettings.vue'
 ]) {
   const source = readFileSync(new URL(file, import.meta.url), 'utf8');
   const autoApplySwitch = source
@@ -214,6 +214,25 @@ for (const toolName of [
     toolName === 'inject_negative_prompt' ? 'updated' : 'keep this'
   );
   assert.equal(queued, toolName === 'queue_generation' ? 1 : 0);
+  if (toolName !== 'queue_generation') {
+    const invocation = store.activeMessages.at(-1).toolInvocations[0];
+    assert.equal(invocation.result.status, 'applied');
+    assert.equal(
+      invocation.args.prompt,
+      'updated',
+      'Prompt stays available to the UI'
+    );
+    assert.match(
+      invocation.result.message,
+      /already displayed.*Confirm briefly without repeating/su
+    );
+    assert.ok(
+      JSON.stringify(model.doStreamCalls[1].prompt).includes(
+        invocation.result.message
+      ),
+      'The real SDK continuation receives the injection display and completion contract'
+    );
+  }
 }
 console.log(
   'Auto Apply bindings and automatic positive, negative, and queue actions passed.'

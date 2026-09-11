@@ -29,11 +29,13 @@ import {
 import {
   clearBooruCache,
   fetchBooruSettings,
+  fetchBooruSources,
   saveBooruSettings,
   testBooruCredentials,
   type BooruCredentials,
   type BooruSettings,
-  type BooruSettingsUpdate
+  type BooruSettingsUpdate,
+  type BooruSource
 } from '@/services/booruGallery';
 import { loadAppData, saveAppData } from '@/services/appStorage';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
@@ -44,6 +46,7 @@ function showSaved() {
   emit('saved');
 }
 const booruSettings = ref<BooruSettings | null>(null);
+const booruSources = ref<BooruSource[]>([]);
 const booruAvailable = ref<boolean | null>(null);
 const booruCredentials = ref<BooruCredentials>({
   danbooru: { username: '', apiKey: '' },
@@ -124,7 +127,12 @@ function applyGallerySettings(settings: BooruSettings) {
 }
 async function loadGallerySettings() {
   try {
-    applyGallerySettings(await fetchBooruSettings());
+    const [settings, sources] = await Promise.all([
+      fetchBooruSettings(),
+      fetchBooruSources()
+    ]);
+    booruSources.value = sources;
+    applyGallerySettings(settings);
     booruAvailable.value = true;
   } catch {
     booruAvailable.value = false;
@@ -182,9 +190,7 @@ async function saveGalleryPreferences() {
       cacheBudgetMiB: booruCacheBudget.value,
       ...(Object.keys(credentials).length > 0 ? { credentials } : {})
     };
-    applyGallerySettings(
-      await saveBooruSettings(update)
-    );
+    applyGallerySettings(await saveBooruSettings(update));
     if (Object.keys(credentials).length > 0) {
       applyingGallerySettings = true;
       booruCredentials.value = {
@@ -297,24 +303,21 @@ onMounted(() => {
           <SelectTrigger class="w-full text-xs">
             <SelectValue placeholder="Default source">
               {{
-                booruDefaultSource === 'danbooru'
-                  ? 'Danbooru'
-                  : booruDefaultSource === 'gelbooru'
-                    ? 'Gelbooru'
-                    : booruDefaultSource === 'safebooru'
-                      ? 'Safebooru'
-                      : booruDefaultSource === 'aitag'
-                        ? 'AI TAG'
-                        : booruDefaultSource
+                booruSources.find(
+                  (source) => source.source === booruDefaultSource
+                )?.displayName ?? booruDefaultSource
               }}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem value="danbooru">Danbooru</SelectItem>
-              <SelectItem value="gelbooru">Gelbooru</SelectItem>
-              <SelectItem value="safebooru">Safebooru</SelectItem>
-              <SelectItem value="aitag">AI TAG</SelectItem>
+              <SelectItem
+                v-for="source in booruSources"
+                :key="source.source"
+                :value="source.source"
+              >
+                {{ source.displayName }}
+              </SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>

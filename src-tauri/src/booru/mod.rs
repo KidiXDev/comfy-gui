@@ -1,6 +1,7 @@
 mod aitag;
 mod danbooru;
 mod gelbooru;
+mod moebooru;
 mod safebooru;
 
 use reqwest::blocking::{Client, RequestBuilder};
@@ -371,16 +372,22 @@ pub(crate) fn provider(source: &str) -> Result<&'static dyn Provider, String> {
         "gelbooru" => Ok(&gelbooru::GELBOORU),
         "safebooru" => Ok(&safebooru::SAFEBOORU),
         "aitag" => Ok(&aitag::AI_TAG),
+        "yandere" => Ok(&moebooru::YANDERE),
+        "konachan.net" => Ok(&moebooru::KONACHAN_NET),
+        "konachan.com" => Ok(&moebooru::KONACHAN_COM),
         _ => Err(format!("unsupported booru source: {source}")),
     }
 }
 
-fn providers() -> [&'static dyn Provider; 4] {
+fn providers() -> [&'static dyn Provider; 7] {
     [
         &danbooru::DANBOORU,
         &gelbooru::GELBOORU,
         &safebooru::SAFEBOORU,
         &aitag::AI_TAG,
+        &moebooru::YANDERE,
+        &moebooru::KONACHAN_NET,
+        &moebooru::KONACHAN_COM,
     ]
 }
 
@@ -841,6 +848,9 @@ fn search_blocking(app: &AppHandle, mut request: SearchRequest) -> Result<Page, 
     let settings = settings(app)?;
     let provider = provider(&request.source)?;
     let caps = provider.capabilities();
+    if caps.ratings.is_empty() {
+        request.ratings.clear();
+    }
     if request
         .ratings
         .iter()
@@ -1130,6 +1140,8 @@ fn media_hosts(source: &str) -> &'static [&'static str] {
         "gelbooru" => &["gelbooru.com", "img3.gelbooru.com", "img4.gelbooru.com"],
         "safebooru" => &["safebooru.org", "images.safebooru.org"],
         "aitag" => &["ai-img.10118899.xyz"],
+        "yandere" => &["yande.re", "files.yande.re", "assets.yande.re"],
+        "konachan.net" | "konachan.com" => &["konachan.net", "konachan.com"],
         _ => &[],
     }
 }
