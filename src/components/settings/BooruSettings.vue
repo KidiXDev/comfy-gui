@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   KeyRound,
   Loader2,
+  ShieldCheck,
   Tag,
   Trash2,
   Wifi
@@ -31,6 +32,7 @@ import {
   fetchBooruSettings,
   fetchBooruSources,
   saveBooruSettings,
+  solveBooruCloudflare,
   testBooruCredentials,
   type BooruCredentials,
   type BooruSettings,
@@ -50,10 +52,13 @@ const booruSources = ref<BooruSource[]>([]);
 const booruAvailable = ref<boolean | null>(null);
 const booruCredentials = ref<BooruCredentials>({
   danbooru: { username: '', apiKey: '' },
-  gelbooru: { userId: '', apiKey: '' }
+  gelbooru: { userId: '', apiKey: '' },
+  konachan: { cookie: '', userAgent: '' }
 });
 const showDanbooruKey = ref(false);
 const showGelbooruKey = ref(false);
+const showKonachanManual = ref(false);
+const isSolvingKonachan = ref(false);
 const booruDefaultSource = ref('danbooru');
 const booruBlacklist = ref('');
 const booruOutputFilterTags = ref('');
@@ -67,9 +72,9 @@ const booruEscapeParentheses = ref(false);
 const booruTimeout = ref(30);
 const booruCacheBudget = ref(1024);
 const booruCacheMessage = ref('');
-const booruTesting = ref<'danbooru' | 'gelbooru' | null>(null);
+const booruTesting = ref<'danbooru' | 'gelbooru' | 'konachan.com' | null>(null);
 const booruResult = ref<{
-  source: 'danbooru' | 'gelbooru';
+  source: 'danbooru' | 'gelbooru' | 'konachan.com';
   ok: boolean;
   message: string;
 } | null>(null);
@@ -100,6 +105,9 @@ const gelbooruConfigured = computed(
   () =>
     booruSettings.value?.credentialStatus.gelbooru?.hasUserId &&
     booruSettings.value?.credentialStatus.gelbooru?.hasApiKey
+);
+const konachanConfigured = computed(() =>
+  Boolean(booruSettings.value?.credentialStatus.konachan?.hasCookie)
 );
 const BOORU_PROMPT_CATEGORIES = [
   'artist',
@@ -169,6 +177,12 @@ async function saveGalleryPreferences() {
     ) {
       credentials.gelbooru = booruCredentials.value.gelbooru;
     }
+    if (
+      booruCredentials.value.konachan.cookie ||
+      booruCredentials.value.konachan.userAgent
+    ) {
+      credentials.konachan = booruCredentials.value.konachan;
+    }
     booruTimeout.value = Math.min(
       300,
       Math.max(3, Number(booruTimeout.value) || 30)
@@ -195,7 +209,8 @@ async function saveGalleryPreferences() {
       applyingGallerySettings = true;
       booruCredentials.value = {
         danbooru: { username: '', apiKey: '' },
-        gelbooru: { userId: '', apiKey: '' }
+        gelbooru: { userId: '', apiKey: '' },
+        konachan: { cookie: '', userAgent: '' }
       };
       applyingGallerySettings = false;
     }
@@ -229,17 +244,30 @@ watch([booruReplaceUnderscores, booruEscapeParentheses], ([rep, esc]) => {
     escapeParentheses: esc
   }).catch(console.error);
 });
-async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
+
+async function testBooruAccount(
+  source: 'danbooru' | 'gelbooru' | 'konachan.com'
+) {
   booruTesting.value = source;
   booruResult.value = null;
   try {
+    const creds =
+      source === 'konachan.com'
+        ? booruCredentials.value.konachan
+        : booruCredentials.value[source];
     await testBooruCredentials(source, {
-      ...booruCredentials.value[source]
+      ...creds
     });
+    const label =
+      source === 'danbooru'
+        ? 'Danbooru'
+        : source === 'gelbooru'
+          ? 'Gelbooru'
+          : 'Konachan';
     booruResult.value = {
       source,
       ok: true,
-      message: `${source === 'danbooru' ? 'Danbooru' : 'Gelbooru'} connection succeeded.`
+      message: `${label} connection succeeded.`
     };
   } catch (error) {
     booruResult.value = {
@@ -249,6 +277,46 @@ async function testBooruAccount(source: 'danbooru' | 'gelbooru') {
     };
   } finally {
     booruTesting.value = null;
+  }
+}
+
+async function solveKonachanCloudflare() {
+  if (isSolvingKonachan.value) return;
+  isSolvingKonachan.value = true;
+  booruResult.value = null;
+  try {
+    const res = await solveBooruCloudflare('konachan.com');
+    await loadGallerySettings();
+    booruResult.value = {
+      source: 'konachan.com',
+      ok: true,
+      message: res.message || 'Cloudflare clearance verified and saved!'
+    };
+  } catch (error) {
+    booruResult.value = {
+      source: 'konachan.com',
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    isSolvingKonachan.value = false;
+  }
+}
+
+async function clearKonachanCredentials() {
+  if (!booruAvailable.value) return;
+  applyingGallerySettings = true;
+  try {
+    applyGallerySettings(
+      await saveBooruSettings({
+        clearCredentials: { konachan: ['cookie', 'userAgent'] }
+      })
+    );
+    booruCredentials.value.konachan = { cookie: '', userAgent: '' };
+    booruResult.value = null;
+    showSaved();
+  } finally {
+    applyingGallerySettings = false;
   }
 }
 async function clearGalleryCache() {
@@ -652,6 +720,149 @@ onMounted(() => {
             {{ booruResult.message }}
           </p>
         </div>
+      </div>
+
+      <!-- Konachan (konachan.com) Cloudflare Card -->
+      <div
+        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs lg:col-span-2"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <ShieldCheck class="text-primary h-4 w-4" />
+            <div>
+              <Label class="text-foreground text-xs font-semibold">
+                Konachan (konachan.com)
+              </Label>
+              <p class="text-muted-foreground text-xs">
+                Cloudflare Bypass Session & Credentials
+              </p>
+            </div>
+          </div>
+          <Badge
+            variant="outline"
+            :class="
+              konachanConfigured
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+            "
+            class="font-mono text-xs"
+          >
+            <span
+              class="mr-1.5 h-1.5 w-1.5 rounded-full"
+              :class="konachanConfigured ? 'bg-emerald-400' : 'bg-amber-400'"
+            />
+            {{
+              konachanConfigured ? 'Clearance Active' : 'Verification Required'
+            }}
+          </Badge>
+        </div>
+
+        <p class="text-muted-foreground text-xs">
+          konachan.com requires Cloudflare verification. Solve the challenge via
+          the in-app browser popup below, or manually paste your browser session
+          cookie.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            :disabled="!booruAvailable || isSolvingKonachan"
+            class="cursor-pointer bg-amber-600 text-xs font-medium text-white shadow-xs hover:bg-amber-500"
+            @click="solveKonachanCloudflare"
+          >
+            <Loader2
+              v-if="isSolvingKonachan"
+              class="mr-1.5 h-3.5 w-3.5 animate-spin"
+            />
+            <ShieldCheck v-else class="mr-1.5 h-3.5 w-3.5" />
+            <span>{{
+              isSolvingKonachan
+                ? 'Verifying in window...'
+                : 'Solve Cloudflare Challenge'
+            }}</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            :disabled="!booruAvailable || booruTesting !== null"
+            class="border-border bg-secondary cursor-pointer text-xs font-medium"
+            @click="testBooruAccount('konachan.com')"
+          >
+            <Loader2
+              v-if="booruTesting === 'konachan.com'"
+              class="h-3.5 w-3.5 animate-spin"
+            />
+            <Wifi v-else class="h-3.5 w-3.5" />
+            <span>Test Connection</span>
+          </Button>
+
+          <Button
+            v-if="konachanConfigured"
+            type="button"
+            variant="ghost"
+            size="sm"
+            class="text-muted-foreground hover:text-destructive cursor-pointer text-xs"
+            @click="clearKonachanCredentials"
+          >
+            <Trash2 class="mr-1 h-3.5 w-3.5" />
+            <span>Clear Session</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            class="text-muted-foreground ml-auto cursor-pointer text-xs"
+            @click="showKonachanManual = !showKonachanManual"
+          >
+            <span>{{
+              showKonachanManual
+                ? 'Hide Manual Inputs'
+                : 'Manual Cookie / User-Agent'
+            }}</span>
+          </Button>
+        </div>
+
+        <div
+          v-if="showKonachanManual"
+          class="border-border/50 space-y-3 border-t pt-2"
+        >
+          <div class="space-y-1">
+            <Label class="text-muted-foreground text-xs">
+              Session Cookie (containing cf_clearance)
+            </Label>
+            <Input
+              v-model="booruCredentials.konachan.cookie"
+              :disabled="!booruAvailable"
+              autocomplete="off"
+              placeholder="cf_clearance=...; path=/; domain=.konachan.com"
+              class="font-mono text-xs"
+            />
+          </div>
+          <div class="space-y-1">
+            <Label class="text-muted-foreground text-xs">
+              Matching Browser User-Agent
+            </Label>
+            <Input
+              v-model="booruCredentials.konachan.userAgent"
+              :disabled="!booruAvailable"
+              autocomplete="off"
+              placeholder="Mozilla/5.0 ... Chrome/..."
+              class="font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <p
+          v-if="booruResult?.source === 'konachan.com'"
+          class="text-xs font-medium"
+          :class="booruResult.ok ? 'text-emerald-400' : 'text-destructive'"
+        >
+          {{ booruResult.message }}
+        </p>
       </div>
     </div>
   </SettingsSection>

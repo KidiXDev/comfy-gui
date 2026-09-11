@@ -70,6 +70,7 @@ export interface BooruSettings {
 export interface BooruCredentials {
   danbooru: { username: string; apiKey: string };
   gelbooru: { userId: string; apiKey: string };
+  konachan: { cookie: string; userAgent: string };
 }
 
 export function normalizeBooruRatings(
@@ -86,18 +87,16 @@ export function fetchBooruSources() {
   return invoke<BooruSource[]>('booru_sources');
 }
 
-export function searchBooru(
-  options: {
-    source: string;
-    query: string;
-    ratings: string[];
-    sort: string;
-    cursor?: string | null;
-    limit?: number;
-    page?: number;
-    random?: boolean;
-  }
-) {
+export function searchBooru(options: {
+  source: string;
+  query: string;
+  ratings: string[];
+  sort: string;
+  cursor?: string | null;
+  limit?: number;
+  page?: number;
+  random?: boolean;
+}) {
   return invoke<BooruPage>('booru_search', { request: options });
 }
 
@@ -117,14 +116,14 @@ export function fetchBooruSettings() {
 }
 
 export interface BooruSettingsUpdate {
-  defaultSource: string;
-  blacklist: string[];
-  outputFilterTags: string[];
-  promptDefaults: BooruSettings['promptDefaults'];
-  timeout: number;
-  cacheBudgetMiB: number;
+  defaultSource?: string;
+  blacklist?: string[];
+  outputFilterTags?: string[];
+  promptDefaults?: BooruSettings['promptDefaults'];
+  timeout?: number;
+  cacheBudgetMiB?: number;
   credentials?: Partial<BooruCredentials>;
-  clearCredentials?: Partial<Record<keyof BooruCredentials, string[]>>;
+  clearCredentials?: Partial<Record<keyof BooruCredentials | string, string[]>>;
 }
 
 export function saveBooruSettings(update: BooruSettingsUpdate) {
@@ -136,7 +135,7 @@ export function clearBooruCache() {
 }
 
 export function testBooruCredentials(
-  source: keyof BooruCredentials,
+  source: string,
   credentials: Record<string, string>
 ) {
   return invoke<{ ok: boolean }>('booru_test_credentials', {
@@ -208,5 +207,11 @@ export function formatBooruWarnings(warnings: string[]) {
       return ['Some restricted posts are unavailable for this account.'];
     }
     return [warning.replaceAll('-', ' ')];
+  });
+}
+
+export function solveBooruCloudflare(source: string = 'konachan.com') {
+  return invoke<{ ok: boolean; message: string }>('booru_solve_cloudflare', {
+    source
   });
 }

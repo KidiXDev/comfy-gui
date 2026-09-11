@@ -37,17 +37,27 @@ impl Moebooru {
         page: usize,
         limit: usize,
         include_tags: bool,
+        credentials: &HashMap<String, String>,
     ) -> Result<Value, String> {
-        send_json(
-            self.source,
-            client.get(format!("{}/post.json", self.base)).query(&[
-                ("tags", tags.to_string()),
-                ("page", page.to_string()),
-                ("limit", limit.to_string()),
-                ("api_version", "2".into()),
-                ("include_tags", if include_tags { "1" } else { "0" }.into()),
-            ]),
-        )
+        let mut request = client.get(format!("{}/post.json", self.base)).query(&[
+            ("tags", tags.to_string()),
+            ("page", page.to_string()),
+            ("limit", limit.to_string()),
+            ("api_version", "2".into()),
+            ("include_tags", if include_tags { "1" } else { "0" }.into()),
+        ]);
+        if let Some(cookie) = credentials.get("cookie").filter(|c| !c.is_empty()) {
+            request = request.header(reqwest::header::COOKIE, cookie.as_str());
+        }
+        if let Some(ua) = credentials.get("userAgent").filter(|u| !u.is_empty()) {
+            request = request.header(reqwest::header::USER_AGENT, ua.as_str());
+        }
+        request = request.header(reqwest::header::REFERER, format!("{}/", self.base));
+        request = request.header(
+            reqwest::header::ACCEPT,
+            "application/json, text/javascript, */*; q=0.01",
+        );
+        send_json(self.source, request)
     }
 
     fn summary(&self, post: &Value) -> PostSummary {
@@ -177,7 +187,11 @@ impl Provider for Moebooru {
             sort_values: &["latest", "score"],
             pagination: "page",
             max_page_size: 100,
-            auth_fields: &[],
+            auth_fields: if self.source == "konachan.com" {
+                &["cookie", "userAgent"]
+            } else {
+                &[]
+            },
             categorized_tags: true,
             favorite_read: false,
             favorite_write: false,
@@ -188,7 +202,11 @@ impl Provider for Moebooru {
             auth_required: false,
             tag_search: true,
             max_search_tags: None,
-            credentials_url: "",
+            credentials_url: if self.source == "konachan.com" {
+                "https://konachan.com"
+            } else {
+                ""
+            },
         }
     }
 
@@ -200,7 +218,7 @@ impl Provider for Moebooru {
         &self,
         client: &Client,
         request: &SearchRequest,
-        _credentials: &HashMap<String, String>,
+        credentials: &HashMap<String, String>,
         blacklist: &HashSet<String>,
     ) -> Result<Page, String> {
         let page = request
@@ -210,7 +228,7 @@ impl Provider for Moebooru {
             .unwrap_or(1)
             .max(1);
         let limit = request.limit.clamp(1, 100);
-        let raw = self.fetch(client, &self.query(request), page, limit, false)?;
+        let raw = self.fetch(client, &self.query(request), page, limit, false, credentials)?;
         self.map_page(&raw, request, blacklist, page, limit)
     }
 
@@ -218,12 +236,12 @@ impl Provider for Moebooru {
         &self,
         client: &Client,
         post_id: &str,
-        _credentials: &HashMap<String, String>,
+        credentials: &HashMap<String, String>,
     ) -> Result<PostDetail, String> {
         let id = post_id
             .parse::<u64>()
             .map_err(|_| "Invalid Moebooru post ID")?;
-        let raw = self.fetch(client, &format!("id:{id}"), 1, 1, true)?;
+        let raw = self.fetch(client, &format!("id:{id}"), 1, 1, true, credentials)?;
         self.map_detail(&raw, &id.to_string())
     }
 }
@@ -316,6 +334,14 @@ mod tests {
                 .posts
                 .len(),
             1
+        );
+        assert_eq!(
+            KONACHAN_COM.capabilities().auth_fields,
+            ["cookie", "userAgent"]
+        );
+        assert_eq!(
+            KONACHAN_NET.capabilities().auth_fields,
+            Vec::<&str>::new().as_slice()
         );
     }
 }

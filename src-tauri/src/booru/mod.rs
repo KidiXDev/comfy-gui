@@ -185,6 +185,8 @@ struct Credentials {
     danbooru: HashMap<String, String>,
     #[serde(default)]
     gelbooru: HashMap<String, String>,
+    #[serde(default)]
+    konachan: HashMap<String, String>,
 }
 
 impl Credentials {
@@ -192,6 +194,7 @@ impl Credentials {
         match source {
             "danbooru" => self.danbooru.clone(),
             "gelbooru" => self.gelbooru.clone(),
+            "konachan.com" | "konachan" => self.konachan.clone(),
             _ => HashMap::new(),
         }
     }
@@ -421,6 +424,19 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
                 if status.is_success() {
                     return serde_json::from_str(&body)
                         .map_err(|_| format!("{source} GET {final_url} returned invalid JSON"));
+                }
+                if body.contains("cf-mitigated")
+                    || body.contains("challenges.cloudflare.com")
+                    || body.contains("Just a moment...")
+                    || body.contains("Turnstile")
+                    || (status == StatusCode::FORBIDDEN
+                        && (body.contains("Cloudflare")
+                            || body.contains("<html")
+                            || body.contains("<!DOCTYPE html>")))
+                {
+                    return Err(format!(
+                        "{source} request was blocked by Cloudflare verification (HTTP {status}). Please solve the Cloudflare challenge to proceed."
+                    ));
                 }
                 if body.contains("QueryCanceled") || body.contains("timed out running your query") {
                     return Err(format!(
@@ -744,6 +760,10 @@ fn public_settings(settings: &Settings) -> Value {
                 "hasUserId": settings.credentials.gelbooru.get("userId").is_some_and(|v| !v.is_empty()),
                 "hasApiKey": settings.credentials.gelbooru.get("apiKey").is_some_and(|v| !v.is_empty())
             },
+            "konachan": {
+                "hasCookie": settings.credentials.konachan.get("cookie").is_some_and(|v| !v.is_empty()),
+                "hasUserAgent": settings.credentials.konachan.get("userAgent").is_some_and(|v| !v.is_empty())
+            },
             "safebooru": {}, "aitag": {}
         }
     })
@@ -1017,6 +1037,10 @@ pub async fn booru_settings_save(
         let (target, allowed): (&mut HashMap<String, String>, &[&str]) = match source.as_str() {
             "danbooru" => (&mut settings.credentials.danbooru, &["username", "apiKey"]),
             "gelbooru" => (&mut settings.credentials.gelbooru, &["userId", "apiKey"]),
+            "konachan" | "konachan.com" => (
+                &mut settings.credentials.konachan,
+                &["cookie", "userAgent"],
+            ),
             _ => return Err(format!("invalid credential source: {source}")),
         };
         for (key, value) in values {
@@ -1032,6 +1056,7 @@ pub async fn booru_settings_save(
         let target = match source.as_str() {
             "danbooru" => &mut settings.credentials.danbooru,
             "gelbooru" => &mut settings.credentials.gelbooru,
+            "konachan" | "konachan.com" => &mut settings.credentials.konachan,
             _ => continue,
         };
         for key in keys {
@@ -1066,6 +1091,122 @@ pub async fn booru_test_credentials(
                 .filter(|(_, value)| !value.trim().is_empty()),
         );
         provider(&source)?.test_credentials(&client(stored.timeout)?, &merged)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+const CLOUDFLARE_SOLVER_UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
+
+#[tauri::command]
+pub async fn booru_solve_cloudflare(
+    app_handle: AppHandle,
+    source: String,
+) -> Result<Value, String> {
+    let normalized_source = match source.as_str() {
+        "konachan" | "konachan.com" => "konachan.com",
+        _ => return Err(format!("Cloudflare solver is not supported for {source}")),
+    };
+    let target_url = format!("https://{normalized_source}/post.json?limit=1");
+
+    if let Some(existing) = app_handle.get_webview_window("booru-cf-solver") {
+        let _ = existing.close();
+        thread::sleep(Duration::from_millis(200));
+    }
+
+    let parsed_url = Url::parse(&target_url).map_err(|e| e.to_string())?;
+
+    let banner_script = r#"
+        window.addEventListener('DOMContentLoaded', () => {
+            const banner = document.createElement('div');
+            banner.style.position = 'fixed';
+            banner.style.top = '0';
+            banner.style.left = '0';
+            banner.style.right = '0';
+            banner.style.zIndex = '9999999';
+            banner.style.padding = '12px 16px';
+            banner.style.background = '#0f172a';
+            banner.style.color = '#38bdf8';
+            banner.style.fontSize = '13px';
+            banner.style.fontWeight = '600';
+            banner.style.fontFamily = 'system-ui, sans-serif';
+            banner.style.textAlign = 'center';
+            banner.style.borderBottom = '1px solid #1e293b';
+            banner.style.boxShadow = '0 2px 10px rgba(0,0,0,0.5)';
+            banner.innerText = '🛡️ ComfyGUI: Please complete Cloudflare verification. This window will close automatically once verified.';
+            document.body.prepend(banner);
+        });
+    "#;
+
+    let solver_window = tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        "booru-cf-solver",
+        tauri::WebviewUrl::External(parsed_url),
+    )
+    .title("Konachan Cloudflare Verification - ComfyGUI")
+    .inner_size(620.0, 720.0)
+    .user_agent(CLOUDFLARE_SOLVER_UA)
+    .initialization_script(banner_script)
+    .build()
+    .map_err(|e| format!("Failed to create verification window: {e}"))?;
+
+    let _ = solver_window.set_focus();
+
+    let app_handle_clone = app_handle.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let max_checks = 180;
+        for _ in 0..max_checks {
+            thread::sleep(Duration::from_millis(800));
+
+            let Some(window) = app_handle_clone.get_webview_window("booru-cf-solver") else {
+                return Err("Verification was cancelled (window closed).".into());
+            };
+
+            if let Ok(cookies) = window.cookies() {
+                let has_clearance = cookies.iter().any(|c| c.name() == "cf_clearance");
+                if has_clearance {
+                    let mut cookie_header_parts = Vec::new();
+                    for c in &cookies {
+                        let name = c.name();
+                        let val = c.value();
+                        cookie_header_parts.push(format!("{name}={val}"));
+                    }
+                    let cookie_str = cookie_header_parts.join("; ");
+
+                    let mut current_settings = settings(&app_handle_clone)?;
+                    current_settings
+                        .credentials
+                        .konachan
+                        .insert("cookie".into(), cookie_str);
+                    current_settings
+                        .credentials
+                        .konachan
+                        .insert("userAgent".into(), CLOUDFLARE_SOLVER_UA.into());
+                    current_settings.revision += 1;
+                    validate_settings(&mut current_settings)?;
+                    crate::save_app_data_entry(
+                        &app_handle_clone,
+                        "state",
+                        "booru_gallery",
+                        serde_json::to_value(&current_settings).map_err(|e| e.to_string())?,
+                    )?;
+                    clear_json_caches(&app_handle_clone);
+
+                    let _ = window.close();
+
+                    return Ok(serde_json::json!({
+                        "ok": true,
+                        "message": "Cloudflare clearance obtained successfully!"
+                    }));
+                }
+            }
+        }
+
+        if let Some(window) = app_handle_clone.get_webview_window("booru-cf-solver") {
+            let _ = window.close();
+        }
+        Err("Verification timed out. Please try again.".into())
     })
     .await
     .map_err(|e| e.to_string())?

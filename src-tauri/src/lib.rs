@@ -42,6 +42,7 @@ fn style_native_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+
 const DATA_KEY: &[u8] = b"comfy-gui";
 static APP_DATA_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -539,6 +540,7 @@ pub fn run() {
             booru::booru_settings_get,
             booru::booru_settings_save,
             booru::booru_test_credentials,
+            booru::booru_solve_cloudflare,
             booru::booru_favorites,
             booru::booru_favorite_set,
             booru::booru_clear_cache,

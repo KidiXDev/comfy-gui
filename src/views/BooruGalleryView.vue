@@ -23,6 +23,8 @@ import {
   Image as ImageIcon,
   Loader2,
   Search,
+  ShieldAlert,
+  ShieldCheck,
   ZoomIn
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +54,7 @@ import {
   getBooruMediaUrl,
   normalizeBooruRatings,
   searchBooru,
+  solveBooruCloudflare,
   type BooruPost,
   type BooruSettings,
   type BooruSource
@@ -257,6 +260,29 @@ function toggleRating(rating: string) {
   );
 }
 
+const isCloudflareBlocked = computed(
+  () =>
+    selectedSource.value === 'konachan.com' &&
+    (errorMessage.value.toLowerCase().includes('cloudflare') ||
+      errorMessage.value.includes('403'))
+);
+
+const isSolvingCloudflare = ref(false);
+
+async function handleSolveCloudflare() {
+  if (isSolvingCloudflare.value) return;
+  isSolvingCloudflare.value = true;
+  try {
+    await solveBooruCloudflare('konachan.com');
+    errorMessage.value = '';
+    await runSearch(true);
+  } catch (error) {
+    errorMessage.value = readableError(error);
+  } finally {
+    isSolvingCloudflare.value = false;
+  }
+}
+
 async function runSearch(reset = false) {
   if (!selectedSource.value || isLoading.value) return;
   isLoading.value = true;
@@ -385,7 +411,7 @@ onUnmounted(deactivateView);
 
     <template #below-header>
       <div
-        class="border-border/80 bg-card/70 relative z-20 shrink-0 border-b px-5 py-3.5 backdrop-blur-md"
+        class="border-border/80 bg-card/70 relative z-20 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
       >
         <!-- Search Controls Bar -->
         <form
@@ -455,38 +481,36 @@ onUnmounted(deactivateView);
         </form>
 
         <!-- Rating Filters -->
-        <div class="flex flex-wrap items-center gap-2 pt-0.5">
-          <div
-            v-if="activeSource?.ratings.length"
-            class="flex flex-wrap items-center gap-2"
+        <div
+          v-if="activeSource?.ratings.length"
+          class="flex flex-wrap items-center gap-2"
+        >
+          <span class="text-muted-foreground text-xs font-medium">
+            Ratings:
+          </span>
+          <button
+            v-for="rating in activeSource.ratings"
+            :key="rating"
+            type="button"
+            class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium capitalize transition-all"
+            :class="
+              selectedRatings.includes(rating)
+                ? ratingColorClass(rating)
+                : 'border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground'
+            "
+            :aria-pressed="selectedRatings.includes(rating)"
+            @click="toggleRating(rating)"
           >
-            <span class="text-muted-foreground text-xs font-medium">
-              Ratings:
-            </span>
-            <button
-              v-for="rating in activeSource.ratings"
-              :key="rating"
-              type="button"
-              class="flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium capitalize transition-all"
+            <span
+              class="h-1.5 w-1.5 rounded-full"
               :class="
                 selectedRatings.includes(rating)
-                  ? ratingColorClass(rating)
-                  : 'border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground'
+                  ? 'bg-current shadow-xs'
+                  : 'bg-muted-foreground'
               "
-              :aria-pressed="selectedRatings.includes(rating)"
-              @click="toggleRating(rating)"
-            >
-              <span
-                class="h-1.5 w-1.5 rounded-full"
-                :class="
-                  selectedRatings.includes(rating)
-                    ? 'bg-current shadow-xs'
-                    : 'bg-muted-foreground'
-                "
-              />
-              <span>{{ rating }}</span>
-            </button>
-          </div>
+            />
+            <span>{{ rating }}</span>
+          </button>
         </div>
       </div>
     </template>
@@ -497,9 +521,47 @@ onUnmounted(deactivateView);
       class="flex-1 overflow-y-auto p-5"
       @scroll.passive="handleScroll"
     >
-      <!-- Error State -->
+      <!-- Cloudflare Challenge Error State -->
       <div
-        v-if="errorMessage && !posts.length"
+        v-if="isCloudflareBlocked && !posts.length"
+        class="mx-auto mt-12 max-w-lg rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-xs leading-relaxed text-amber-200 shadow-sm"
+      >
+        <div class="flex items-start gap-3">
+          <ShieldAlert class="h-5 w-5 shrink-0 text-amber-400" />
+          <div class="space-y-2">
+            <span class="block text-sm font-semibold text-amber-300"
+              >Cloudflare Verification Required</span
+            >
+            <p class="text-muted-foreground leading-normal">
+              konachan.com requires Cloudflare verification. Click the button
+              below to solve the verification check first.
+            </p>
+            <div class="pt-1">
+              <Button
+                size="sm"
+                class="cursor-pointer bg-amber-600 font-medium text-white shadow-xs hover:bg-amber-500"
+                @click="handleSolveCloudflare"
+                :disabled="isSolvingCloudflare"
+              >
+                <Loader2
+                  v-if="isSolvingCloudflare"
+                  class="mr-1.5 h-3.5 w-3.5 animate-spin"
+                />
+                <ShieldCheck v-else class="mr-1.5 h-3.5 w-3.5" />
+                {{
+                  isSolvingCloudflare
+                    ? 'Verifying in window...'
+                    : 'Solve Cloudflare Challenge'
+                }}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Generic Error State -->
+      <div
+        v-else-if="errorMessage && !posts.length"
         class="border-destructive/30 bg-destructive/10 text-destructive mx-auto mt-12 max-w-lg rounded-xl border p-5 text-xs leading-relaxed shadow-sm"
       >
         <div class="flex items-start gap-3">
@@ -543,7 +605,34 @@ onUnmounted(deactivateView);
           {{ visibleWarnings.join(' ') }}
         </NoticeBanner>
 
-        <NoticeBanner v-if="errorMessage" tone="destructive" class="mb-4">
+        <!-- Cloudflare Challenge Banner during pagination -->
+        <div
+          v-if="isCloudflareBlocked"
+          class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
+        >
+          <div class="flex items-center gap-2">
+            <ShieldAlert class="h-4 w-4 shrink-0 text-amber-400" />
+            <span
+              >Cloudflare verification required for konachan.com. Please
+              re-verify to fetch more posts.</span
+            >
+          </div>
+          <Button
+            size="sm"
+            class="h-7 cursor-pointer bg-amber-600 px-3 text-xs text-white hover:bg-amber-500"
+            @click="handleSolveCloudflare"
+            :disabled="isSolvingCloudflare"
+          >
+            <Loader2
+              v-if="isSolvingCloudflare"
+              class="mr-1.5 h-3 w-3 animate-spin"
+            />
+            <ShieldCheck v-else class="mr-1.5 h-3 w-3" />
+            {{ isSolvingCloudflare ? 'Verifying...' : 'Solve Challenge' }}
+          </Button>
+        </div>
+
+        <NoticeBanner v-else-if="errorMessage" tone="destructive" class="mb-4">
           {{ errorMessage }}
         </NoticeBanner>
 
