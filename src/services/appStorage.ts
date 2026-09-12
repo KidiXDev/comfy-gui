@@ -15,6 +15,7 @@ type AppDataName =
   | 'remove_background_preferences'
   | 'session_history'
   | 'upscaler_preferences'
+  | 'ultimate_upscale_preferences'
   | 'workflow_session_state';
 
 type DataFile = 'config' | 'history' | 'state' | 'chat' | 'ai_config';
@@ -33,6 +34,7 @@ const dataFiles: Record<AppDataName, DataFile> = {
   remove_background_preferences: 'state',
   session_history: 'history',
   upscaler_preferences: 'state',
+  ultimate_upscale_preferences: 'state',
   workflow_session_state: 'state'
 };
 
@@ -47,7 +49,10 @@ const pendingWrites: Record<DataFile, Promise<void>> = {
 export async function loadAppData<T>(name: AppDataName): Promise<T | null> {
   const file = dataFiles[name];
   await pendingWrites[file].catch(console.error);
-  return await invoke<T | null>('get_app_data_entry', { name: file, key: name });
+  return await invoke<T | null>('get_app_data_entry', {
+    name: file,
+    key: name
+  });
 }
 
 export async function saveAppData(

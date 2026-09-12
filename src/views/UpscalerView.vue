@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 import StudioToolbar from '@/components/layout/StudioToolbar.vue';
 import { useImageClipboard } from '@/composables/useImageClipboard';
 import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
@@ -43,15 +44,19 @@ import { useImageTransferStore } from '@/stores/imageTransferStore';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import ModelSection from '@/components/template/ModelSection.vue';
+import LoraChainSection from '@/components/template/LoraChainSection.vue';
+import SeedControl from '@/components/common/SeedControl.vue';
+import UltimateUpscaleSection from '@/components/template/UltimateUpscaleSection.vue';
+import WorkflowField from '@/components/template/WorkflowField.vue';
+import { useUltimateUpscaleStore } from '@/stores/ultimateUpscaleStore';
+import {
+  buildUltimateUpscalePrompt,
+  ULTIMATE_UPSCALE_MAX_SCALE
+} from '../services/ultimateUpscaleWorkflow';
 import {
   Tooltip,
   TooltipContent,
@@ -65,10 +70,12 @@ import type { ComfyHistoryEntry } from '../types/comfy';
 
 const { copySuccess, copyImageToClipboard } = useImageClipboard();
 
+type UpscaleMode = 'normal' | 'ultimate';
 interface UpscalerPreferences {
   model: string;
   scale: number;
   filenamePrefix: string;
+  mode: UpscaleMode;
 }
 const QUICK_SCALES = [1.5, 2.0, 3.0, 4.0, 8.0];
 
@@ -93,6 +100,12 @@ const {
 } = useImageBatch();
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
+const ultimateStore = useUltimateUpscaleStore();
+const upscaleMode = ref<UpscaleMode>('normal');
+const isUltimate = computed(() => upscaleMode.value === 'ultimate');
+const maxScale = computed(() =>
+  isUltimate.value ? ULTIMATE_UPSCALE_MAX_SCALE : 10
+);
 const upscaleModel = ref('');
 const upscaleBy = ref(2);
 const filenamePrefix = ref('ComfyGUI_Upscale');
@@ -117,6 +130,9 @@ async function loadPreferences() {
   if (typeof saved?.filenamePrefix === 'string') {
     filenamePrefix.value = saved.filenamePrefix;
   }
+  if (saved?.mode === 'normal' || saved?.mode === 'ultimate') {
+    upscaleMode.value = saved.mode;
+  }
   preferencesLoaded = true;
 }
 
@@ -125,7 +141,8 @@ function persistPreferences() {
   void saveAppData('upscaler_preferences', {
     model: upscaleModel.value,
     scale: upscaleBy.value,
-    filenamePrefix: filenamePrefix.value
+    filenamePrefix: filenamePrefix.value,
+    mode: upscaleMode.value
   } satisfies UpscalerPreferences);
 }
 
@@ -146,12 +163,31 @@ watch(
   { immediate: true }
 );
 
-watch([upscaleModel, upscaleBy, filenamePrefix], schedulePreferencesSave);
+watch(
+  [upscaleModel, upscaleBy, filenamePrefix, upscaleMode],
+  schedulePreferencesSave
+);
+watch(maxScale, (max) => {
+  if (upscaleBy.value > max) upscaleBy.value = max;
+});
+
+const ultimateReady = computed(
+  () =>
+    !isUltimate.value ||
+    (ultimateStore.loaded &&
+      comfyStore.isUltimateUpscaleAvailable &&
+      Boolean(
+        ultimateStore.state.models.unetName &&
+        ultimateStore.state.models.clipName &&
+        ultimateStore.state.models.vaeName
+      ))
+);
 
 const canQueue = computed(
   () =>
     comfyStore.isConnected &&
     Boolean(upscaleModel.value) &&
+    ultimateReady.value &&
     readyItems.value.length > 0 &&
     !isSubmitting.value
 );
@@ -244,8 +280,49 @@ async function monitorResult(
   }
 }
 
+function buildPrompt(imageName: string, seed: number) {
+  const prefix = filenamePrefix.value.trim() || 'ComfyGUI_Upscale';
+  if (isUltimate.value) {
+    const state = structuredClone(ultimateStore.state);
+    return buildUltimateUpscalePrompt({
+      imageName,
+      settings: state.settings,
+      models: state.models,
+      loras: state.loras,
+      positivePrompt: state.positivePrompt,
+      negativePrompt: state.negativePrompt,
+      upscaleModel: upscaleModel.value,
+      upscaleBy: upscaleBy.value,
+      seed,
+      filenamePrefix: prefix
+    });
+  }
+  return {
+    '1': {
+      inputs: { image: imageName },
+      class_type: 'LoadImage'
+    },
+    '2': {
+      inputs: {
+        image: ['1', 0],
+        upscale_model: upscaleModel.value,
+        upscale_by: upscaleBy.value
+      },
+      class_type: 'YEImageUpscale'
+    },
+    '3': {
+      inputs: { images: ['2', 0], filename_prefix: prefix },
+      class_type: 'SaveImage'
+    }
+  };
+}
+
 async function queueSingleItem(item: ImageBatchItem) {
   if (!comfyStore.isConnected || !upscaleModel.value) return;
+  const seed =
+    ultimateStore.state.seed < 0
+      ? Math.floor(Math.random() * 10_000_000_000)
+      : ultimateStore.state.seed;
   item.status = 'uploading';
   item.error = undefined;
   const startTime = Date.now();
@@ -258,27 +335,7 @@ async function queueSingleItem(item: ImageBatchItem) {
     );
     const queued = await ComfyApi.queuePrompt(
       launcherStore.config.serverUrl,
-      {
-        '1': {
-          inputs: { image: uploaded.name },
-          class_type: 'LoadImage'
-        },
-        '2': {
-          inputs: {
-            image: ['1', 0],
-            upscale_model: upscaleModel.value,
-            upscale_by: upscaleBy.value
-          },
-          class_type: 'YEImageUpscale'
-        },
-        '3': {
-          inputs: {
-            images: ['2', 0],
-            filename_prefix: filenamePrefix.value.trim() || 'ComfyGUI_Upscale'
-          },
-          class_type: 'SaveImage'
-        }
-      },
+      buildPrompt(uploaded.name, seed),
       `comfy-gui-upscale-${crypto.randomUUID()}`
     );
     item.status = 'queued';
@@ -292,7 +349,10 @@ async function queueSingleItem(item: ImageBatchItem) {
 async function queueBatch() {
   if (!canQueue.value) return;
   isSubmitting.value = true;
-  upscaleBy.value = Math.min(10, Math.max(0.1, Number(upscaleBy.value) || 2));
+  upscaleBy.value = Math.min(
+    maxScale.value,
+    Math.max(0.1, Number(upscaleBy.value) || 2)
+  );
 
   for (const item of readyItems.value) {
     await queueSingleItem(item);
@@ -406,7 +466,9 @@ onUnmounted(() => {
     <!-- Main Workspace with Resizable Splitter Panels -->
     <StudioLayout>
       <template #sidebar>
-        <div class="flex h-full min-h-0 flex-col gap-3 pr-1.5">
+        <div
+          class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1.5 pb-4"
+        >
           <!-- 1. Model & Scale Parameters Section -->
           <section
             class="border-border bg-card flex shrink-0 flex-col gap-3.5 rounded-xl border p-4 shadow-2xs"
@@ -423,6 +485,35 @@ onUnmounted(() => {
               </Badge>
             </div>
 
+            <!-- Mode Toggle -->
+            <ToggleGroup
+              type="single"
+              :model-value="upscaleMode"
+              class="grid w-full grid-cols-2 gap-1"
+              @update:model-value="
+                (val: any) => {
+                  if (val) upscaleMode = val as UpscaleMode;
+                }
+              "
+            >
+              <ToggleGroupItem
+                value="normal"
+                size="sm"
+                class="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-7 text-xs"
+                :disabled="isSubmitting"
+              >
+                Normal Upscale
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="ultimate"
+                size="sm"
+                class="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-7 text-xs"
+                :disabled="isSubmitting"
+              >
+                Ultimate SD Upscale
+              </ToggleGroupItem>
+            </ToggleGroup>
+
             <!-- Model Selector -->
             <Field class="gap-1.5">
               <div class="flex items-center justify-between">
@@ -433,26 +524,12 @@ onUnmounted(() => {
                   {{ comfyStore.availableUpscaleModels.length }} models
                 </span>
               </div>
-              <Select
+              <SearchableSelect
                 v-model="upscaleModel"
+                :options="comfyStore.availableUpscaleModels"
+                placeholder="Select upscale model"
                 :disabled="!comfyStore.isConnected || isSubmitting"
-              >
-                <SelectTrigger class="w-full font-mono text-xs">
-                  <SelectValue placeholder="Select upscale model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem
-                      v-for="model in comfyStore.availableUpscaleModels"
-                      :key="model"
-                      :value="model"
-                      class="font-mono text-xs"
-                    >
-                      {{ model }}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              />
               <FieldDescription class="text-xs">
                 Model algorithm applied via yet_essential super-resolution.
               </FieldDescription>
@@ -466,7 +543,7 @@ onUnmounted(() => {
                 >
                 <div class="flex items-center gap-1">
                   <button
-                    v-for="factor in QUICK_SCALES"
+                    v-for="factor in QUICK_SCALES.filter((f) => f <= maxScale)"
                     :key="factor"
                     type="button"
                     class="border-border hover:bg-primary/20 hover:text-primary rounded-md border px-1.5 py-0.5 font-mono text-xs font-medium transition-colors"
@@ -485,7 +562,7 @@ onUnmounted(() => {
               <Slider
                 v-model="upscaleByModel"
                 :min="0.1"
-                :max="10"
+                :max="maxScale"
                 :step="0.1"
                 :disabled="isSubmitting"
                 aria-label="Upscale factor"
@@ -496,8 +573,8 @@ onUnmounted(() => {
                 class="text-muted-foreground flex items-center justify-between font-mono text-xs"
               >
                 <span>0.1×</span>
-                <span>5.0×</span>
-                <span>10.0×</span>
+                <span>{{ (maxScale / 2).toFixed(1) }}×</span>
+                <span>{{ maxScale.toFixed(1) }}×</span>
               </div>
             </Field>
 
@@ -534,6 +611,35 @@ onUnmounted(() => {
                   }}%)
                 </span>
               </div>
+            </div>
+
+            <!-- Ultimate SD Upscale Settings -->
+            <div
+              v-if="isUltimate"
+              class="border-border flex flex-col gap-3 border-t pt-3"
+            >
+              <ModelSection :models="ultimateStore.state.models" />
+              <LoraChainSection v-model:loras="ultimateStore.state.loras" />
+              <WorkflowField label="Positive prompt (optional)">
+                <Textarea
+                  v-model="ultimateStore.state.positivePrompt"
+                  placeholder="Enter prompt"
+                  class="min-h-16 text-xs"
+                  aria-label="Ultimate SD Upscale positive prompt"
+                />
+              </WorkflowField>
+              <WorkflowField label="Negative prompt (optional)">
+                <Textarea
+                  v-model="ultimateStore.state.negativePrompt"
+                  placeholder="Enter prompt"
+                  class="min-h-16 text-xs"
+                  aria-label="Ultimate SD Upscale negative prompt"
+                />
+              </WorkflowField>
+              <SeedControl v-model="ultimateStore.state.seed" />
+              <UltimateUpscaleSection
+                :settings="ultimateStore.state.settings"
+              />
             </div>
 
             <!-- Output Prefix Field -->
@@ -586,7 +692,7 @@ onUnmounted(() => {
 
           <!-- 2. Batch Queue Management Section -->
           <ImageBatchQueue
-            fill
+            :fill="!isUltimate"
             :items="items"
             :selected-id="selectedItemId"
             :dragging="isDraggingQueue"

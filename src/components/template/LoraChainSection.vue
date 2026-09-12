@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import SearchableSelect from '../common/SearchableSelect.vue';
+import { computed, ref } from 'vue';
 import type { LoraItem } from '@/types/workflow';
 import {
   ChevronDown,
@@ -13,14 +14,6 @@ import {
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import LoraPresetDialog from '../common/LoraPresetDialog.vue';
@@ -45,7 +38,6 @@ const loras = computed({
 const isLoraPresetManagerOpen = ref(false);
 const isLoraGridOpen = ref(false);
 const editingLoraIndex = ref<number | null>(null);
-const openedLoraSelects = reactive(new Set<string>());
 const failedImageSet = ref(new Set<string>());
 
 const loraOptions = computed(() => {
@@ -262,32 +254,12 @@ function getLoraPreviewUrl(name: string, res = 200): string {
 
             <!-- LoRA Selector -->
             <div class="flex flex-1 items-center gap-1">
-              <Select
+              <SearchableSelect
                 v-model="lora.name"
+                :options="loraOptions"
+                placeholder="Choose LoRA model..."
                 :disabled="!comfyStore.isConnected"
-                @update:open="(open) => open && openedLoraSelects.add(lora.id)"
-              >
-                <SelectTrigger
-                  :disabled="!comfyStore.isConnected"
-                  class="w-full font-mono text-xs"
-                >
-                  <SelectValue placeholder="Choose LoRA model...">
-                    {{ lora.name }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent v-if="openedLoraSelects.has(lora.id)">
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem
-                      v-for="opt in loraOptions"
-                      :key="opt"
-                      :value="opt"
-                      class="font-mono text-xs"
-                    >
-                      {{ opt }}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              />
 
               <Button
                 type="button"

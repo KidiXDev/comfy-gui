@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchableSelect from '../common/SearchableSelect.vue';
 import { computed, watch } from 'vue';
 import { ArrowLeftRight, HelpCircle } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
@@ -139,101 +140,22 @@ function setSeedValue(value: string | number) {
 
 <template>
   <div class="flex flex-col gap-3.5">
-      <!-- Header & Subtitle -->
-      <div class="flex flex-col gap-0.5">
-        <span
-          class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
-        >
-          Sampling & Canvas
-        </span>
-        <p class="text-muted-foreground/80 text-xs">
-          Tune quality, guidance, output resolution, and seed variation.
-        </p>
-      </div>
+    <!-- Header & Subtitle -->
+    <div class="flex flex-col gap-0.5">
+      <span
+        class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+      >
+        Sampling & Canvas
+      </span>
+      <p class="text-muted-foreground/80 text-xs">
+        Tune quality, guidance, output resolution, and seed variation.
+      </p>
+    </div>
 
-      <!-- Row 1: Steps & CFG Scale Sliders with Badges -->
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <!-- Steps -->
-        <WorkflowField label="Steps">
-          <template #label-extra>
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <button
-                  type="button"
-                  class="text-muted-foreground/70 hover:text-foreground"
-                >
-                  <HelpCircle class="h-3 w-3" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p class="text-xs">Number of denoising iterations</p>
-              </TooltipContent>
-            </Tooltip>
-          </template>
-          <template #action>
-            <EditableNumberBadge
-              v-model="workflowStore.sampler.steps"
-              :min="1"
-              :max="100"
-              :step="1"
-              :decimals="0"
-              :disabled="usesInpaintSampler"
-            />
-          </template>
-          <div class="flex items-center gap-3 pt-1">
-            <Slider
-              v-model="stepsModel"
-              :min="1"
-              :max="60"
-              :step="1"
-              class="w-full"
-              :disabled="usesInpaintSampler"
-            />
-          </div>
-        </WorkflowField>
-
-        <!-- CFG Scale -->
-        <WorkflowField label="CFG Scale">
-          <template #label-extra>
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <button
-                  type="button"
-                  class="text-muted-foreground/70 hover:text-foreground"
-                >
-                  <HelpCircle class="h-3 w-3" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p class="text-xs">Classifier Free Guidance strength</p>
-              </TooltipContent>
-            </Tooltip>
-          </template>
-          <template #action>
-            <EditableNumberBadge
-              v-model="workflowStore.sampler.cfg"
-              :min="0.1"
-              :max="30.0"
-              :step="0.1"
-              :decimals="1"
-              :disabled="usesInpaintSampler"
-            />
-          </template>
-          <div class="flex items-center gap-3 pt-1">
-            <Slider
-              v-model="cfgModel"
-              :min="0.5"
-              :max="15.0"
-              :step="0.1"
-              class="w-full"
-              :disabled="usesInpaintSampler"
-            />
-          </div>
-        </WorkflowField>
-      </div>
-
-      <!-- Row 2: Batch Size -->
-      <WorkflowField label="Batch Size">
+    <!-- Row 1: Steps & CFG Scale Sliders with Badges -->
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <!-- Steps -->
+      <WorkflowField label="Steps">
         <template #label-extra>
           <Tooltip>
             <TooltipTrigger as-child>
@@ -245,248 +167,293 @@ function setSeedValue(value: string | number) {
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p class="text-xs">
-                Number of parallel images to generate per batch
-              </p>
+              <p class="text-xs">Number of denoising iterations</p>
             </TooltipContent>
           </Tooltip>
         </template>
         <template #action>
           <EditableNumberBadge
-            v-model="workflowStore.resolution.batchSize"
+            v-model="workflowStore.sampler.steps"
             :min="1"
-            :max="16"
+            :max="100"
             :step="1"
             :decimals="0"
-            :disabled="usesInputImage"
+            :disabled="usesInpaintSampler"
           />
         </template>
         <div class="flex items-center gap-3 pt-1">
           <Slider
-            v-model="batchModel"
+            v-model="stepsModel"
             :min="1"
-            :max="4"
+            :max="60"
             :step="1"
             class="w-full"
-            :disabled="usesInputImage"
+            :disabled="usesInpaintSampler"
           />
         </div>
       </WorkflowField>
 
-      <!-- Row 3: Sampler, Scheduler & Resolution -->
-      <div
-        class="border-border grid grid-cols-1 gap-3 border-t pt-2.5 sm:grid-cols-3"
-      >
-        <!-- Sampler Name -->
-        <WorkflowField label="Sampler">
-          <Select
-            v-model="workflowStore.sampler.samplerName"
-            :disabled="!comfyStore.isConnected || usesInpaintSampler"
-          >
-            <SelectTrigger
-              :disabled="!comfyStore.isConnected || usesInpaintSampler"
-              class="w-full font-mono text-xs"
-            >
-              <SelectValue placeholder="Select sampler..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="opt in samplerOptions"
-                  :key="opt"
-                  :value="opt"
-                  class="font-mono text-xs"
-                >
-                  {{ opt }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </WorkflowField>
+      <!-- CFG Scale -->
+      <WorkflowField label="CFG Scale">
+        <template #label-extra>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <button
+                type="button"
+                class="text-muted-foreground/70 hover:text-foreground"
+              >
+                <HelpCircle class="h-3 w-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p class="text-xs">Classifier Free Guidance strength</p>
+            </TooltipContent>
+          </Tooltip>
+        </template>
+        <template #action>
+          <EditableNumberBadge
+            v-model="workflowStore.sampler.cfg"
+            :min="0.1"
+            :max="30.0"
+            :step="0.1"
+            :decimals="1"
+            :disabled="usesInpaintSampler"
+          />
+        </template>
+        <div class="flex items-center gap-3 pt-1">
+          <Slider
+            v-model="cfgModel"
+            :min="0.5"
+            :max="15.0"
+            :step="0.1"
+            class="w-full"
+            :disabled="usesInpaintSampler"
+          />
+        </div>
+      </WorkflowField>
+    </div>
 
-        <!-- Scheduler -->
-        <WorkflowField label="Scheduler">
-          <Select
-            v-model="workflowStore.sampler.scheduler"
-            :disabled="!comfyStore.isConnected || usesInpaintSampler"
-          >
-            <SelectTrigger
-              :disabled="!comfyStore.isConnected || usesInpaintSampler"
-              class="w-full font-mono text-xs"
+    <!-- Row 2: Batch Size -->
+    <WorkflowField label="Batch Size">
+      <template #label-extra>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="text-muted-foreground/70 hover:text-foreground"
             >
-              <SelectValue placeholder="Select scheduler..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="opt in schedulerOptions"
-                  :key="opt"
-                  :value="opt"
-                  class="font-mono text-xs"
-                >
-                  {{ opt }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </WorkflowField>
+              <HelpCircle class="h-3 w-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p class="text-xs">
+              Number of parallel images to generate per batch
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </template>
+      <template #action>
+        <EditableNumberBadge
+          v-model="workflowStore.resolution.batchSize"
+          :min="1"
+          :max="16"
+          :step="1"
+          :decimals="0"
+          :disabled="usesInputImage"
+        />
+      </template>
+      <div class="flex items-center gap-3 pt-1">
+        <Slider
+          v-model="batchModel"
+          :min="1"
+          :max="4"
+          :step="1"
+          class="w-full"
+          :disabled="usesInputImage"
+        />
+      </div>
+    </WorkflowField>
 
-        <!-- Resolution Preset -->
-        <WorkflowField label="Resolution Preset">
-          <Select
-            v-model="workflowStore.resolution.preset"
+    <!-- Row 3: Sampler, Scheduler & Resolution -->
+    <div
+      class="border-border grid grid-cols-1 gap-3 border-t pt-2.5 sm:grid-cols-3"
+    >
+      <!-- Sampler Name -->
+      <WorkflowField label="Sampler">
+        <SearchableSelect
+          v-model="workflowStore.sampler.samplerName"
+          :options="samplerOptions"
+          placeholder="Select sampler..."
+          :disabled="!comfyStore.isConnected || usesInpaintSampler"
+        />
+      </WorkflowField>
+
+      <!-- Scheduler -->
+      <WorkflowField label="Scheduler">
+        <SearchableSelect
+          v-model="workflowStore.sampler.scheduler"
+          :options="schedulerOptions"
+          placeholder="Select scheduler..."
+          :disabled="!comfyStore.isConnected || usesInpaintSampler"
+        />
+      </WorkflowField>
+
+      <!-- Resolution Preset -->
+      <WorkflowField label="Resolution Preset">
+        <Select
+          v-model="workflowStore.resolution.preset"
+          :disabled="usesInputImage"
+        >
+          <SelectTrigger
+            class="w-full font-mono text-xs"
             :disabled="usesInputImage"
           >
-            <SelectTrigger
-              class="w-full font-mono text-xs"
-              :disabled="usesInputImage"
-            >
-              <SelectValue placeholder="Select resolution..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="opt in resolutionPresets"
-                  :key="opt"
-                  :value="opt"
-                  class="font-mono text-xs"
-                >
-                  {{ opt }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </WorkflowField>
+            <SelectValue placeholder="Select resolution..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup class="max-h-40 overflow-y-auto">
+              <SelectItem
+                v-for="opt in resolutionPresets"
+                :key="opt"
+                :value="opt"
+                class="font-mono text-xs"
+              >
+                {{ opt }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </WorkflowField>
+    </div>
+
+    <!-- Custom Resolution Dimension Controls (Shown when Custom is selected) -->
+    <div
+      v-if="workflowStore.resolution.preset === 'Custom'"
+      class="border-border bg-card/60 flex flex-col gap-2 rounded-lg border p-2.5"
+    >
+      <div class="flex items-center justify-between">
+        <span
+          class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+        >
+          Custom Canvas Dimensions
+        </span>
+        <span class="text-primary font-mono text-xs font-semibold">
+          {{ workflowStore.resolution.width || 1024 }} ×
+          {{ workflowStore.resolution.height || 1024 }}
+        </span>
       </div>
 
-      <!-- Custom Resolution Dimension Controls (Shown when Custom is selected) -->
+      <div class="flex items-center gap-2">
+        <!-- Width -->
+        <div class="flex flex-1 items-center gap-1.5">
+          <span class="text-muted-foreground font-mono text-xs font-bold"
+            >W</span
+          >
+          <Input
+            v-model.number="workflowStore.resolution.width"
+            type="number"
+            :min="64"
+            :max="4096"
+            :step="64"
+            class="font-mono text-xs"
+            placeholder="Width"
+            :disabled="usesInputImage"
+          />
+        </div>
+
+        <!-- Swap Dimensions Button -->
+        <Button
+          type="button"
+          size="iconSm"
+          variant="outline"
+          title="Swap Width & Height"
+          class="text-muted-foreground hover:text-foreground shrink-0"
+          :disabled="usesInputImage"
+          @click="swapCustomDimensions"
+        >
+          <ArrowLeftRight class="h-3.5 w-3.5" />
+        </Button>
+
+        <!-- Height -->
+        <div class="flex flex-1 items-center gap-1.5">
+          <span class="text-muted-foreground font-mono text-xs font-bold"
+            >H</span
+          >
+          <Input
+            v-model.number="workflowStore.resolution.height"
+            type="number"
+            :min="64"
+            :max="4096"
+            :step="64"
+            class="font-mono text-xs"
+            placeholder="Height"
+            :disabled="usesInputImage"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Seed & Variation Section -->
+    <div class="border-border flex flex-col gap-3 border-t pt-3">
+      <!-- Generation Seed -->
+      <SeedControl
+        :model-value="workflowStore.sampler.seed"
+        @update:model-value="setSeedValue"
+      />
+
+      <!-- Variation Seed Sub-card -->
       <div
-        v-if="workflowStore.resolution.preset === 'Custom'"
-        class="border-border bg-card/60 flex flex-col gap-2 rounded-lg border p-2.5"
+        class="border-border bg-card/60 flex flex-col gap-2.5 rounded-lg border p-2.5"
       >
         <div class="flex items-center justify-between">
-          <span
-            class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
-          >
-            Custom Canvas Dimensions
-          </span>
-          <span class="text-primary font-mono text-xs font-semibold">
-            {{ workflowStore.resolution.width || 1024 }} ×
-            {{ workflowStore.resolution.height || 1024 }}
-          </span>
+          <div>
+            <Label
+              for="variation-seed-checkbox"
+              class="cursor-pointer text-xs font-semibold"
+            >
+              Variation Seed
+            </Label>
+          </div>
+          <Checkbox
+            id="variation-seed-checkbox"
+            v-model="workflowStore.sampler.variationEnabled"
+          />
         </div>
 
-        <div class="flex items-center gap-2">
-          <!-- Width -->
-          <div class="flex flex-1 items-center gap-1.5">
-            <span class="text-muted-foreground font-mono text-xs font-bold"
-              >W</span
-            >
-            <Input
-              v-model.number="workflowStore.resolution.width"
-              type="number"
-              :min="64"
-              :max="4096"
-              :step="64"
-              class="font-mono text-xs"
-              placeholder="Width"
-              :disabled="usesInputImage"
-            />
-          </div>
-
-          <!-- Swap Dimensions Button -->
-          <Button
-            type="button"
-            size="iconSm"
-            variant="outline"
-            title="Swap Width & Height"
-            class="text-muted-foreground hover:text-foreground shrink-0"
-            :disabled="usesInputImage"
-            @click="swapCustomDimensions"
-          >
-            <ArrowLeftRight class="h-3.5 w-3.5" />
-          </Button>
-
-          <!-- Height -->
-          <div class="flex flex-1 items-center gap-1.5">
-            <span class="text-muted-foreground font-mono text-xs font-bold"
-              >H</span
-            >
-            <Input
-              v-model.number="workflowStore.resolution.height"
-              type="number"
-              :min="64"
-              :max="4096"
-              :step="64"
-              class="font-mono text-xs"
-              placeholder="Height"
-              :disabled="usesInputImage"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 4: Seed & Variation Section -->
-      <div class="border-border flex flex-col gap-3 border-t pt-3">
-        <!-- Generation Seed -->
-        <SeedControl
-          :model-value="workflowStore.sampler.seed"
-          @update:model-value="setSeedValue"
-        />
-
-        <!-- Variation Seed Sub-card -->
         <div
-          class="border-border bg-card/60 flex flex-col gap-2.5 rounded-lg border p-2.5"
+          v-if="workflowStore.sampler.variationEnabled"
+          class="border-border flex flex-col gap-2.5 border-t pt-2"
         >
-          <div class="flex items-center justify-between">
-            <div>
-              <Label
-                for="variation-seed-checkbox"
-                class="cursor-pointer text-xs font-semibold"
-              >
-                Variation Seed
-              </Label>
+          <SeedControl
+            v-model="workflowStore.sampler.variationSeed"
+            label="Variation Seed"
+            :disabled="!workflowStore.sampler.variationEnabled"
+          />
+
+          <WorkflowField label="Variation Strength">
+            <template #action>
+              <EditableNumberBadge
+                v-model="workflowStore.sampler.variationStrength"
+                :min="0.0"
+                :max="1.0"
+                :step="0.01"
+                :decimals="2"
+                badge-class="text-primary"
+              />
+            </template>
+            <div class="flex items-center gap-3 pt-1">
+              <Slider
+                v-model="variationStrengthModel"
+                :min="0"
+                :max="1"
+                :step="0.01"
+                aria-label="Variation strength"
+                class="w-full"
+              />
             </div>
-            <Checkbox
-              id="variation-seed-checkbox"
-              v-model="workflowStore.sampler.variationEnabled"
-            />
-          </div>
-
-          <div
-            v-if="workflowStore.sampler.variationEnabled"
-            class="border-border flex flex-col gap-2.5 border-t pt-2"
-          >
-            <SeedControl
-              v-model="workflowStore.sampler.variationSeed"
-              label="Variation Seed"
-              :disabled="!workflowStore.sampler.variationEnabled"
-            />
-
-            <WorkflowField label="Variation Strength">
-              <template #action>
-                <EditableNumberBadge
-                  v-model="workflowStore.sampler.variationStrength"
-                  :min="0.0"
-                  :max="1.0"
-                  :step="0.01"
-                  :decimals="2"
-                  badge-class="text-primary"
-                />
-              </template>
-              <div class="flex items-center gap-3 pt-1">
-                <Slider
-                  v-model="variationStrengthModel"
-                  :min="0"
-                  :max="1"
-                  :step="0.01"
-                  aria-label="Variation strength"
-                  class="w-full"
-                />
-              </div>
-            </WorkflowField>
-          </div>
+          </WorkflowField>
         </div>
       </div>
+    </div>
   </div>
 </template>

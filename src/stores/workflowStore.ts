@@ -12,6 +12,7 @@ import type {
   PostFxSettings,
   ResolutionSettings,
   SamplerSettings,
+  UltimateUpscaleSettings,
   WorkflowState
 } from '../types/workflow';
 
@@ -82,6 +83,31 @@ const DEFAULT_IMAGE_INPUT: ImageInputSettings = {
   turboCfg: 1
 };
 
+export const DEFAULT_ULTIMATE_UPSCALE: UltimateUpscaleSettings = {
+  enabled: false,
+  steps: 20,
+  cfg: 4,
+  samplerName: 'er_sde',
+  scheduler: 'simple',
+  denoise: 0.2,
+  modeType: 'Chess',
+  tileWidth: 1024,
+  tileHeight: 1024,
+  maskBlur: 8,
+  tilePadding: 32,
+  seamFixMode: 'None',
+  seamFixDenoise: 1,
+  seamFixWidth: 64,
+  seamFixMaskBlur: 8,
+  seamFixPadding: 16,
+  forceUniformTiles: true,
+  tiledDecode: false,
+  batchSize: 1,
+  turboEnabled: false,
+  turboLora: 'anima-turbo-lora-v0.2.safetensors',
+  turboSteps: 8
+};
+
 const DEFAULT_POSTFX: PostFxSettings = {
   enabled: false,
   styleStage: {
@@ -104,7 +130,8 @@ const DEFAULT_POSTFX: PostFxSettings = {
   upscale: {
     enabled: false,
     upscaleModel: '',
-    upscaleBy: 2.0
+    upscaleBy: 2.0,
+    ultimate: { ...DEFAULT_ULTIMATE_UPSCALE }
   }
 };
 
@@ -224,7 +251,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
             },
             upscale: {
               ...DEFAULT_POSTFX.upscale,
-              ...saved.postfx.upscale
+              ...saved.postfx.upscale,
+              ultimate: {
+                ...DEFAULT_ULTIMATE_UPSCALE,
+                ...saved.postfx.upscale?.ultimate
+              }
             }
           };
         }

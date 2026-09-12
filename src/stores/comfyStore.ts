@@ -151,6 +151,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const bridgeSystem = shallowRef<BridgeSystemResponse | null>(null);
   const isFaceDetailerAvailable = ref(false);
   const isCacheDiTAvailable = ref(false);
+  const isUltimateUpscaleAvailable = ref(false);
   const availableBBoxDetectors = ref<string[]>([]);
   const availableSegmDetectors = ref<string[]>([]);
 
@@ -489,6 +490,7 @@ export const useComfyStore = defineStore('comfy', () => {
         isYetEssentialAvailable.value = false;
         isFaceDetailerAvailable.value = false;
         isCacheDiTAvailable.value = false;
+        isUltimateUpscaleAvailable.value = false;
       } else if (!wasConnected || !isYetEssentialAvailable.value) {
         if (!wasConnected) {
           wsClient?.connect(launcherStore.config.serverUrl, clientId.value);
@@ -550,6 +552,7 @@ export const useComfyStore = defineStore('comfy', () => {
         isYetEssentialAvailable.value = false;
         isFaceDetailerAvailable.value = false;
         isCacheDiTAvailable.value = false;
+        isUltimateUpscaleAvailable.value = false;
         pendingGenerations.clear();
         for (const waiter of generationWaiters.values())
           waiter.reject(new Error('ComfyUI stopped'));
@@ -582,21 +585,30 @@ export const useComfyStore = defineStore('comfy', () => {
         );
       }
 
-      const [faceDetailerNode, detectorNode, cacheDiTNode] = await Promise.all([
-        ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'FaceDetailer'),
-        ComfyApi.fetchNodeInfo(
-          launcherStore.config.serverUrl,
-          'UltralyticsDetectorProvider'
-        ),
-        ComfyApi.fetchNodeInfo(
-          launcherStore.config.serverUrl,
-          'CacheDiT_Model_Optimizer'
-        )
-      ]);
+      const [faceDetailerNode, detectorNode, cacheDiTNode, ultimateNode] =
+        await Promise.all([
+          ComfyApi.fetchNodeInfo(
+            launcherStore.config.serverUrl,
+            'FaceDetailer'
+          ),
+          ComfyApi.fetchNodeInfo(
+            launcherStore.config.serverUrl,
+            'UltralyticsDetectorProvider'
+          ),
+          ComfyApi.fetchNodeInfo(
+            launcherStore.config.serverUrl,
+            'CacheDiT_Model_Optimizer'
+          ),
+          ComfyApi.fetchNodeInfo(
+            launcherStore.config.serverUrl,
+            'UltimateSDUpscale'
+          )
+        ]);
       const detectorInput = detectorNode?.input.required.model_name?.[0];
       const detectorModels = Array.isArray(detectorInput) ? detectorInput : [];
       isFaceDetailerAvailable.value = Boolean(faceDetailerNode && detectorNode);
       isCacheDiTAvailable.value = Boolean(cacheDiTNode);
+      isUltimateUpscaleAvailable.value = Boolean(ultimateNode);
       availableBBoxDetectors.value = detectorModels.filter((model) =>
         model.startsWith('bbox/')
       );
@@ -686,6 +698,7 @@ export const useComfyStore = defineStore('comfy', () => {
     bridgeSystem,
     isFaceDetailerAvailable,
     isCacheDiTAvailable,
+    isUltimateUpscaleAvailable,
     availableBBoxDetectors,
     availableSegmDetectors,
     isGenerating,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchableSelect from '../common/SearchableSelect.vue';
 import { computed } from 'vue';
 import {
   Accordion,
@@ -8,16 +9,9 @@ import {
 } from '@/components/ui/accordion';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
+import UltimateUpscaleSection from './UltimateUpscaleSection.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
@@ -148,29 +142,12 @@ const bloomModel = createSliderBinding(
                   class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
                   >Upscale Model</Label
                 >
-                <Select
+                <SearchableSelect
                   v-model="workflowStore.postfx.upscale.upscaleModel"
+                  :options="upscaleOptions"
+                  placeholder="Select upscale model..."
                   :disabled="!comfyStore.isConnected"
-                >
-                  <SelectTrigger
-                    :disabled="!comfyStore.isConnected"
-                    class="w-full font-mono text-xs"
-                  >
-                    <SelectValue placeholder="Select upscale model..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup class="max-h-40 overflow-y-auto">
-                      <SelectItem
-                        v-for="opt in upscaleOptions"
-                        :key="opt"
-                        :value="opt"
-                        class="font-mono text-xs"
-                      >
-                        {{ opt }}
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                />
               </div>
 
               <!-- Scale Factor Slider -->
@@ -201,6 +178,29 @@ const bloomModel = createSliderBinding(
                   />
                 </div>
               </div>
+            </div>
+
+            <!-- Ultimate SD Upscale -->
+            <div
+              v-if="workflowStore.postfx.upscale.enabled"
+              class="border-border flex flex-col gap-3 border-t pt-3"
+            >
+              <Label
+                class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
+              >
+                <Checkbox
+                  v-model="workflowStore.postfx.upscale.ultimate.enabled"
+                />
+                Use Ultimate SD Upscaler
+                <span
+                  v-if="workflowStore.postfx.upscale.upscaleBy > 4"
+                  class="text-muted-foreground ml-auto font-mono text-xs"
+                  >max 4x</span
+                >
+              </Label>
+              <UltimateUpscaleSection
+                v-if="workflowStore.postfx.upscale.ultimate.enabled"
+              />
             </div>
           </div>
 

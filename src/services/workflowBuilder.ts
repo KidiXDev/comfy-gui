@@ -3,6 +3,7 @@ import {
   appendFaceDetailerStage,
   type WorkflowNodeRef
 } from './faceDetailerWorkflow';
+import { appendUltimateUpscaleStage } from './ultimateUpscaleWorkflow';
 
 function variationInputs(state: WorkflowState) {
   if (!state.sampler.variationEnabled) return {};
@@ -264,7 +265,30 @@ export function buildWorkflowPrompt(
 
   // 14. Upscale (Node 8)
   let imageSourceForPostFx: WorkflowNodeRef = decodedImageSource;
-  if (state.postfx.upscale.enabled && state.postfx.upscale.upscaleModel) {
+  if (
+    state.postfx.upscale.enabled &&
+    state.postfx.upscale.upscaleModel &&
+    state.postfx.upscale.ultimate.enabled
+  ) {
+    imageSourceForPostFx = appendUltimateUpscaleStage(
+      prompt,
+      state.postfx.upscale.ultimate,
+      {
+        image: decodedImageSource,
+        model: [lastModelNodeId, 0],
+        positive: ['18', 0],
+        negative: ['18', 1],
+        vae: ['27', 0],
+        upscaleModel: state.postfx.upscale.upscaleModel,
+        upscaleBy: state.postfx.upscale.upscaleBy,
+        seed: ['14', 0]
+      },
+      '8'
+    );
+  } else if (
+    state.postfx.upscale.enabled &&
+    state.postfx.upscale.upscaleModel
+  ) {
     prompt['8'] = {
       inputs: {
         upscale_model: state.postfx.upscale.upscaleModel,

@@ -337,50 +337,22 @@ watch(
 
         <!-- Sampler -->
         <WorkflowField label="Sampler">
-          <Select
+          <SearchableSelect
             v-model="settings.samplerName"
+            :options="samplerOptions"
+            placeholder="Select sampler"
             :disabled="!comfyStore.isConnected"
-          >
-            <SelectTrigger class="w-full font-mono text-xs">
-              <SelectValue placeholder="Select sampler" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="sampler in samplerOptions"
-                  :key="sampler"
-                  :value="sampler"
-                  class="font-mono text-xs"
-                >
-                  {{ sampler }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          />
         </WorkflowField>
 
         <!-- Scheduler -->
         <WorkflowField label="Scheduler">
-          <Select
+          <SearchableSelect
             v-model="settings.scheduler"
+            :options="schedulerOptions"
+            placeholder="Select scheduler"
             :disabled="!comfyStore.isConnected"
-          >
-            <SelectTrigger class="w-full font-mono text-xs">
-              <SelectValue placeholder="Select scheduler" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="scheduler in schedulerOptions"
-                  :key="scheduler"
-                  :value="scheduler"
-                  class="font-mono text-xs"
-                >
-                  {{ scheduler }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          />
         </WorkflowField>
       </div>
 

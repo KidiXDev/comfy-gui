@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createWorkflowSnapshot } from '../composables/useComfyUiWorkspace';
 import type { WorkflowState } from '../types/workflow';
 import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
+import { buildUltimateUpscalePrompt } from './ultimateUpscaleWorkflow';
 import {
   buildWorkflowPrompt,
   prepareWorkflowForQueue
@@ -86,7 +87,35 @@ const state: WorkflowState = {
       saturation: 1,
       sharpness: 0
     },
-    upscale: { enabled: false, upscaleModel: '', upscaleBy: 1 }
+    upscale: {
+      enabled: false,
+      upscaleModel: '',
+      upscaleBy: 1,
+      ultimate: {
+        enabled: false,
+        steps: 20,
+        cfg: 4,
+        samplerName: 'euler',
+        scheduler: 'simple',
+        denoise: 0.2,
+        modeType: 'Chess',
+        tileWidth: 1024,
+        tileHeight: 1024,
+        maskBlur: 8,
+        tilePadding: 32,
+        seamFixMode: 'None',
+        seamFixDenoise: 1,
+        seamFixWidth: 64,
+        seamFixMaskBlur: 8,
+        seamFixPadding: 16,
+        forceUniformTiles: true,
+        tiledDecode: false,
+        batchSize: 1,
+        turboEnabled: false,
+        turboLora: 'turbo.safetensors',
+        turboSteps: 8
+      }
+    }
   },
   faceDetailer: {
     positivePrompt: '',
@@ -289,4 +318,86 @@ assert.deepEqual(standalone.face_detailer_apply.inputs.model, [
 assert.equal(standalone.face_detailer_apply.inputs.seed, 42);
 assert.equal(standalone['2'].inputs.unet_name, state.models.unetName);
 assert.equal(standalone['20'].class_type, 'SaveImage');
+// Ultimate SD Upscale replaces the plain upscaler node in the generation chain.
+state.imageInput.mode = 'text2img';
+state.faceDetailer.enabled = false;
+state.postfx.enabled = true;
+state.postfx.upscale.enabled = true;
+state.postfx.upscale.upscaleModel = 'up.safetensors';
+state.postfx.upscale.upscaleBy = 6;
+const plainUpscale = buildWorkflowPrompt(state) as Record<
+  string,
+  { class_type: string; inputs: Record<string, unknown> }
+>;
+assert.equal(plainUpscale['8'].class_type, 'YEImageUpscale');
+state.postfx.upscale.ultimate.enabled = true;
+const ultimate = buildWorkflowPrompt(state) as Record<
+  string,
+  { class_type: string; inputs: Record<string, unknown> }
+>;
+assert.equal(ultimate['8'].class_type, 'UltimateSDUpscale');
+assert.equal(ultimate['8_model'].class_type, 'UpscaleModelLoader');
+assert.equal(ultimate['8'].inputs.upscale_by, 4);
+assert.deepEqual(ultimate['8'].inputs.seed, ['14', 0]);
+assert.deepEqual(ultimate['8'].inputs.positive, ['18', 0]);
+assert.deepEqual(ultimate['8'].inputs.negative, ['18', 1]);
+assert.deepEqual(ultimate['8'].inputs.model, ['101', 0]);
+assert.deepEqual(ultimate['8'].inputs.upscale_model, ['8_model', 0]);
+assert.equal(ultimate['8'].inputs.mode_type, 'Chess');
+assert.deepEqual(ultimate['4'].inputs.image, ['8', 0]);
+state.postfx.upscale.ultimate.turboEnabled = true;
+const ultimateTurbo = buildWorkflowPrompt(state) as Record<
+  string,
+  { class_type: string; inputs: Record<string, unknown> }
+>;
+assert.equal(ultimateTurbo['8_turbo'].class_type, 'YELoadLoraModel');
+assert.deepEqual(ultimateTurbo['8_turbo'].inputs.model, ['101', 0]);
+assert.deepEqual(ultimateTurbo['8'].inputs.model, ['8_turbo', 0]);
+assert.equal(ultimateTurbo['8'].inputs.steps, 8);
+assert.equal(ultimateTurbo['8'].inputs.cfg, 1);
+state.postfx.upscale.ultimate.turboEnabled = false;
+state.postfx.upscale.ultimate.enabled = false;
+state.postfx.upscale.enabled = false;
+state.postfx.enabled = false;
+
+const standaloneUltimate = buildUltimateUpscalePrompt({
+  imageName: 'in.png',
+  settings: { ...state.postfx.upscale.ultimate, enabled: true },
+  models: state.models,
+  loras: state.loras,
+  positivePrompt: 'hi',
+  negativePrompt: '',
+  upscaleModel: 'up.safetensors',
+  upscaleBy: 2,
+  seed: 7,
+  filenamePrefix: 'X'
+}) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+assert.equal(
+  standaloneUltimate.ultimate_upscale.class_type,
+  'UltimateSDUpscale'
+);
+assert.equal(standaloneUltimate.ultimate_upscale.inputs.seed, 7);
+assert.deepEqual(standaloneUltimate.ultimate_upscale.inputs.model, [
+  'usdu_lora_0',
+  0
+]);
+assert.deepEqual(standaloneUltimate['20'].inputs.images, [
+  'ultimate_upscale',
+  0
+]);
+assert.throws(() =>
+  buildUltimateUpscalePrompt({
+    imageName: 'in.png',
+    settings: state.postfx.upscale.ultimate,
+    models: state.models,
+    loras: [],
+    positivePrompt: '',
+    negativePrompt: '',
+    upscaleModel: '',
+    upscaleBy: 2,
+    seed: 0,
+    filenamePrefix: ''
+  })
+);
+
 console.log('Workflow and Face Detailer graph checks passed');

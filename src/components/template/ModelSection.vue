@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import SearchableSelect from '../common/SearchableSelect.vue';
+import { computed, ref } from 'vue';
 import type { ModelSettings } from '@/types/workflow';
 import { LayoutGrid, Loader2, RotateCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import ModelGridSelectorDialog from '../common/ModelGridSelectorDialog.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
@@ -20,7 +13,6 @@ const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const props = defineProps<{ models?: ModelSettings }>();
 const models = computed(() => props.models ?? workflowStore.models);
-const openedSelects = reactive(new Set<string>());
 const isModelGridOpen = ref(false);
 
 const unetOptions = computed(() => {
@@ -60,32 +52,12 @@ const vaeOptions = computed(() => {
           </span>
         </template>
         <div class="flex items-center gap-1.5">
-          <Select
+          <SearchableSelect
             v-model="models.unetName"
+            :options="unetOptions"
+            placeholder="Select checkpoint..."
             :disabled="!comfyStore.isConnected"
-            @update:open="(open) => open && openedSelects.add('unet')"
-          >
-            <SelectTrigger
-              :disabled="!comfyStore.isConnected"
-              class="w-full font-mono text-xs"
-            >
-              <SelectValue placeholder="Select checkpoint...">
-                {{ models.unetName }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent v-if="openedSelects.has('unet')">
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="opt in unetOptions"
-                  :key="opt"
-                  :value="opt"
-                  class="font-mono text-xs"
-                >
-                  {{ opt }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          />
 
           <!-- Browse Grid View Button -->
           <Button
@@ -117,32 +89,12 @@ const vaeOptions = computed(() => {
           </span>
         </template>
         <div class="flex items-center gap-1.5">
-          <Select
+          <SearchableSelect
             v-model="models.vaeName"
+            :options="vaeOptions"
+            placeholder="Select VAE..."
             :disabled="!comfyStore.isConnected"
-            @update:open="(open) => open && openedSelects.add('vae')"
-          >
-            <SelectTrigger
-              :disabled="!comfyStore.isConnected"
-              class="w-full font-mono text-xs"
-            >
-              <SelectValue placeholder="Select VAE...">
-                {{ models.vaeName }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent v-if="openedSelects.has('vae')">
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="opt in vaeOptions"
-                  :key="opt"
-                  :value="opt"
-                  class="font-mono text-xs"
-                >
-                  {{ opt }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          />
           <Button
             size="icon"
             variant="outline"
@@ -177,32 +129,12 @@ const vaeOptions = computed(() => {
             LOCKED
           </span>
         </template>
-        <Select
+        <SearchableSelect
           v-model="models.clipName"
+          :options="clipOptions"
+          placeholder="Select CLIP..."
           :disabled="!comfyStore.isConnected"
-          @update:open="(open) => open && openedSelects.add('clip')"
-        >
-          <SelectTrigger
-            :disabled="!comfyStore.isConnected"
-            class="w-full font-mono text-xs"
-          >
-            <SelectValue placeholder="Select CLIP...">
-              {{ models.clipName }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent v-if="openedSelects.has('clip')">
-            <SelectGroup class="max-h-40 overflow-y-auto">
-              <SelectItem
-                v-for="opt in clipOptions"
-                :key="opt"
-                :value="opt"
-                class="font-mono text-xs"
-              >
-                {{ opt }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        />
       </WorkflowField>
     </div>
 

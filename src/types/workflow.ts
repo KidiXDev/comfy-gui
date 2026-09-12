@@ -92,6 +92,35 @@ export interface ResolutionSettings {
   isCustom?: boolean;
 }
 
+export type UltimateUpscaleMode = 'Linear' | 'Chess' | 'None';
+export type UltimateSeamFixMode =
+  'None' | 'Band Pass' | 'Half Tile' | 'Half Tile + Intersections';
+
+export interface UltimateUpscaleSettings {
+  enabled: boolean;
+  steps: number;
+  cfg: number;
+  samplerName: string;
+  scheduler: string;
+  denoise: number;
+  modeType: UltimateUpscaleMode;
+  tileWidth: number;
+  tileHeight: number;
+  maskBlur: number;
+  tilePadding: number;
+  seamFixMode: UltimateSeamFixMode;
+  seamFixDenoise: number;
+  seamFixWidth: number;
+  seamFixMaskBlur: number;
+  seamFixPadding: number;
+  forceUniformTiles: boolean;
+  tiledDecode: boolean;
+  batchSize: number;
+  turboEnabled: boolean;
+  turboLora: string;
+  turboSteps: number;
+}
+
 export interface PostFxSettings {
   enabled: boolean;
   styleStage: {
@@ -115,6 +144,7 @@ export interface PostFxSettings {
     enabled: boolean;
     upscaleModel: string;
     upscaleBy: number;
+    ultimate: UltimateUpscaleSettings;
   };
 }
 
