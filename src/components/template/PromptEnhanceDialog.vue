@@ -5,18 +5,25 @@ import {
   Check,
   Copy,
   Loader2,
+  Minus,
+  Plus,
   Sparkles,
-  Wand2,
-  X
+  Square,
+  Wand2
 } from '@lucide/vue';
 import { streamText } from 'ai';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   buildEnhancerSystemPrompt,
   buildEnhancerUserPrompt,
@@ -107,17 +114,11 @@ const currentPresets = computed(() =>
 );
 
 const isCustomMode = computed(() => selectedStyle.value === 'custom');
-const activeStyleLabel = computed(() => {
-  if (isCustomMode.value) return 'Custom instruction';
-  return (
-    currentPresets.value.find((preset) => preset.id === selectedStyle.value)
-      ?.label || selectedStyle.value
-  );
-});
-
-function selectPreset(id: string) {
-  selectedStyle.value = id;
-}
+const canRun = computed(
+  () =>
+    !isStreaming.value &&
+    (!isCustomMode.value || !!customInstruction.value.trim())
+);
 
 function stopEnhancement() {
   if (abortController) {
@@ -220,259 +221,251 @@ async function copyEnhanced() {
 <template>
   <Dialog :open="open" @update:open="(val) => emit('update:open', val)">
     <DialogContent
-      class="flex max-h-[90vh] min-w-[60vw] flex-col overflow-hidden p-6"
+      class="border-border bg-card flex h-[85vh] w-full max-w-[min(64rem,calc(100vw-2rem))] min-w-[70vw] flex-col gap-0 overflow-hidden p-0 shadow-2xl"
     >
+      <!-- Header -->
       <DialogHeader
-        class="border-border flex flex-row items-center justify-between border-b pb-2"
+        class="border-border bg-background/50 flex shrink-0 flex-row items-center justify-between border-b px-5 py-3.5"
       >
         <div class="flex items-center gap-2.5">
           <div
-            class="bg-primary/10 border-primary/20 text-primary flex h-9 w-9 items-center justify-center rounded-lg border"
+            class="bg-primary/10 text-primary border-primary/20 flex h-8 w-8 items-center justify-center rounded-lg border"
           >
-            <Sparkles class="h-5 w-5" />
+            <Sparkles class="h-4 w-4" />
           </div>
           <div>
             <DialogTitle
-              class="flex items-center gap-2 text-base font-semibold"
+              class="text-foreground text-sm font-bold tracking-tight"
             >
               AI Prompt Enhancer
-              <AiModelSelector compact class="ml-1" />
-              <AiReasoningSelector compact :disabled="isStreaming" />
             </DialogTitle>
+            <DialogDescription class="text-muted-foreground text-xs">
+              Rewrite the {{ promptTarget }} prompt with a preset or your own
+              instruction
+            </DialogDescription>
           </div>
         </div>
 
-        <!-- Target Switcher: Positive vs Negative -->
-        <div
-          class="bg-secondary border-border flex items-center rounded-lg border p-0.5 text-xs"
+        <ToggleGroup
+          :model-value="promptTarget"
+          type="single"
+          variant="outline"
+          :disabled="isStreaming"
+          class="border-border bg-muted/60 mr-6 h-8 rounded-md border p-0.5"
+          @update:model-value="
+            (val) => {
+              if (val) promptTarget = val as 'positive' | 'negative';
+            }
+          "
         >
-          <button
-            type="button"
-            class="rounded-md px-2.5 py-1 transition-colors"
-            :class="
-              promptTarget === 'positive'
-                ? 'bg-background text-foreground font-semibold shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            "
-            @click="promptTarget = 'positive'"
+          <ToggleGroupItem
+            value="positive"
+            class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 gap-1.5 px-2.5 text-xs data-[state=on]:shadow-xs"
           >
-            Positive Prompt
-          </button>
-          <button
-            type="button"
-            class="rounded-md px-2.5 py-1 transition-colors"
-            :class="
-              promptTarget === 'negative'
-                ? 'bg-background text-foreground font-semibold shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            "
-            @click="promptTarget = 'negative'"
+            <Plus class="h-3 w-3 text-emerald-500" />
+            Positive
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="negative"
+            class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 gap-1.5 px-2.5 text-xs data-[state=on]:shadow-xs"
           >
-            Negative Prompt
-          </button>
-        </div>
+            <Minus class="text-destructive h-3 w-3" />
+            Negative
+          </ToggleGroupItem>
+        </ToggleGroup>
       </DialogHeader>
 
-      <!-- Main Body: Controls & Diff Columns -->
-      <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-3">
-        <!-- Preset Style Selector -->
-        <div class="flex flex-col gap-1.5">
-          <label class="text-muted-foreground text-xs font-medium"
-            >Enhancement Style</label
-          >
-          <div
-            class="grid grid-cols-2 gap-2 sm:grid-cols-3"
-            :class="
-              promptTarget === 'positive' ? 'md:grid-cols-6' : 'md:grid-cols-4'
-            "
-          >
-            <button
-              v-for="preset in currentPresets"
-              :key="preset.id"
-              type="button"
-              class="flex cursor-pointer flex-col items-start rounded-lg border p-2.5 text-left text-xs transition-all"
-              :class="
-                selectedStyle === preset.id
-                  ? 'border-primary bg-primary/5 text-foreground ring-primary/30 ring-1'
-                  : 'border-border bg-card text-muted-foreground hover:border-border/80 hover:text-foreground'
-              "
-              @click="selectPreset(preset.id)"
-            >
-              <span
-                class="text-foreground flex items-center gap-1.5 font-medium"
-              >
-                <Wand2 class="text-primary h-3 w-3" />
-                {{ preset.label }}
-              </span>
-              <span class="text-muted-foreground mt-1 line-clamp-2 text-xs">{{
-                preset.desc
-              }}</span>
-            </button>
-            <button
-              type="button"
-              class="flex cursor-pointer flex-col items-start rounded-lg border p-2.5 text-left text-xs transition-all"
-              :class="
-                isCustomMode
-                  ? 'border-primary bg-primary/5 text-foreground ring-primary/30 ring-1'
-                  : 'border-border bg-card text-muted-foreground hover:border-border/80 hover:text-foreground'
-              "
-              @click="selectPreset('custom')"
-            >
-              <span class="text-foreground flex items-center gap-1.5 font-medium">
-                <Wand2 class="text-primary h-3 w-3" />
-                Custom
-              </span>
-              <span class="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                Apply one instruction to the current prompt
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Context & Custom Instruction Inputs -->
-        <div class="flex flex-col gap-2.5">
-          <div v-if="isCustomMode" class="flex flex-col gap-1">
-            <label class="text-muted-foreground text-xs font-medium">
-              Custom Instruction
-            </label>
-            <input
-              v-model="customInstruction"
-              type="text"
-              placeholder="e.g. Change pose into a dynamic running pose..."
-              class="border-border bg-background placeholder:text-muted-foreground/60 focus:ring-primary rounded-lg border px-3 py-1.5 text-xs focus:ring-1 focus:outline-none"
-              @keydown.enter.prevent="runEnhance"
-            />
-          </div>
-          <div v-else class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <!-- Thematic / Universe Context -->
-            <div class="flex flex-col gap-1">
-              <div class="flex items-center justify-between">
-                <label class="text-muted-foreground text-xs font-medium">
-                  Theme / Universe Context
-                  <span class="text-muted-foreground/70 font-normal"
-                    >(Optional)</span
-                  >
-                </label>
-                <span class="text-muted-foreground/70 text-xs">
-                  Emulates without naming source
-                </span>
-              </div>
-              <input
-                v-model="styleContext"
-                type="text"
-                placeholder="e.g. Genshin Impact, Cyberpunk, Victorian Gothic..."
-                class="border-border bg-background placeholder:text-muted-foreground/60 focus:ring-primary rounded-lg border px-3 py-1.5 text-xs focus:ring-1 focus:outline-none"
-                @keydown.enter.prevent="runEnhance"
-              />
-            </div>
-
-            <!-- Additional Custom Instruction -->
-            <div class="flex flex-col gap-1">
-              <label class="text-muted-foreground text-xs font-medium">
-                Custom Instruction
-                <span class="text-muted-foreground/70 font-normal"
-                  >(Optional)</span
-                >
-              </label>
-              <input
-                v-model="customInstruction"
-                type="text"
-                placeholder="e.g. Add flowing cape, gold jewelry, ornate embroidery..."
-                class="border-border bg-background placeholder:text-muted-foreground/60 focus:ring-primary rounded-lg border px-3 py-1.5 text-xs focus:ring-1 focus:outline-none"
-                @keydown.enter.prevent="runEnhance"
-              />
-            </div>
-          </div>
-
-          <!-- Enhance Action Trigger Bar -->
-          <div class="flex items-center justify-between pt-0.5">
-            <div
-              class="text-muted-foreground flex items-center gap-1.5 text-xs"
-            >
-              <span class="text-foreground font-medium">Active Preset:</span>
-              <span>{{ activeStyleLabel }}</span>
-              <span
-                v-if="!isCustomMode && styleContext.trim()"
-                class="text-primary font-medium"
-              >
-                • Theme: "{{ styleContext.trim() }}"
-              </span>
-            </div>
-            <div class="flex items-center gap-2">
-              <Button
-                v-if="isStreaming"
-                type="button"
-                variant="outline"
-                size="sm"
-                class="text-destructive hover:bg-destructive/10 gap-1"
-                @click="stopEnhancement"
-              >
-                <X class="h-3.5 w-3.5" />
-                <span>Stop</span>
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                :disabled="isStreaming"
-                class="gap-1.5"
-                @click="runEnhance"
-              >
-                <Loader2 v-if="isStreaming" class="h-3.5 w-3.5 animate-spin" />
-                <Sparkles v-else class="h-3.5 w-3.5" />
-                <span>{{
-                  isStreaming ? 'Enhancing...' : 'Enhance Prompt'
-                }}</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Error banner if any -->
+      <!-- Body: sidebar controls + result pane -->
+      <div class="flex min-h-0 flex-1">
+        <!-- Sidebar -->
         <div
-          v-if="errorMsg"
-          class="bg-destructive/10 border-destructive/20 text-destructive rounded-lg border p-2.5 text-xs"
+          class="border-border bg-background/40 flex w-72 shrink-0 flex-col border-r"
         >
-          {{ errorMsg }}
+          <ScrollArea class="min-h-0 flex-1">
+            <div class="flex flex-col gap-4 p-4">
+              <!-- Presets -->
+              <div class="flex flex-col gap-1.5">
+                <Label
+                  class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+                >
+                  Enhancement style
+                </Label>
+                <button
+                  v-for="preset in currentPresets"
+                  :key="preset.id"
+                  type="button"
+                  :title="preset.desc"
+                  class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors"
+                  :class="
+                    selectedStyle === preset.id
+                      ? 'border-primary bg-primary/5 ring-primary/20 ring-1'
+                      : 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
+                  "
+                  @click="selectedStyle = preset.id"
+                >
+                  <Wand2
+                    class="h-3.5 w-3.5 shrink-0"
+                    :class="
+                      selectedStyle === preset.id
+                        ? 'text-primary'
+                        : 'text-muted-foreground'
+                    "
+                  />
+                  <span class="text-foreground truncate text-xs font-semibold">
+                    {{ preset.label }}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  title="Apply a single instruction of your own"
+                  class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-dashed px-2.5 py-1.5 text-left transition-colors"
+                  :class="
+                    isCustomMode
+                      ? 'border-primary bg-primary/5 ring-primary/20 ring-1'
+                      : 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
+                  "
+                  @click="selectedStyle = 'custom'"
+                >
+                  <Wand2
+                    class="h-3.5 w-3.5 shrink-0"
+                    :class="
+                      isCustomMode ? 'text-primary' : 'text-muted-foreground'
+                    "
+                  />
+                  <span class="text-foreground truncate text-xs font-semibold">
+                    Custom
+                  </span>
+                </button>
+              </div>
+
+              <!-- Inputs -->
+              <div class="flex flex-col gap-3">
+                <div v-if="!isCustomMode" class="flex flex-col gap-1.5">
+                  <Label
+                    class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+                  >
+                    Theme / universe
+                    <span class="font-normal normal-case opacity-70">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Textarea
+                    v-model="styleContext"
+                    placeholder="e.g. Genshin Impact, Cyberpunk..."
+                    rows="2"
+                    class="bg-background/80 min-h-0 resize-y text-xs"
+                    @keydown.ctrl.enter.prevent="runEnhance"
+                  />
+                  <p class="text-muted-foreground/70 text-xs">
+                    Emulates the style without naming the source.
+                  </p>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <Label
+                    class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+                  >
+                    {{ isCustomMode ? 'Instruction' : 'Extra instruction' }}
+                    <span
+                      v-if="!isCustomMode"
+                      class="font-normal normal-case opacity-70"
+                    >
+                      (optional)
+                    </span>
+                  </Label>
+                  <Textarea
+                    v-model="customInstruction"
+                    :placeholder="
+                      isCustomMode
+                        ? 'e.g. Change pose into a dynamic running pose'
+                        : 'e.g. Add flowing cape, gold jewelry...'
+                    "
+                    :rows="isCustomMode ? 4 : 3"
+                    class="bg-background/80 min-h-0 resize-y text-xs"
+                    @keydown.ctrl.enter.prevent="runEnhance"
+                  />
+                  <p class="text-muted-foreground/70 text-xs">
+                    Ctrl+Enter to enhance
+                  </p>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+
+          <!-- Run -->
+          <div class="border-border flex shrink-0 gap-2 border-t p-3">
+            <Button
+              v-if="isStreaming"
+              type="button"
+              variant="outline"
+              size="sm"
+              class="text-destructive hover:bg-destructive/10 gap-1.5"
+              @click="stopEnhancement"
+            >
+              <Square class="h-3 w-3 fill-current" />
+              Stop
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              :disabled="!canRun"
+              class="flex-1 gap-1.5"
+              @click="runEnhance"
+            >
+              <Loader2 v-if="isStreaming" class="h-3.5 w-3.5 animate-spin" />
+              <Sparkles v-else class="h-3.5 w-3.5" />
+              {{ isStreaming ? 'Enhancing...' : 'Enhance prompt' }}
+            </Button>
+          </div>
         </div>
 
-        <!-- Side-by-Side Comparison Panels -->
-        <div class="grid min-h-56 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
-          <!-- Left: Original Prompt -->
+        <!-- Result pane -->
+        <div class="flex min-w-0 flex-1 flex-col gap-3 p-4">
           <div
-            class="border-border bg-muted/20 flex flex-col overflow-hidden rounded-xl border"
+            v-if="errorMsg"
+            class="bg-destructive/10 border-destructive/20 text-destructive shrink-0 rounded-lg border px-3 py-2 text-xs"
+          >
+            {{ errorMsg }}
+          </div>
+
+          <!-- Original -->
+          <div
+            class="border-border bg-muted/20 flex max-h-[30%] shrink-0 flex-col overflow-hidden rounded-xl border"
           >
             <div
-              class="border-border bg-card/60 flex items-center justify-between border-b px-3 py-2"
+              class="border-border bg-card/60 flex items-center justify-between border-b px-3 py-1.5"
             >
               <span
-                class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
               >
-                Original Prompt
+                Original
               </span>
               <span class="text-muted-foreground font-mono text-xs">
                 {{ originalPrompt.length }} chars
               </span>
             </div>
             <div
-              class="text-foreground/80 flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text"
+              class="text-foreground/80 min-h-0 overflow-y-auto p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text"
             >
               {{ originalPrompt || '(Empty prompt)' }}
             </div>
           </div>
 
-          <!-- Right: Enhanced Prompt -->
+          <!-- Enhanced -->
           <div
-            class="border-border bg-card flex flex-col overflow-hidden rounded-xl border"
+            class="border-border bg-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border"
+            :class="{ 'border-primary/40': isStreaming }"
           >
             <div
-              class="border-border bg-primary/5 flex items-center justify-between border-b px-3 py-2"
+              class="border-border bg-primary/5 flex items-center justify-between border-b px-3 py-1.5"
             >
               <div class="flex items-center gap-1.5">
                 <Sparkles class="text-primary h-3.5 w-3.5" />
                 <span
-                  class="text-primary text-xs font-semibold tracking-wider uppercase"
+                  class="text-primary text-xs font-bold tracking-wider uppercase"
                 >
-                  Enhanced Prompt
+                  Enhanced
                 </span>
               </div>
               <div class="flex items-center gap-2">
@@ -482,71 +475,88 @@ async function copyEnhanced() {
                 <Button
                   v-if="enhancedPrompt"
                   variant="ghost"
-                  size="icon-sm"
-                  class="text-muted-foreground hover:text-foreground h-6 w-6"
+                  size="iconXs"
+                  class="text-muted-foreground hover:text-foreground"
                   title="Copy to clipboard"
                   @click="copyEnhanced"
                 >
-                  <Check v-if="copied" class="h-3.5 w-3.5 text-emerald-500" />
-                  <Copy v-else class="h-3.5 w-3.5" />
+                  <Check v-if="copied" class="text-emerald-500" />
+                  <Copy v-else />
                 </Button>
               </div>
             </div>
 
-            <!-- Enhanced content viewport -->
             <div
-              class="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text"
+              v-if="enhancedPrompt"
+              class="min-h-0 flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text"
             >
-              <span v-if="enhancedPrompt">{{ enhancedPrompt }}</span>
-              <span
-                v-else-if="isStreaming"
-                class="text-muted-foreground flex items-center gap-2"
+              {{ enhancedPrompt
+              }}<span
+                v-if="isStreaming"
+                class="bg-primary ml-0.5 inline-block h-3 w-1.5 animate-pulse align-middle"
+              />
+            </div>
+            <div
+              v-else
+              class="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center"
+            >
+              <div
+                class="bg-muted flex h-12 w-12 items-center justify-center rounded-full"
               >
-                <Loader2 class="text-primary h-3.5 w-3.5 animate-spin" />
-                Generating enhanced prompt...
+                <Loader2
+                  v-if="isStreaming"
+                  class="text-primary h-5 w-5 animate-spin"
+                />
+                <Sparkles v-else class="h-5 w-5 opacity-40" />
+              </div>
+              <span class="text-foreground text-xs font-semibold">
+                {{ isStreaming ? 'Generating...' : 'Nothing generated yet' }}
               </span>
-              <span v-else class="text-muted-foreground italic">
-                Click "Enhance Prompt" above to generate with AI.
-              </span>
+              <p v-if="!isStreaming" class="max-w-xs text-xs">
+                Pick a style on the left and press
+                <span class="text-foreground font-medium">Enhance prompt</span>.
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Footer Actions -->
+      <!-- Footer -->
       <div
-        class="border-border flex items-center justify-between border-t pt-3"
+        class="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 border-t px-4 py-2.5"
       >
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          @click="emit('update:open', false)"
-        >
-          Close
-        </Button>
+        <div class="flex min-w-0 items-center gap-1.5">
+          <AiModelSelector compact />
+          <AiReasoningSelector compact :disabled="isStreaming" />
+        </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            @click="emit('update:open', false)"
+          >
+            Close
+          </Button>
           <Button
             type="button"
             variant="outline"
             size="sm"
             :disabled="!enhancedPrompt || isStreaming"
-            class="gap-1.5"
             @click="handleApply('append')"
           >
-            <span>Append to Current</span>
+            Append
           </Button>
-
           <Button
             type="button"
             size="sm"
             :disabled="!enhancedPrompt || isStreaming"
-            class="bg-primary text-primary-foreground gap-1.5 shadow-xs"
+            class="gap-1.5"
             @click="handleApply('replace')"
           >
             <ArrowRight class="h-3.5 w-3.5" />
-            <span>Replace Prompt</span>
+            Replace {{ promptTarget }}
           </Button>
         </div>
       </div>
