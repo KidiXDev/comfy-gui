@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ChevronsUpDown } from '@lucide/vue';
+import type { HTMLAttributes } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
   Combobox,
@@ -11,6 +12,7 @@ import {
   ComboboxItem,
   ComboboxEmpty
 } from '@/components/ui/combobox';
+import { cn } from '@/lib/utils';
 
 const model = defineModel<string>({ default: '' });
 withDefaults(
@@ -18,15 +20,20 @@ withDefaults(
     options: string[];
     placeholder?: string;
     disabled?: boolean;
+    class?: HTMLAttributes['class'];
   }>(),
   { placeholder: 'Select...' }
 );
 </script>
 
 <template>
-  <Combobox v-model="model" :disabled="disabled">
+  <Combobox
+    v-model="model"
+    :disabled="disabled"
+    :class="cn('w-full flex-1 min-w-0', $props.class)"
+  >
     <ComboboxAnchor class="w-full">
-      <ComboboxTrigger as-child>
+      <ComboboxTrigger class="w-full" as-child>
         <Button
           variant="outline"
           :disabled="disabled"
