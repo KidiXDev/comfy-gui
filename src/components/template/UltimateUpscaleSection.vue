@@ -181,6 +181,8 @@ const batchSize = numberSelect('batchSize', BATCH_SIZES);
             v-model="settings.turboLora"
             :options="turboLoraOptions"
             placeholder="Select Turbo LoRA"
+            preview-category="loras"
+            grid-title="Select Turbo LoRA"
             :disabled="!comfyStore.isConnected"
           />
         </WorkflowField>

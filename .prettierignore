@@ -5,3 +5,5 @@ src-tauri/gen
 bun.lock
 *.lock
 components.d.ts
+.agents
+.claude

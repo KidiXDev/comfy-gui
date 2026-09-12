@@ -604,6 +604,8 @@ async function saveMask(blob: Blob) {
               v-model="workflowStore.imageInput.turboLora"
               :options="comfyStore.availableLoras"
               placeholder="Select turbo LoRA..."
+              preview-category="loras"
+              grid-title="Select Turbo LoRA"
             />
           </div>
 

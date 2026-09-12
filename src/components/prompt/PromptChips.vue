@@ -1,12 +1,165 @@
 <script setup lang="ts">
 import { Plus, X } from '@lucide/vue';
+import { nextTick, ref, watch } from 'vue';
 import { vDraggable } from 'vue-draggable-plus';
 import { Button } from '@/components/ui/button';
+import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import { usePromptChips } from '@/composables/usePromptChips';
+import { ComfyApi, type AutocompleteItem } from '@/services/comfyApi';
+import {
+  getPromptTokenRange,
+  replacePromptToken,
+  type PromptTokenRange
+} from '@/services/promptAutocomplete';
+import { useComfyStore } from '@/stores/comfyStore';
+import { useLauncherStore } from '@/stores/launcherStore';
 
 defineProps<{ negative?: boolean }>();
 const prompt = defineModel<string>({ required: true });
 const { chips, newTag, sync, toggle, remove, add } = usePromptChips(prompt);
+
+const launcherStore = useLauncherStore();
+const comfyStore = useComfyStore();
+const tagInput = ref<HTMLInputElement | null>(null);
+const suggestionList = ref<HTMLElement | null>(null);
+const suggestions = ref<AutocompleteItem[]>([]);
+const activeIndex = ref(0);
+const dropdownStyle = ref<Record<string, string>>({});
+let activeRange: PromptTokenRange | null = null;
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+let searchController: AbortController | undefined;
+
+function closeSuggestionsAfterBlur() {
+  setTimeout(closeSuggestions, 150);
+}
+
+function closeSuggestions() {
+  clearTimeout(searchTimer);
+  searchController?.abort();
+  suggestions.value = [];
+}
+
+// Fixed-position dropdown anchored at the caret (container is overflow:auto, so it can't live inside it)
+function updateDropdownPosition(input: HTMLInputElement) {
+  const rect = input.getBoundingClientRect();
+  const style = window.getComputedStyle(input);
+  const ctx = document.createElement('canvas').getContext('2d');
+  let caretX = 0;
+  if (ctx) {
+    ctx.font = style.font;
+    caretX =
+      ctx.measureText(input.value.slice(0, input.selectionStart ?? 0)).width -
+      input.scrollLeft;
+  }
+  const width = Math.min(320, window.innerWidth - 16);
+  const left = Math.max(
+    8,
+    Math.min(
+      rect.left +
+        input.clientLeft +
+        (Number(style.paddingLeft.replace('px', '')) || 0) +
+        caretX,
+      window.innerWidth - width - 8
+    )
+  );
+  // matches max-h-56
+  const maxHeight = 224;
+  const below = rect.bottom + 4;
+  const top =
+    below + maxHeight <= window.innerHeight
+      ? below
+      : Math.max(8, rect.top - 4 - maxHeight);
+  dropdownStyle.value = {
+    top: `${top}px`,
+    left: `${left}px`,
+    width: `${width}px`
+  };
+}
+
+function scheduleSuggestions() {
+  clearTimeout(searchTimer);
+  searchController?.abort();
+  const input = tagInput.value;
+  if (
+    !input ||
+    !launcherStore.config.autocompleteEnabled ||
+    !comfyStore.isConnected ||
+    !comfyStore.isYetEssentialAvailable
+  ) {
+    return closeSuggestions();
+  }
+  const range = getPromptTokenRange(input.value, input.selectionStart ?? 0);
+  if (!range) return closeSuggestions();
+  activeRange = range;
+  updateDropdownPosition(input);
+  searchTimer = setTimeout(async () => {
+    const controller = new AbortController();
+    searchController = controller;
+    try {
+      const items = await ComfyApi.searchTags(
+        launcherStore.config.serverUrl,
+        range.query,
+        launcherStore.config.autocompleteLimit,
+        range.mode,
+        controller.signal
+      );
+      if (controller.signal.aborted) return;
+      suggestions.value = items;
+      activeIndex.value = 0;
+    } catch {
+      // aborted or network failure — leave the list closed
+    }
+  }, 140);
+}
+
+function selectSuggestion(item: AutocompleteItem) {
+  if (!activeRange) return;
+  const result = replacePromptToken(
+    newTag.value,
+    activeRange,
+    item.insert_text,
+    launcherStore.config.autocompleteReplaceUnderscores,
+    launcherStore.config.autocompleteIncludeArtistPrefix
+  );
+  newTag.value = result.text;
+  closeSuggestions();
+  tagInput.value?.focus();
+}
+
+watch(activeIndex, () => {
+  void nextTick(() => {
+    suggestionList.value
+      ?.querySelector<HTMLElement>(`[data-index="${activeIndex.value}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  });
+});
+
+function handleKeydown(event: KeyboardEvent) {
+  const count = suggestions.value.length;
+  if (count > 0) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      activeIndex.value = (activeIndex.value + step + count) % count;
+      return;
+    }
+    if (event.key === 'Tab' || event.key === 'Enter') {
+      event.preventDefault();
+      const item = suggestions.value[activeIndex.value];
+      if (item) selectSuggestion(item);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSuggestions();
+      return;
+    }
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    add();
+  }
+}
 </script>
 <template>
   <div
@@ -82,12 +235,30 @@ const { chips, newTag, sync, toggle, remove, add } = usePromptChips(prompt);
     <!-- Add new tag chip bar -->
     <div class="border-border/40 flex items-center gap-1.5 border-t pt-2">
       <input
+        ref="tagInput"
         v-model="newTag"
         type="text"
         placeholder="Type new tag(s) and press Enter..."
         class="border-border bg-secondary/50 focus:border-primary h-7 flex-1 rounded px-2 font-mono text-xs outline-none"
-        @keydown.enter.prevent="add()"
+        @input="scheduleSuggestions"
+        @keydown="handleKeydown"
+        @blur="closeSuggestionsAfterBlur"
       />
+      <Teleport defer to="#app-content">
+        <div
+          v-if="suggestions.length > 0"
+          ref="suggestionList"
+          role="listbox"
+          :style="dropdownStyle"
+          class="border-border bg-popover/95 fixed z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
+        >
+          <PromptSuggestionOptions
+            :suggestions="suggestions"
+            :active-index="activeIndex"
+            @select="selectSuggestion"
+          />
+        </div>
+      </Teleport>
       <Button size="sm" variant="secondary" class="h-7 text-xs" @click="add()">
         <Plus class="mr-1 h-3 w-3" /> Add Tag
       </Button>

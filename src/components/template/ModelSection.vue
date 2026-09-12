@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import SearchableSelect from '../common/SearchableSelect.vue';
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import type { ModelSettings } from '@/types/workflow';
-import { LayoutGrid, Loader2, RotateCw } from '@lucide/vue';
+import { Loader2, RotateCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
-import ModelGridSelectorDialog from '../common/ModelGridSelectorDialog.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
@@ -13,7 +12,6 @@ const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const props = defineProps<{ models?: ModelSettings }>();
 const models = computed(() => props.models ?? workflowStore.models);
-const isModelGridOpen = ref(false);
 
 const unetOptions = computed(() => {
   if (comfyStore.availableUnets.length > 0) {
@@ -51,31 +49,14 @@ const vaeOptions = computed(() => {
             LOCKED
           </span>
         </template>
-        <div class="flex items-center gap-1.5">
-          <SearchableSelect
-            v-model="models.unetName"
-            :options="unetOptions"
-            placeholder="Select checkpoint..."
-            :disabled="!comfyStore.isConnected"
-          />
-
-          <!-- Browse Grid View Button -->
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            :disabled="!comfyStore.isConnected"
-            :title="
-              comfyStore.isConnected
-                ? 'Browse Models (Grid View)'
-                : 'Connect ComfyUI server to browse models'
-            "
-            class="border-border bg-secondary text-foreground hover:bg-accent h-8 w-8 shrink-0"
-            @click="isModelGridOpen = true"
-          >
-            <LayoutGrid class="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <SearchableSelect
+          v-model="models.unetName"
+          :options="unetOptions"
+          placeholder="Select checkpoint..."
+          preview-category="unet"
+          grid-title="Select Checkpoint / Diffusion Model"
+          :disabled="!comfyStore.isConnected"
+        />
       </WorkflowField>
 
       <!-- VAE + Sync Action -->
@@ -93,6 +74,8 @@ const vaeOptions = computed(() => {
             v-model="models.vaeName"
             :options="vaeOptions"
             placeholder="Select VAE..."
+            preview-category="vae"
+            grid-title="Select VAE"
             :disabled="!comfyStore.isConnected"
           />
           <Button
@@ -133,19 +116,11 @@ const vaeOptions = computed(() => {
           v-model="models.clipName"
           :options="clipOptions"
           placeholder="Select CLIP..."
+          preview-category="clip"
+          grid-title="Select CLIP Model"
           :disabled="!comfyStore.isConnected"
         />
       </WorkflowField>
     </div>
-
-    <!-- Grid View Model Selector Dialog -->
-    <ModelGridSelectorDialog
-      v-model:open="isModelGridOpen"
-      title="Select Checkpoint / Diffusion Model"
-      category="unet"
-      :models="unetOptions"
-      :selected-model="models.unetName"
-      @select="(model) => (models.unetName = model)"
-    />
   </div>
 </template>

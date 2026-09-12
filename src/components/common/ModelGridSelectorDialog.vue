@@ -22,7 +22,6 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -259,27 +258,52 @@ function getPreviewUrl(model: string, res = 300): string {
       <div
         class="border-border bg-card/40 flex shrink-0 flex-col gap-2.5 border-b px-5 py-3"
       >
-        <!-- Search Input -->
-        <div class="relative w-full">
-          <Search
-            class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
-          />
-          <Input
-            v-model="searchQuery"
-            placeholder="Search by model name or keyword..."
-            class="bg-background/80 focus:ring-primary/30 h-8.5 w-full pr-8 pl-8.5 text-xs"
-          />
-          <Button
-            v-if="searchQuery"
-            type="button"
-            variant="ghost"
-            size="iconXs"
-            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1.5 -translate-y-1/2 cursor-pointer"
-            @click="searchQuery = ''"
-          >
-            <X class="h-3.5 w-3.5" />
-            <span class="sr-only">Clear search</span>
-          </Button>
+        <!-- Search Input + Model Type filter -->
+        <div class="flex items-center gap-2">
+          <div class="relative min-w-0 flex-1">
+            <Search
+              class="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2"
+            />
+            <Input
+              v-model="searchQuery"
+              placeholder="Search by model name or keyword..."
+              class="bg-background/80 focus:ring-primary/30 h-8.5 w-full pr-8 pl-8.5 text-xs"
+            />
+            <Button
+              v-if="searchQuery"
+              type="button"
+              variant="ghost"
+              size="iconXs"
+              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-1.5 -translate-y-1/2 cursor-pointer"
+              @click="searchQuery = ''"
+            >
+              <X class="h-3.5 w-3.5" />
+              <span class="sr-only">Clear search</span>
+            </Button>
+          </div>
+
+          <Select v-if="modelTypes.length > 1" v-model="activeModelType">
+            <SelectTrigger
+              class="bg-background/80 h-8.5 w-40 shrink-0 font-mono text-xs font-medium"
+              aria-label="Model type"
+            >
+              <SelectValue placeholder="Model type">
+                {{ activeModelType === 'All' ? 'All types' : activeModelType }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-40 overflow-y-auto">
+                <SelectItem
+                  v-for="type in modelTypes"
+                  :key="type"
+                  :value="type"
+                  class="font-mono text-xs"
+                >
+                  {{ type === 'All' ? 'All types' : type }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
 
         <!-- Folder Tabs (shadcn Badge) -->
@@ -302,34 +326,6 @@ function getPreviewUrl(model: string, res = 300): string {
           >
             {{ tab }}
           </Badge>
-        </div>
-
-        <!-- Model Type (shadcn Select) -->
-        <div v-if="modelTypes.length > 1" class="flex items-center gap-2">
-          <Label class="text-muted-foreground text-xs font-medium">
-            Model type:
-          </Label>
-          <Select v-model="activeModelType">
-            <SelectTrigger
-              class="bg-background/80 h-7.5 w-40 font-mono text-xs font-medium"
-            >
-              <SelectValue placeholder="Select type">
-                {{ activeModelType }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup class="max-h-40 overflow-y-auto">
-                <SelectItem
-                  v-for="type in modelTypes"
-                  :key="type"
-                  :value="type"
-                  class="font-mono text-xs"
-                >
-                  {{ type }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
         </div>
       </div>
 

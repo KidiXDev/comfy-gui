@@ -253,26 +253,14 @@ function getLoraPreviewUrl(name: string, res = 200): string {
             </div>
 
             <!-- LoRA Selector -->
-            <div class="flex flex-1 items-center gap-1">
-              <SearchableSelect
-                v-model="lora.name"
-                :options="loraOptions"
-                placeholder="Choose LoRA model..."
-                :disabled="!comfyStore.isConnected"
-              />
-
-              <Button
-                type="button"
-                size="iconSm"
-                variant="outline"
-                :disabled="!comfyStore.isConnected"
-                title="Browse LoRAs in Grid"
-                class="border-border bg-secondary text-muted-foreground hover:text-foreground h-7 w-7 shrink-0"
-                @click="openLoraGrid(index)"
-              >
-                <LayoutGrid class="h-3 w-3" />
-              </Button>
-            </div>
+            <SearchableSelect
+              v-model="lora.name"
+              :options="loraOptions"
+              placeholder="Choose LoRA model..."
+              preview-category="loras"
+              grid-title="Select LoRA Model"
+              :disabled="!comfyStore.isConnected"
+            />
           </div>
 
           <!-- Reorder & Delete -->
