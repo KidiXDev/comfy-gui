@@ -8,6 +8,7 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -162,13 +163,18 @@ const batchSize = numberSelect('batchSize', BATCH_SIZES);
     <div
       class="border-border bg-card/60 flex flex-col gap-3 rounded-lg border p-3"
     >
-      <Label
-        class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
-      >
-        <Checkbox v-model="settings.turboEnabled" />
-        <FastForwardIcon class="h-3.5 w-3.5 text-blue-400" />
-        Turbo LoRA
-      </Label>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <FastForwardIcon class="h-4 w-4 text-blue-400" />
+          <div>
+            <p class="text-xs font-semibold">Turbo LoRA</p>
+          </div>
+        </div>
+        <Switch
+          v-model="settings.turboEnabled"
+          aria-label="Enable Ultimate SD Upscale Turbo LoRA"
+        />
+      </div>
       <div v-if="settings.turboEnabled" class="border-border border-t pt-2.5">
         <WorkflowField label="Turbo LoRA Model">
           <SearchableSelect
