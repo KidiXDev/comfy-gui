@@ -507,6 +507,7 @@ pub fn run() {
             app.state::<image_gallery::GalleryFiles>()
                 .set_cache_dir(gallery_cache_dir)
                 .map_err(std::io::Error::other)?;
+            network_cache::prune_expired_in_background(app.handle());
             if let (Some(window), Some(icon)) =
                 (app.get_webview_window("main"), app.default_window_icon())
             {

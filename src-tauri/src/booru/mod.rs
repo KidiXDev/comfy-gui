@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -24,6 +25,7 @@ const STATIC_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "gif"];
 const MAX_MEDIA_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_CACHED_MEDIA_BYTES: usize = 64 * 1024 * 1024;
 const SEARCH_TTL_SECONDS: u64 = 300;
+const QUERY_TTL_SECONDS: u64 = 86_400;
 const DETAIL_TTL_SECONDS: u64 = 86_400;
 const TAG_TTL_SECONDS: u64 = 30 * 24 * 3600;
 
@@ -887,7 +889,21 @@ fn search_blocking(app: &AppHandle, mut request: SearchRequest) -> Result<Page, 
     }
     let credentials = settings.credentials.get(&request.source);
     let client = client(settings.timeout)?;
-    request.query = provider.normalize_query(&client, &request.query, &credentials)?;
+    let query_key = format!("{}:{}", request.source, request.query);
+    request.query = match cache_read(app, "booru_query", &query_key) {
+        Some(normalized) => normalized,
+        None => {
+            let normalized = provider.normalize_query(&client, &request.query, &credentials)?;
+            cache_write(
+                app,
+                "booru_query",
+                &query_key,
+                &normalized,
+                QUERY_TTL_SECONDS,
+            );
+            normalized
+        }
+    };
     let blacklist = normalized_blacklist(&settings.blacklist);
     if request.random && request.source == "aitag" {
         let first = provider.search(&client, &request, &credentials, &blacklist)?;
@@ -1295,11 +1311,12 @@ pub async fn booru_clear_cache(app_handle: AppHandle) -> Result<Value, String> {
     if root.exists() {
         fs::remove_dir_all(root).map_err(|e| e.to_string())?;
     }
+    media_bytes(&app_handle).store(0, Ordering::Relaxed);
     Ok(serde_json::json!({"ok": true}))
 }
 
 fn clear_json_caches(app: &AppHandle) {
-    for namespace in ["booru_search", "booru_detail", "booru_tags"] {
+    for namespace in ["booru_search", "booru_query", "booru_detail", "booru_tags"] {
         let _ = crate::network_cache::clear_network_cache_sync(app, Some(namespace));
     }
 }
@@ -1357,7 +1374,11 @@ struct MediaMeta {
 fn read_media_cache(app: &AppHandle, url: &str) -> Option<(Vec<u8>, String)> {
     let (body, meta) = media_paths(app, url).ok()?;
     let metadata: MediaMeta = serde_json::from_slice(&fs::read(meta).ok()?).ok()?;
-    let bytes = fs::read(body).ok()?;
+    let bytes = fs::read(&body).ok()?;
+    let _ = fs::File::options()
+        .write(true)
+        .open(&body)
+        .and_then(|file| file.set_modified(SystemTime::now()));
     Some((bytes, metadata.content_type))
 }
 
@@ -1366,9 +1387,9 @@ fn write_media_cache(
     url: &str,
     content_type: &str,
     bytes: &[u8],
-) -> Result<(), String> {
+) -> Result<u64, String> {
     if bytes.len() > MAX_CACHED_MEDIA_BYTES {
-        return Ok(());
+        return Ok(0);
     }
     let (body, meta) = media_paths(app, url)?;
     fs::create_dir_all(body.parent().unwrap_or(Path::new("."))).map_err(|e| e.to_string())?;
@@ -1384,7 +1405,35 @@ fn write_media_cache(
     )
     .map_err(|e| e.to_string())?;
     fs::rename(body_tmp, body).map_err(|e| e.to_string())?;
-    fs::rename(meta_tmp, meta).map_err(|e| e.to_string())
+    fs::rename(meta_tmp, meta).map_err(|e| e.to_string())?;
+    Ok(bytes.len() as u64)
+}
+
+/// Approximate on-disk media size, seeded by one scan and re-synced by every prune,
+/// so the per-download path is O(1) instead of a full directory walk.
+static MEDIA_BYTES: OnceLock<AtomicU64> = OnceLock::new();
+
+fn media_bytes(app: &AppHandle) -> &'static AtomicU64 {
+    MEDIA_BYTES.get_or_init(|| AtomicU64::new(media_files(app).iter().map(|f| f.1).sum()))
+}
+
+/// `(path, size, last_used)` for every cached body, oldest first.
+fn media_files(app: &AppHandle) -> Vec<(PathBuf, u64, Option<SystemTime>)> {
+    let Ok(root) = media_root(app) else {
+        return Vec::new();
+    };
+    let mut files: Vec<_> = fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "bin"))
+        .filter_map(|entry| {
+            let metadata = entry.metadata().ok()?;
+            Some((entry.path(), metadata.len(), metadata.modified().ok()))
+        })
+        .collect();
+    files.sort_by_key(|(_, _, used)| *used);
+    files
 }
 
 #[derive(Default)]
@@ -1508,42 +1557,32 @@ fn download_media(app: &AppHandle, source: &str, url: &str) -> Result<(Vec<u8>, 
         if bytes.len() as u64 > MAX_MEDIA_BYTES {
             return Err("media exceeds 100 MiB".into());
         }
-        write_media_cache(app, url, &content_type, &bytes)?;
-        prune_media(app, settings.cache_budget_mi_b)?;
+        let written = write_media_cache(app, url, &content_type, &bytes)?;
+        let total = media_bytes(app).fetch_add(written, Ordering::Relaxed) + written;
+        if total > settings.cache_budget_mi_b * 1024 * 1024 {
+            prune_media(app, settings.cache_budget_mi_b)?;
+        }
         return Ok((bytes, content_type));
     }
     Err("media redirected too many times".into())
 }
 
 fn prune_media(app: &AppHandle, budget_mib: u64) -> Result<(), String> {
-    let root = media_root(app)?;
-    if !root.exists() {
-        return Ok(());
-    }
-    let mut files: Vec<_> = fs::read_dir(&root)
-        .map_err(|e| e.to_string())?
-        .flatten()
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "bin"))
-        .filter_map(|entry| {
-            let metadata = entry.metadata().ok()?;
-            Some((
-                entry.path(),
-                metadata.len(),
-                metadata.accessed().or_else(|_| metadata.modified()).ok(),
-            ))
-        })
-        .collect();
-    files.sort_by_key(|(_, _, accessed)| *accessed);
+    let files = media_files(app);
     let mut total: u64 = files.iter().map(|(_, size, _)| *size).sum();
     let budget = budget_mib * 1024 * 1024;
     for (body, size, _) in files {
         if total <= budget {
             break;
         }
-        let _ = fs::remove_file(&body);
+        if fs::remove_file(&body).is_ok() {
+            total = total.saturating_sub(size);
+        }
         let _ = fs::remove_file(body.with_extension("json"));
-        total = total.saturating_sub(size);
     }
+    MEDIA_BYTES
+        .get_or_init(|| AtomicU64::new(total))
+        .store(total, Ordering::Relaxed);
     Ok(())
 }
 

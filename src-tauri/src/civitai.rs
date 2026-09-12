@@ -7,8 +7,29 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, State};
 
 use crate::download_manager::{DownloadManager, DownloadRecord, NewDownload};
+use crate::network_cache;
 
 const API_BASE: &str = "https://civitai.com/api/v1";
+const CACHE_NS: &str = "civitai";
+const LIST_TTL_SECONDS: u64 = 5 * 60;
+const MODEL_TTL_SECONDS: u64 = 60 * 60;
+const ENUMS_TTL_SECONDS: u64 = 24 * 3600;
+
+/// Disk-cache wrapper: `key` must include everything that changes the response
+/// (URL + API key, since the key gates restricted/early-access content).
+fn cached_json(
+    app: &AppHandle,
+    key: &str,
+    ttl: u64,
+    fetch: impl FnOnce() -> Result<Value, String>,
+) -> Result<Value, String> {
+    if let Some(cached) = network_cache::read_cache(app, CACHE_NS, key) {
+        return Ok(cached);
+    }
+    let value = fetch()?;
+    let _ = network_cache::write_cache(app, CACHE_NS, key, &value, ttl);
+    Ok(value)
+}
 
 fn client() -> Result<Client, String> {
     Client::builder()
@@ -82,6 +103,7 @@ fn response_json(response: Response) -> Result<Value, String> {
 }
 
 fn models_blocking(
+    app: &AppHandle,
     query: String,
     model_type: String,
     base_model: String,
@@ -91,7 +113,6 @@ fn models_blocking(
     api_key: String,
     nsfw: Option<bool>,
 ) -> Result<Value, String> {
-    let client = client()?;
     let mut url =
         reqwest::Url::parse(&format!("{API_BASE}/models")).map_err(|error| error.to_string())?;
     {
@@ -125,15 +146,18 @@ fn models_blocking(
             params.append_pair("cursor", &cursor);
         }
     }
-    response_json(
-        authorized(client.get(url), &api_key)
-            .send()
-            .map_err(|e| e.to_string())?,
-    )
+    cached_json(app, &format!("{url}|{api_key}"), LIST_TTL_SECONDS, || {
+        response_json(
+            authorized(client()?.get(url), &api_key)
+                .send()
+                .map_err(|e| e.to_string())?,
+        )
+    })
 }
 
 #[tauri::command]
 pub async fn models(
+    app_handle: AppHandle,
     query: String,
     model_type: String,
     base_model: String,
@@ -145,7 +169,15 @@ pub async fn models(
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         models_blocking(
-            query, model_type, base_model, sort, period, cursor, api_key, nsfw,
+            &app_handle,
+            query,
+            model_type,
+            base_model,
+            sort,
+            period,
+            cursor,
+            api_key,
+            nsfw,
         )
     })
     .await
@@ -153,28 +185,36 @@ pub async fn models(
 }
 
 #[tauri::command]
-pub async fn enums() -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let response = client()?
-            .get(format!("{API_BASE}/enums"))
-            .send()
-            .map_err(|error| error.to_string())?;
-        response_json(response)
+pub async fn enums(app_handle: AppHandle) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        cached_json(&app_handle, "enums", ENUMS_TTL_SECONDS, || {
+            let response = client()?
+                .get(format!("{API_BASE}/enums"))
+                .send()
+                .map_err(|error| error.to_string())?;
+            response_json(response)
+        })
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn model_by_id(id: u64, api_key: String) -> Result<Value, String> {
+pub async fn model_by_id(app_handle: AppHandle, id: u64, api_key: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let client = client()?;
-        let url = reqwest::Url::parse(&format!("{API_BASE}/models/{id}"))
-            .map_err(|error| error.to_string())?;
-        response_json(
-            authorized(client.get(url), &api_key)
-                .send()
-                .map_err(|error| error.to_string())?,
+        let url = format!("{API_BASE}/models/{id}");
+        cached_json(
+            &app_handle,
+            &format!("{url}|{api_key}"),
+            MODEL_TTL_SECONDS,
+            || {
+                let client = client()?;
+                response_json(
+                    authorized(client.get(&url), &api_key)
+                        .send()
+                        .map_err(|error| error.to_string())?,
+                )
+            },
         )
     })
     .await
