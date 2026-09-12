@@ -297,7 +297,10 @@ function cleanup() {
   window.removeEventListener('keydown', handleKeydown);
   stopPanning();
 }
-onDeactivated(cleanup);
+onDeactivated(() => {
+  cleanup();
+  selectedImage.value = undefined;
+});
 onUnmounted(cleanup);
 watch(
   () => launcherStore.config.workingDir,

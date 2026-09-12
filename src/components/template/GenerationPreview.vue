@@ -581,6 +581,7 @@ const durationText = computed(() => {
       v-model:open="isZoomModalOpen"
       :src="comfyStore.lastGeneratedImage?.url"
       :title="comfyStore.lastGeneratedImage?.filename"
+      :workflow-state="comfyStore.lastGeneratedImage?.workflowState"
     />
   </div>
 </template>

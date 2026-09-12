@@ -665,6 +665,7 @@ function formatModelName(name?: string): string {
     :open="inspectingItem !== null"
     :src="inspectingItem?.imageUrl"
     :title="inspectingItem?.filename"
+    :workflow-state="inspectingItem?.workflowState"
     @update:open="(open) => !open && (inspectingItem = null)"
   >
     <template #actions>

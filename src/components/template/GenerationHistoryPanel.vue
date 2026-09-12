@@ -32,7 +32,7 @@ import { useComfyStore } from '../../stores/comfyStore';
 import { useHistoryStore } from '../../stores/historyStore';
 import { useImageTransferStore } from '../../stores/imageTransferStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type { HistoryItem } from '../../types/workflow';
+import type { HistoryItem, WorkflowState } from '../../types/workflow';
 
 const historyStore = useHistoryStore();
 const comfyStore = useComfyStore();
@@ -43,6 +43,7 @@ const router = useRouter();
 const isLightboxOpen = ref(false);
 const lightboxSrc = ref('');
 const lightboxTitle = ref('');
+const lightboxState = ref<WorkflowState>();
 
 function selectImage(item: HistoryItem) {
   comfyStore.lastGeneratedImage = {
@@ -64,6 +65,7 @@ function applySettings(item: HistoryItem) {
 function openLightbox(item: HistoryItem) {
   lightboxSrc.value = item.imageUrl;
   lightboxTitle.value = item.filename || 'Generated Image';
+  lightboxState.value = item.workflowState;
   isLightboxOpen.value = true;
 }
 
@@ -253,6 +255,7 @@ function formatTime(timestamp: number) {
       :open="isLightboxOpen"
       :src="lightboxSrc"
       :title="lightboxTitle"
+      :workflow-state="lightboxState"
       @update:open="(val) => (isLightboxOpen = val)"
     />
   </div>
