@@ -34,6 +34,11 @@ export interface CharacterData {
   source?: string;
   /** Animadex character slug if this was imported from there */
   animadexSlug?: string;
+  /**
+   * Free-form notes beyond tags: personality, canon outfits, pose habits,
+   * things to avoid. Surfaced to the AI assistant alongside the tags.
+   */
+  notes?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,20 +69,11 @@ export type SaveLibraryItemPayload<T = unknown> = Omit<
 };
 
 // ---------------------------------------------------------------------------
-// Lightweight list entry (no data payload — returned by library_list_items)
+// List entry — library_list_items returns full items (payloads are small),
+// so this is just the untyped-data alias kept for existing call sites.
 // ---------------------------------------------------------------------------
 
-export interface LibraryListEntry {
-  id: string;
-  category: LibraryCategory;
-  name: string;
-  description?: string;
-  thumbnailId?: string;
-  thumbnailUrl?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
+export type LibraryListEntry<T = unknown> = LibraryItem<T>;
 
 // ---------------------------------------------------------------------------
 // Convenience aliases that keep backward-compatibility with old preset types

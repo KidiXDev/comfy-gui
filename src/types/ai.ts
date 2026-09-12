@@ -1,6 +1,7 @@
 export interface AiConfig {
   apiKey: string;
   selectedModel: string;
+  titleModel?: string;
   customSystemPrompt: string;
   enhancerSystemPrompt?: string;
   enhancerUsesAssistantInstruction?: boolean;
@@ -66,7 +67,7 @@ export interface ChatMessageAttachment {
 
 export interface ChatMessageMention {
   id: string;
-  source: 'booru' | 'animadex-character';
+  source: 'booru' | 'animadex-character' | 'library-character';
   sourceId: string;
   label: string;
   detail: string;

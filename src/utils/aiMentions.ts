@@ -5,6 +5,7 @@ import {
 } from '@/services/booruGallery';
 import type { ChatMessageMention, OpenRouterModel } from '@/types/ai';
 import type { AnimaDexCharacter } from '@/types/animadex';
+import type { CharacterLibraryItem } from '@/types/library';
 
 export function supportsVision(model?: OpenRouterModel | null) {
   return Boolean(model?.architecture?.input_modalities?.includes('image'));
@@ -74,6 +75,32 @@ export function createAnimadexMention(
       .filter(Boolean)
       .join('\n'),
     imageUrl: character.img_url || character.thumb_url,
+    includeImage: false
+  };
+}
+
+export function createLibraryCharacterMention(
+  item: CharacterLibraryItem
+): ChatMessageMention {
+  const { data } = item;
+  return {
+    id: `library:${item.id}`,
+    source: 'library-character',
+    sourceId: item.id,
+    label: item.name,
+    detail: data.series || 'Character Library',
+    metadata: [
+      `Character: ${item.name}`,
+      data.series ? `Series: ${data.series}` : '',
+      data.trigger ? `Trigger: ${data.trigger}` : '',
+      data.tags.length > 0 ? `Tags: ${data.tags.join(', ')}` : '',
+      item.description ? `Description: ${item.description}` : '',
+      data.notes ? `Notes:\n${data.notes}` : '',
+      'This is a user-verified Character Library entry; tags and notes are authoritative.'
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    imageUrl: item.thumbnailUrl,
     includeImage: false
   };
 }

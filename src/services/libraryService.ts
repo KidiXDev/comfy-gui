@@ -10,7 +10,7 @@ import type {
 // Internal raw shape returned by Rust (camelCase from serde rename_all)
 // ---------------------------------------------------------------------------
 
-interface RawListEntry {
+interface RawItem<T = unknown> {
   id: string;
   category: string;
   name: string;
@@ -18,9 +18,6 @@ interface RawListEntry {
   thumbnailId?: string;
   createdAt: number;
   updatedAt: number;
-}
-
-interface RawItem<T = unknown> extends RawListEntry {
   data: T;
 }
 
@@ -30,12 +27,16 @@ interface RawItem<T = unknown> extends RawListEntry {
 
 function thumbnailUrl(thumbnailId: string): string {
   const id = encodeURIComponent(thumbnailId);
-  return typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows')
+  return typeof navigator !== 'undefined' &&
+    navigator.userAgent.includes('Windows')
     ? `http://comfygui-library.localhost/thumb/${id}`
     : `comfygui-library://localhost/thumb/${id}`;
 }
 
-function hydrateThumbnail(entry: { thumbnailId?: string; thumbnailUrl?: string }) {
+function hydrateThumbnail(entry: {
+  thumbnailId?: string;
+  thumbnailUrl?: string;
+}) {
   if (entry.thumbnailId) {
     entry.thumbnailUrl = thumbnailUrl(entry.thumbnailId);
   }
@@ -49,20 +50,34 @@ export function isBooruMediaUrl(url: string): boolean {
   );
 }
 
+/** Custom-scheme URLs only the webview can fetch (Rust's reqwest cannot). */
+function isWebviewOnlyUrl(url: string): boolean {
+  const parsedUrl = new URL(url);
+  return (
+    isBooruMediaUrl(url) ||
+    parsedUrl.hostname === 'comfygui-library.localhost' ||
+    parsedUrl.protocol === 'comfygui-library:'
+  );
+}
+
 // ---------------------------------------------------------------------------
 // LibraryService
 // ---------------------------------------------------------------------------
 
 export const LibraryService = {
   /**
-   * List all items in a category (lightweight — no data payload).
+   * List all items in a category, including their data payload.
    * thumbnailUrl is resolved automatically.
    */
-  async listItems(category: LibraryCategory): Promise<LibraryListEntry[]> {
+  async listItems<T = unknown>(
+    category: LibraryCategory
+  ): Promise<LibraryListEntry<T>[]> {
     try {
-      const raw = await invoke<RawListEntry[]>('library_list_items', { category });
+      const raw = await invoke<RawItem<T>[]>('library_list_items', {
+        category
+      });
       return raw.map((entry) => {
-        const item: LibraryListEntry = { ...entry };
+        const item: LibraryListEntry<T> = { ...entry };
         hydrateThumbnail(item);
         return item;
       });
@@ -75,7 +90,10 @@ export const LibraryService = {
   /**
    * Fetch a single item by id (includes full data payload).
    */
-  async getItem<T>(id: string, category: LibraryCategory): Promise<LibraryItem<T>> {
+  async getItem<T>(
+    id: string,
+    category: LibraryCategory
+  ): Promise<LibraryItem<T>> {
     const raw = await invoke<RawItem<T>>('library_get_item', { id, category });
     const item: LibraryItem<T> = { ...raw } as LibraryItem<T>;
     hydrateThumbnail(item);
@@ -85,9 +103,7 @@ export const LibraryService = {
   /**
    * Create or update a library item. Pass id='' or omit to let the backend generate one.
    */
-  async saveItem<T>(
-    item: SaveLibraryItemPayload<T>
-  ): Promise<LibraryItem<T>> {
+  async saveItem<T>(item: SaveLibraryItemPayload<T>): Promise<LibraryItem<T>> {
     const payload = {
       id: item.id ?? '',
       category: item.category,
@@ -98,7 +114,9 @@ export const LibraryService = {
       createdAt: item.createdAt ?? 0,
       updatedAt: item.updatedAt ?? 0
     };
-    const raw = await invoke<RawItem<T>>('library_save_item', { item: payload });
+    const raw = await invoke<RawItem<T>>('library_save_item', {
+      item: payload
+    });
     const saved: LibraryItem<T> = { ...raw } as LibraryItem<T>;
     hydrateThumbnail(saved);
     return saved;
@@ -113,7 +131,10 @@ export const LibraryService = {
    * Copy an image file from disk into the thumbnails folder (re-encoded as JPEG).
    * Returns the thumbnail_id which should be stored on the LibraryItem.
    */
-  async saveThumbnailFromPath(itemId: string, sourcePath: string): Promise<string> {
+  async saveThumbnailFromPath(
+    itemId: string,
+    sourcePath: string
+  ): Promise<string> {
     return await invoke<string>('library_save_thumbnail_from_path', {
       itemId,
       sourcePath
@@ -124,7 +145,10 @@ export const LibraryService = {
    * Save a base64 data-URL image as the thumbnail for an item.
    * Returns the thumbnail_id.
    */
-  async saveThumbnailFromDataUrl(itemId: string, dataUrl: string): Promise<string> {
+  async saveThumbnailFromDataUrl(
+    itemId: string,
+    dataUrl: string
+  ): Promise<string> {
     return await invoke<string>('library_save_thumbnail_from_data_url', {
       itemId,
       dataUrl
@@ -140,7 +164,7 @@ export const LibraryService = {
     if (url.startsWith('data:')) {
       return this.saveThumbnailFromDataUrl(itemId, url);
     }
-    if (isBooruMediaUrl(url)) {
+    if (isWebviewOnlyUrl(url)) {
       const response = await fetch(url);
       if (!response.ok)
         throw new Error(`Server returned HTTP ${response.status}`);
@@ -169,7 +193,6 @@ export const LibraryService = {
       console.warn('[LibraryService] openFolder error:', err);
     }
   },
-
 
   /** Build a comfygui-library:// thumbnail URL without fetching. */
   getThumbnailUrl(thumbnailId: string): string {

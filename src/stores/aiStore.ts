@@ -6,6 +6,7 @@ import {
   buildSystemPrompt,
   DEFAULT_AI_CONFIG,
   fetchAvailableModels,
+  generateChatTitle,
   getOpenRouterModel,
   POPULAR_MODELS
 } from '../services/aiService';
@@ -26,6 +27,7 @@ import type {
   ToolInvocation,
   ToolName
 } from '../types/ai';
+import type { CharacterData } from '../types/library';
 import { mentionReference, supportsVision } from '../utils/aiMentions';
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
@@ -272,6 +274,20 @@ export const useAiStore = defineStore('ai', () => {
     return newSession;
   }
 
+  async function generateSessionTitle(session: ChatSession, text: string) {
+    const fallback = session.title;
+    try {
+      const title = await generateChatTitle(config.value, text);
+      // Only apply if the user hasn't renamed the session meanwhile
+      if (title && session.title === fallback) {
+        session.title = title;
+        void saveChatSessions();
+      }
+    } catch (err) {
+      console.warn('Failed to auto-generate session title:', err);
+    }
+  }
+
   function switchSession(id: string) {
     if (sessions.value.some((s) => s.id === id)) {
       activeSessionId.value = id;
@@ -430,7 +446,7 @@ export const useAiStore = defineStore('ai', () => {
       mentions,
       supportsVision(selectedModelInfo.value)
     );
-    const userMessageId = `msg-${Date.now()}-user`;
+    const userMessageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-user`;
     const userMsg: ChatMessage = {
       id: userMessageId,
       role: 'user',
@@ -447,11 +463,11 @@ export const useAiStore = defineStore('ai', () => {
       session.messages.filter((m) => m.role === 'user').length === 1 &&
       session.title === 'New Chat'
     ) {
-      const cleanTitle = text.trim().slice(0, 32);
-      session.title = cleanTitle || 'Prompt Session';
+      session.title = text.trim().slice(0, 32) || 'Prompt Session';
+      void generateSessionTitle(session, text);
     }
 
-    const assistantMessageId = `msg-${Date.now()}-assistant`;
+    const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-assistant`;
     const assistantMsg = reactive<ChatMessage>({
       id: assistantMessageId,
       role: 'assistant',
@@ -763,7 +779,7 @@ export const useAiStore = defineStore('ai', () => {
 
         search_character_library: tool({
           description:
-            "Search the user's local Character Library for custom, user-verified character definitions. Results here are always more reliable than Animadex for clothing, accessories, and detailed appearance tags. Prefer these results over Animadex when both are available for the same character.",
+            "Search the user's local Character Library for custom, user-verified character definitions. Results here are always more reliable than Animadex for clothing, accessories, and detailed appearance tags. Prefer these results over Animadex when both are available for the same character. Entries may include user-written notes (personality, canon outfits, poses, things to avoid) — treat notes as authoritative extra context beyond the tags.",
           inputSchema: z.object({
             query: z
               .string()
@@ -776,18 +792,23 @@ export const useAiStore = defineStore('ai', () => {
             try {
               const { LibraryService } =
                 await import('../services/libraryService');
-              const entries = await LibraryService.listItems('characters');
-              const q = query.toLowerCase();
-              const matches = entries
-                .filter((e) => {
-                  return (
-                    e.name.toLowerCase().includes(q) ||
-                    e.description?.toLowerCase().includes(q)
-                  );
-                })
-                .slice(0, 8);
+              const { searchCharacterEntries } =
+                await import('../utils/librarySearch');
+              const entries =
+                await LibraryService.listItems<CharacterData>('characters');
+              const results = searchCharacterEntries(entries, query)
+                .slice(0, 8)
+                .map((item) => ({
+                  name: item.name,
+                  series: item.data.series,
+                  trigger: item.data.trigger,
+                  tags: item.data.tags,
+                  source: item.data.source ?? 'local',
+                  description: item.description,
+                  notes: item.data.notes
+                }));
 
-              if (matches.length === 0) {
+              if (results.length === 0) {
                 return {
                   found: false,
                   message:
@@ -795,35 +816,11 @@ export const useAiStore = defineStore('ai', () => {
                 };
               }
 
-              // Fetch full data for top matches
-              const results = await Promise.all(
-                matches.map(async (e) => {
-                  try {
-                    const item = await LibraryService.getItem<{
-                      trigger: string;
-                      tags: string[];
-                      series?: string;
-                      source?: string;
-                    }>(e.id, 'characters');
-                    return {
-                      name: item.name,
-                      series: item.data.series,
-                      trigger: item.data.trigger,
-                      tags: item.data.tags,
-                      source: item.data.source ?? 'local',
-                      description: item.description
-                    };
-                  } catch {
-                    return null;
-                  }
-                })
-              );
-
               return {
                 found: true,
                 source: 'local_character_library',
-                note: 'These are user-verified character definitions. Tags here are considered more complete and accurate than Animadex.',
-                results: results.filter(Boolean)
+                note: 'These are user-verified character definitions. Tags here are considered more complete and accurate than Animadex. Use the notes field for details beyond tags.',
+                results
               };
             } catch (err) {
               return { found: false, error: String(err) };

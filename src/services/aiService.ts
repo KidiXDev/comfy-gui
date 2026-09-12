@@ -1,10 +1,12 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { generateText } from 'ai';
 import type { AiConfig, OpenRouterModel } from '../types/ai';
 import { http } from './httpClient';
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
   apiKey: '',
   selectedModel: 'deepseek/deepseek-v4-flash-vision-exp',
+  titleModel: '',
   customSystemPrompt: '',
   enhancerSystemPrompt: '',
   enhancerUsesAssistantInstruction: false,
@@ -18,6 +20,7 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
 };
 
 import {
+  CHAT_TITLE_SYSTEM_PROMPT,
   DEFAULT_ASSISTANT_SYSTEM_PROMPT,
   buildAssistantSystemPrompt
 } from '../data/aiPrompts';
@@ -176,7 +179,9 @@ export function getOpenRouterModel(config: AiConfig, model?: OpenRouterModel) {
     model?.id === config.selectedModel &&
     supportsReasoning(model) &&
     config.reasoningEffort &&
-    ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(config.reasoningEffort)
+    ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(
+      config.reasoningEffort
+    )
   ) {
     settings.reasoning = { effort: config.reasoningEffort };
   }
@@ -196,4 +201,31 @@ export function getOpenRouterModel(config: AiConfig, model?: OpenRouterModel) {
   }
 
   return provider(config.selectedModel, settings);
+}
+
+/**
+ * Generates a short chat title from the first user message using the configured
+ * title model (falls back to the default chat model). Returns '' on empty output.
+ */
+export async function generateChatTitle(
+  config: AiConfig,
+  firstMessage: string
+): Promise<string> {
+  const titleModel = config.titleModel?.trim();
+  const titleConfig = titleModel
+    ? { ...config, selectedModel: titleModel }
+    : config;
+  const { text } = await generateText({
+    model: getOpenRouterModel(titleConfig),
+    system: CHAT_TITLE_SYSTEM_PROMPT,
+    prompt: firstMessage.slice(0, 2000),
+    maxOutputTokens: 32,
+    temperature: 0.3
+  });
+  return text
+    .trim()
+    .split('\n')[0]
+    .replaceAll(/^["'`]+|["'`.!?]+$/gu, '')
+    .trim()
+    .slice(0, 60);
 }

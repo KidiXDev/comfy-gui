@@ -71,6 +71,7 @@ const editorCharTrigger = ref('');
 const editorCharTags = ref('');
 const editorCharSource = ref<'local' | 'animadex' | 'manual'>('local');
 const editorCharAnimadexSlug = ref('');
+const editorCharNotes = ref('');
 const editorSaveError = ref('');
 const editorIsSaving = ref(false);
 function resetEditor() {
@@ -93,6 +94,7 @@ function resetEditor() {
   editorCharTags.value = '';
   editorCharSource.value = 'local';
   editorCharAnimadexSlug.value = '';
+  editorCharNotes.value = '';
   editorSaveError.value = '';
 }
 function openCreateEditor() {
@@ -156,6 +158,7 @@ async function openEditEditor(entry: LibraryListEntry) {
           ? item.data.source
           : 'local';
       editorCharAnimadexSlug.value = item.data.animadexSlug ?? '';
+      editorCharNotes.value = item.data.notes ?? '';
     }
   } finally {
     isEditorLoading.value = false;
@@ -192,7 +195,8 @@ async function handleSave() {
           .map((t) => t.trim())
           .filter(Boolean),
         source: editorCharSource.value,
-        animadexSlug: editorCharAnimadexSlug.value.trim() || undefined
+        animadexSlug: editorCharAnimadexSlug.value.trim() || undefined,
+        notes: editorCharNotes.value.trim() || undefined
       } satisfies CharacterData;
     }
 
@@ -266,6 +270,7 @@ function requestDeleteFromEditor() {
       id: editorId.value,
       category: activeTab.value,
       name: editorName.value,
+      data: {},
       createdAt: editorCreatedAt.value || Date.now(),
       updatedAt: Date.now()
     });
@@ -551,6 +556,20 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
                     class="font-mono text-xs"
                   />
                 </div>
+              </div>
+
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-foreground text-xs font-bold">Notes</Label>
+                <Textarea
+                  v-model="editorCharNotes"
+                  rows="5"
+                  placeholder="Anything tags can't capture: personality, canon outfits by arc, signature poses or expressions, tags to avoid, LoRA that works best..."
+                  class="bg-background text-xs"
+                />
+                <p class="text-muted-foreground text-xs">
+                  Maya reads these notes together with the tags when you ask
+                  about this character.
+                </p>
               </div>
             </template>
           </div>

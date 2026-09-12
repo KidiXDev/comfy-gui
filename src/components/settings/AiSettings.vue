@@ -210,6 +210,43 @@ onMounted(loadAiSettings);
 
     <AiReasoningSelector />
 
+    <!-- Chat Title Model -->
+    <Field class="gap-1.5">
+      <FieldLabel class="text-xs">Chat Title Model</FieldLabel>
+      <div class="flex items-center gap-1.5">
+        <AiModelSelector
+          :model-value="aiStore.config.titleModel ?? ''"
+          placeholder="Same as default model"
+          @change="
+            (val) => {
+              aiStore.config.titleModel = val;
+              void aiStore.saveConfig();
+              showSaved();
+            }
+          "
+        />
+        <Button
+          v-if="aiStore.config.titleModel"
+          variant="ghost"
+          size="icon"
+          class="h-8 w-8 shrink-0"
+          title="Use default model for titles"
+          @click="
+            () => {
+              aiStore.config.titleModel = '';
+              void aiStore.saveConfig();
+              showSaved();
+            }
+          "
+        >
+          <Trash2 class="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <p class="text-muted-foreground text-xs">
+        Used to auto-name a chat after its first message.
+      </p>
+    </Field>
+
     <div class="border-border/60 bg-muted/20 grid gap-4 rounded-lg border p-3">
       <Field class="gap-2">
         <div class="flex items-center justify-between">

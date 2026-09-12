@@ -30,21 +30,6 @@ pub struct LibraryItem {
     pub updated_at: u64,
 }
 
-/// Lightweight list entry – `data` is omitted to reduce payload when listing many items.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct LibraryListEntry {
-    pub id: String,
-    pub category: String,
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thumbnail_id: Option<String>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
 // ---------------------------------------------------------------------------
 // Internal path helpers
 // ---------------------------------------------------------------------------
@@ -114,13 +99,15 @@ fn item_path(app_handle: &AppHandle, category: &str, id: &str) -> Result<PathBuf
 // Tauri commands — CRUD
 // ---------------------------------------------------------------------------
 
+/// Items are small local JSON files, so the full `data` payload is returned;
+/// callers filter/preview client-side without a second round-trip per item.
 #[tauri::command]
 pub fn library_list_items(
     app_handle: AppHandle,
     category: String,
-) -> Result<Vec<LibraryListEntry>, String> {
+) -> Result<Vec<LibraryItem>, String> {
     let dir = category_dir(&app_handle, &category)?;
-    let mut entries: Vec<LibraryListEntry> = Vec::new();
+    let mut entries: Vec<LibraryItem> = Vec::new();
 
     if let Ok(dir_entries) = fs::read_dir(&dir) {
         for entry in dir_entries.flatten() {
@@ -128,15 +115,7 @@ pub fn library_list_items(
             if path.is_file() && path.extension().map_or(false, |e| e == "json") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(item) = serde_json::from_str::<LibraryItem>(&content) {
-                        entries.push(LibraryListEntry {
-                            id: item.id,
-                            category: item.category,
-                            name: item.name,
-                            description: item.description,
-                            thumbnail_id: item.thumbnail_id,
-                            created_at: item.created_at,
-                            updated_at: item.updated_at,
-                        });
+                        entries.push(item);
                     }
                 }
             }

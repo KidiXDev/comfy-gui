@@ -27,7 +27,8 @@ export const useLibraryStore = defineStore('library', () => {
   async function fetchCategory(category: LibraryCategory): Promise<void> {
     loadingCategory.value[category] = true;
     try {
-      itemsByCategory.value[category] = await LibraryService.listItems(category);
+      itemsByCategory.value[category] =
+        await LibraryService.listItems(category);
     } finally {
       loadingCategory.value[category] = false;
     }
@@ -54,7 +55,34 @@ export const useLibraryStore = defineStore('library', () => {
     return saved;
   }
 
-  async function deleteItem(id: string, category: LibraryCategory): Promise<void> {
+  /** Save a copy of an existing item (with its own thumbnail file) as a new entry. */
+  async function duplicateItem<T>(
+    item: LibraryItem<T>
+  ): Promise<LibraryItem<T>> {
+    let thumbnailId: string | undefined;
+    if (item.thumbnailUrl) {
+      try {
+        thumbnailId = await LibraryService.saveThumbnailFromUrl(
+          `tmp-${Date.now()}`,
+          item.thumbnailUrl
+        );
+      } catch (err) {
+        console.warn('[libraryStore] duplicate thumbnail failed:', err);
+      }
+    }
+    return saveItem<T>({
+      category: item.category,
+      name: `${item.name} (copy)`,
+      description: item.description,
+      thumbnailId,
+      data: JSON.parse(JSON.stringify(item.data)) as T
+    });
+  }
+
+  async function deleteItem(
+    id: string,
+    category: LibraryCategory
+  ): Promise<void> {
     await LibraryService.deleteItem(id, category);
     if (itemsByCategory.value[category]) {
       itemsByCategory.value[category] = itemsByCategory.value[category].filter(
@@ -67,9 +95,10 @@ export const useLibraryStore = defineStore('library', () => {
   // Thumbnail helpers (delegated directly to LibraryService)
   // ---------------------------------------------------------------------------
 
-  const saveThumbnailFromPath = LibraryService.saveThumbnailFromPath.bind(LibraryService);
-  const saveThumbnailFromDataUrl = LibraryService.saveThumbnailFromDataUrl.bind(LibraryService);
-
+  const saveThumbnailFromPath =
+    LibraryService.saveThumbnailFromPath.bind(LibraryService);
+  const saveThumbnailFromDataUrl =
+    LibraryService.saveThumbnailFromDataUrl.bind(LibraryService);
 
   // ---------------------------------------------------------------------------
   // Typed convenience getters
@@ -94,6 +123,7 @@ export const useLibraryStore = defineStore('library', () => {
     isLoading,
     getEntries,
     saveItem,
+    duplicateItem,
     deleteItem,
     saveThumbnailFromPath,
     saveThumbnailFromDataUrl,
@@ -104,4 +134,11 @@ export const useLibraryStore = defineStore('library', () => {
 });
 
 // Re-export types for convenience
-export type { LibraryCategory, LibraryItem, LibraryListEntry, PromptData, LoraData, CharacterData };
+export type {
+  CharacterData,
+  LibraryCategory,
+  LibraryItem,
+  LibraryListEntry,
+  LoraData,
+  PromptData
+};

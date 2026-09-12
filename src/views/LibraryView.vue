@@ -8,29 +8,43 @@ import {
   Check,
   Clock,
   Copy,
+  CopyPlus,
   FolderOpen,
   Layers,
+  MessageSquareText,
   Plus,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   Sparkles,
+  StickyNote,
   Trash2,
   User,
   X
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import PageLayout from '@/components/layout/PageLayout.vue';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatShortDate } from '@/utils/formatters';
+import { createLibraryCharacterMention } from '@/utils/aiMentions';
+import { matchesQuery } from '@/utils/librarySearch';
 import { LibraryService } from '../services/libraryService';
+import { useAiStore } from '../stores/aiStore';
 import { useLibraryStore } from '../stores/libraryStore';
 import type {
+  CharacterData,
+  CharacterLibraryItem,
   LibraryListEntry,
   LoraData,
-  PromptData,
-  CharacterData
+  PromptData
 } from '../types/library';
 import { useWorkflowStore } from '../stores/workflowStore';
 
@@ -40,6 +54,7 @@ const route = useRoute();
 const router = useRouter();
 const libraryStore = useLibraryStore();
 const workflowStore = useWorkflowStore();
+const aiStore = useAiStore();
 const { confirm } = useConfirmDialog();
 
 // ---------------------------------------------------------------------------
@@ -55,6 +70,9 @@ const categoryTabs: Array<{ id: CategoryTab; label: string; icon: unknown }> = [
 ];
 
 const activeTab = ref<CategoryTab>('prompts');
+const activeTabMeta = computed(
+  () => categoryTabs.find((t) => t.id === activeTab.value) ?? categoryTabs[0]
+);
 
 // Sync tab from URL query
 onMounted(() => {
@@ -66,6 +84,7 @@ onMounted(() => {
 });
 
 watch(activeTab, (tab) => {
+  seriesFilter.value = 'all';
   void router.replace({ query: { ...route.query, tab } });
 });
 
@@ -89,39 +108,103 @@ async function refreshCurrentTab() {
 const failedThumbnails = ref<Set<string>>(new Set());
 
 // ---------------------------------------------------------------------------
-// Search / filter
+// Search / filter / sort
 // ---------------------------------------------------------------------------
 
+type SortMode = 'updated' | 'created' | 'name';
+const sortOptions: Array<{ value: SortMode; label: string }> = [
+  { value: 'updated', label: 'Recently updated' },
+  { value: 'created', label: 'Newest first' },
+  { value: 'name', label: 'Name A–Z' }
+];
+
 const searchQuery = ref('');
+const sortMode = ref<SortMode>('updated');
 const promptTypeFilter = ref<'all' | 'both' | 'positive' | 'negative'>('all');
+const seriesFilter = ref('all');
+
+const promptData = (e: LibraryListEntry) => e.data as PromptData;
+const loraData = (e: LibraryListEntry) => e.data as LoraData;
+const charData = (e: LibraryListEntry) => e.data as CharacterData;
+
+const seriesOptions = computed(() => {
+  const set = new Set<string>();
+  for (const e of libraryStore.getEntries('characters')) {
+    const s = charData(e).series?.trim();
+    if (s) set.add(s);
+  }
+  const list = [...set];
+  list.sort((a, b) => a.localeCompare(b));
+  return list;
+});
 
 const currentEntries = computed<LibraryListEntry[]>(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  const entries = libraryStore.getEntries(activeTab.value);
-
-  return entries.filter((entry) => {
-    if (q) {
-      const inName = entry.name.toLowerCase().includes(q);
-      const inDesc = entry.description?.toLowerCase().includes(q) ?? false;
-      return inName || inDesc;
-    }
-    return true;
+  const q = searchQuery.value.trim();
+  const entries = libraryStore.getEntries(activeTab.value).filter((entry) => {
+    if (
+      activeTab.value === 'prompts' &&
+      promptTypeFilter.value !== 'all' &&
+      promptData(entry).type !== promptTypeFilter.value
+    )
+      return false;
+    if (
+      activeTab.value === 'characters' &&
+      seriesFilter.value !== 'all' &&
+      charData(entry).series?.trim() !== seriesFilter.value
+    )
+      return false;
+    return q ? matchesQuery(entry, q) : true;
   });
+  entries.sort((a, b) => {
+    if (sortMode.value === 'name') return a.name.localeCompare(b.name);
+    if (sortMode.value === 'created') return b.createdAt - a.createdAt;
+    return b.updatedAt - a.updatedAt;
+  });
+  return entries;
 });
+
+const hasActiveFilter = computed(
+  () =>
+    Boolean(searchQuery.value.trim()) ||
+    promptTypeFilter.value !== 'all' ||
+    seriesFilter.value !== 'all'
+);
+
+function clearFilters() {
+  searchQuery.value = '';
+  promptTypeFilter.value = 'all';
+  seriesFilter.value = 'all';
+}
+
+// ---------------------------------------------------------------------------
+// Card helpers
+// ---------------------------------------------------------------------------
+
+const MAX_TAG_CHIPS = 6;
+
+function characterTags(entry: LibraryListEntry): string[] {
+  return charData(entry).tags ?? [];
+}
+
+function characterTagString(entry: LibraryListEntry): string {
+  const data = charData(entry);
+  return [data.trigger, ...(data.tags ?? [])].filter(Boolean).join(', ');
+}
+
+function promptScopeLabel(entry: LibraryListEntry): string {
+  const type = promptData(entry).type;
+  return type === 'positive' ? '+ Pos' : type === 'negative' ? '− Neg' : 'Both';
+}
 
 // ---------------------------------------------------------------------------
 // Apply actions
 // ---------------------------------------------------------------------------
 
-async function applyPrompt(
+function applyPrompt(
   entry: LibraryListEntry,
   mode: 'both' | 'positive' | 'negative'
 ) {
-  const item = await LibraryService.getItem<PromptData>(
-    entry.id,
-    entry.category
-  );
-  const data = item.data;
+  const data = promptData(entry);
   if ((mode === 'both' || mode === 'positive') && data.positive) {
     workflowStore.positivePrompt = data.positive;
   }
@@ -131,9 +214,8 @@ async function applyPrompt(
   void router.push('/workflow');
 }
 
-async function applyLora(entry: LibraryListEntry, append = false) {
-  const item = await LibraryService.getItem<LoraData>(entry.id, entry.category);
-  const newItems = item.data.loras.map((l, i) => ({
+function applyLora(entry: LibraryListEntry, append = false) {
+  const newItems = loraData(entry).loras.map((l, i) => ({
     id: `lora-${i}-${Date.now()}`,
     name: l.name,
     strength: l.strength,
@@ -147,31 +229,50 @@ async function applyLora(entry: LibraryListEntry, append = false) {
   void router.push('/workflow');
 }
 
-async function copyCharacterTags(entry: LibraryListEntry) {
-  const item = await LibraryService.getItem<CharacterData>(
-    entry.id,
-    entry.category
-  );
-  const allTags = [item.data.trigger, ...item.data.tags].join(', ');
-  await navigator.clipboard.writeText(allTags);
+async function copyText(entry: LibraryListEntry, text: string) {
+  await navigator.clipboard.writeText(text);
   copiedEntryId.value = entry.id;
   setTimeout(() => {
     if (copiedEntryId.value === entry.id) copiedEntryId.value = null;
   }, 1500);
 }
 
-async function injectCharacterToPrompt(entry: LibraryListEntry) {
-  const item = await LibraryService.getItem<CharacterData>(
-    entry.id,
-    entry.category
-  );
-  const allTags = [item.data.trigger, ...item.data.tags].join(', ');
+function copyPromptText(entry: LibraryListEntry) {
+  const data = promptData(entry);
+  const text = [data.positive, data.negative]
+    .filter((s): s is string => Boolean(s?.trim()))
+    .join('\n---\n');
+  return copyText(entry, text);
+}
+
+function injectCharacterToPrompt(entry: LibraryListEntry) {
+  const allTags = characterTagString(entry);
   if (workflowStore.positivePrompt.trim()) {
     workflowStore.positivePrompt += `, ${allTags}`;
   } else {
     workflowStore.positivePrompt = allTags;
   }
   void router.push('/workflow');
+}
+
+function askMaya(entry: LibraryListEntry) {
+  aiStore.addDraftMention(
+    createLibraryCharacterMention(entry as CharacterLibraryItem)
+  );
+  aiStore.isDrawerOpen = true;
+}
+
+const duplicatingId = ref<string | null>(null);
+async function duplicateEntry(entry: LibraryListEntry) {
+  duplicatingId.value = entry.id;
+  try {
+    const copy = await libraryStore.duplicateItem(entry);
+    entryEditor.value?.edit(copy);
+  } catch (err) {
+    console.error('Failed to duplicate library item:', err);
+  } finally {
+    duplicatingId.value = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -240,10 +341,7 @@ const copiedEntryId = ref<string | null>(null);
         @click="entryEditor?.create()"
       >
         <Plus class="h-3.5 w-3.5" />
-        <span
-          >Add to
-          {{ categoryTabs.find((t) => t.id === activeTab)?.label }}</span
-        >
+        <span>Add to {{ activeTabMeta.label }}</span>
       </Button>
     </template>
 
@@ -279,7 +377,7 @@ const copiedEntryId = ref<string | null>(null);
         </button>
       </div>
 
-      <!-- Search bar + Prompt filter -->
+      <!-- Search / filters / sort -->
       <div
         class="border-border bg-card/20 flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-2.5"
       >
@@ -290,7 +388,13 @@ const copiedEntryId = ref<string | null>(null);
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search by name or description..."
+            :placeholder="
+              activeTab === 'characters'
+                ? 'Search name, series, trigger, tags, notes...'
+                : activeTab === 'loras'
+                  ? 'Search name, description, LoRA file names...'
+                  : 'Search name, description, prompt text...'
+            "
             class="bg-background border-border placeholder:text-muted-foreground text-foreground focus:border-primary/60 h-8 w-full rounded-lg border pr-8 pl-8.5 text-xs transition-colors outline-none"
           />
           <button
@@ -329,6 +433,48 @@ const copiedEntryId = ref<string | null>(null);
           </button>
         </div>
 
+        <!-- Character series filter -->
+        <Select
+          v-if="activeTab === 'characters' && seriesOptions.length > 0"
+          v-model="seriesFilter"
+        >
+          <SelectTrigger class="h-8 w-44 text-xs">
+            <SelectValue placeholder="All series" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup class="max-h-40 overflow-y-auto">
+              <SelectItem value="all" class="text-xs">All series</SelectItem>
+              <SelectItem
+                v-for="series in seriesOptions"
+                :key="series"
+                :value="series"
+                class="text-xs"
+              >
+                {{ series }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+        <!-- Sort -->
+        <Select v-model="sortMode">
+          <SelectTrigger class="h-8 w-40 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup class="max-h-40 overflow-y-auto">
+              <SelectItem
+                v-for="opt in sortOptions"
+                :key="opt.value"
+                :value="opt.value"
+                class="text-xs"
+              >
+                {{ opt.label }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
         <span class="text-muted-foreground font-mono text-xs">
           {{ currentEntries.length }} item{{
             currentEntries.length !== 1 ? 's' : ''
@@ -342,12 +488,12 @@ const copiedEntryId = ref<string | null>(null);
       <!-- Loading skeleton -->
       <div
         v-if="libraryStore.isLoading(activeTab)"
-        class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+        class="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3"
       >
         <div
           v-for="n in 6"
           :key="n"
-          class="bg-card border-border flex min-h-40 animate-pulse overflow-hidden rounded-xl border"
+          class="bg-card border-border flex min-h-44 animate-pulse overflow-hidden rounded-xl border"
         >
           <div class="flex min-w-0 flex-1 flex-col justify-between p-3.5">
             <div>
@@ -356,7 +502,8 @@ const copiedEntryId = ref<string | null>(null);
                 <div class="bg-muted h-3 w-14 rounded" />
               </div>
               <div class="bg-muted mb-2 h-4 w-2/3 rounded" />
-              <div class="bg-muted h-3 w-1/2 rounded" />
+              <div class="bg-muted mb-2 h-3 w-1/2 rounded" />
+              <div class="bg-muted h-3 w-5/6 rounded" />
             </div>
             <div class="bg-muted mt-3 h-7 w-full rounded" />
           </div>
@@ -374,29 +521,36 @@ const copiedEntryId = ref<string | null>(null);
         <div
           class="bg-muted text-muted-foreground flex h-14 w-14 items-center justify-center rounded-full"
         >
-          <component
-            :is="categoryTabs.find((t) => t.id === activeTab)?.icon"
-            class="h-7 w-7 opacity-40"
-          />
+          <component :is="activeTabMeta.icon" class="h-7 w-7 opacity-40" />
         </div>
         <div>
           <p class="text-foreground text-sm font-semibold">
             {{
-              searchQuery
-                ? `No results for "${searchQuery}"`
+              hasActiveFilter
+                ? 'No entries match the current filters'
                 : `No ${activeTab} yet`
             }}
           </p>
           <p class="text-muted-foreground mt-1 text-xs">
             {{
-              searchQuery
-                ? 'Try a different search term.'
-                : `Click "Add to ${categoryTabs.find((t) => t.id === activeTab)?.label}" to create your first entry.`
+              hasActiveFilter
+                ? 'Try a different search term or clear the filters.'
+                : `Click "Add to ${activeTabMeta.label}" to create your first entry.`
             }}
           </p>
         </div>
         <Button
-          v-if="!searchQuery"
+          v-if="hasActiveFilter"
+          size="sm"
+          variant="outline"
+          class="mt-1 h-8 gap-1.5 px-3 text-xs"
+          @click="clearFilters"
+        >
+          <X class="h-3.5 w-3.5" />
+          Clear filters
+        </Button>
+        <Button
+          v-else
           size="sm"
           class="bg-primary text-primary-foreground hover:bg-primary/90 mt-1 h-8 gap-1.5 px-3 text-xs"
           @click="entryEditor?.create()"
@@ -407,40 +561,60 @@ const copiedEntryId = ref<string | null>(null);
       </div>
 
       <!-- Cards grid -->
-      <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
         <div
           v-for="entry in currentEntries"
           :key="entry.id"
-          class="border-border bg-card hover:border-primary/50 relative flex min-h-40 cursor-pointer flex-row overflow-hidden rounded-xl border transition-all hover:shadow-md"
+          class="border-border bg-card hover:border-primary/50 group relative flex min-h-44 cursor-pointer flex-row overflow-hidden rounded-xl border transition-all hover:shadow-md"
           @click="entryEditor?.edit(entry)"
         >
           <!-- Left: Content & Actions -->
           <div class="flex min-w-0 flex-1 flex-col justify-between p-3.5">
-            <!-- Top: Badge + Date + Title + Desc -->
-            <div>
+            <div class="min-w-0">
+              <!-- Top row: category / scope / series badge + date -->
               <div class="flex items-center justify-between gap-2">
-                <span
-                  class="rounded-md px-1.5 py-0.5 font-mono text-xs font-bold uppercase"
-                  :class="{
-                    'border border-emerald-500/30 bg-emerald-500/15 text-emerald-400':
-                      activeTab === 'prompts',
-                    'border border-violet-500/30 bg-violet-500/15 text-violet-400':
-                      activeTab === 'loras',
-                    'border border-amber-500/30 bg-amber-500/15 text-amber-400':
-                      activeTab === 'characters'
-                  }"
-                >
-                  {{ activeTab }}
-                </span>
+                <div class="flex min-w-0 items-center gap-1.5">
+                  <span
+                    v-if="activeTab === 'prompts'"
+                    class="shrink-0 rounded-md border px-1.5 py-0.5 font-mono text-xs font-bold uppercase"
+                    :class="{
+                      'border-emerald-500/30 bg-emerald-500/15 text-emerald-400':
+                        promptData(entry).type === 'positive',
+                      'border-rose-500/30 bg-rose-500/15 text-rose-400':
+                        promptData(entry).type === 'negative',
+                      'border-sky-500/30 bg-sky-500/15 text-sky-400':
+                        promptData(entry).type === 'both'
+                    }"
+                  >
+                    {{ promptScopeLabel(entry) }}
+                  </span>
+                  <span
+                    v-else-if="activeTab === 'loras'"
+                    class="shrink-0 rounded-md border border-violet-500/30 bg-violet-500/15 px-1.5 py-0.5 font-mono text-xs font-bold text-violet-400 uppercase"
+                  >
+                    {{ loraData(entry).loras.length }} LoRA{{
+                      loraData(entry).loras.length !== 1 ? 's' : ''
+                    }}
+                  </span>
+                  <template v-else>
+                    <span
+                      class="truncate rounded-md border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-xs font-bold text-amber-400"
+                      :title="charData(entry).series || 'No series set'"
+                    >
+                      {{ charData(entry).series || 'Original' }}
+                    </span>
+                  </template>
+                </div>
 
                 <div
-                  class="text-muted-foreground/70 flex items-center gap-1 font-mono text-xs"
+                  class="text-muted-foreground/70 flex shrink-0 items-center gap-1 font-mono text-xs"
                 >
                   <Clock class="h-2.5 w-2.5" />
                   <span>{{ formatShortDate(entry.updatedAt) }}</span>
                 </div>
               </div>
 
+              <!-- Title + description -->
               <div class="mt-2">
                 <h3
                   class="text-foreground truncate text-sm leading-snug font-bold"
@@ -450,10 +624,106 @@ const copiedEntryId = ref<string | null>(null);
                 </h3>
                 <p
                   v-if="entry.description"
-                  class="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed"
+                  class="text-muted-foreground mt-0.5 line-clamp-1 text-xs leading-relaxed"
                   :title="entry.description"
                 >
                   {{ entry.description }}
+                </p>
+              </div>
+
+              <!-- PROMPT preview -->
+              <div
+                v-if="activeTab === 'prompts'"
+                class="mt-2 flex flex-col gap-1"
+              >
+                <p
+                  v-if="promptData(entry).positive"
+                  class="text-foreground/80 line-clamp-2 font-mono text-xs leading-relaxed"
+                  :title="promptData(entry).positive"
+                >
+                  <span class="mr-1 font-bold text-emerald-400">+</span
+                  >{{ promptData(entry).positive }}
+                </p>
+                <p
+                  v-if="promptData(entry).negative"
+                  class="text-muted-foreground line-clamp-1 font-mono text-xs leading-relaxed"
+                  :title="promptData(entry).negative"
+                >
+                  <span class="mr-1 font-bold text-rose-400">−</span
+                  >{{ promptData(entry).negative }}
+                </p>
+              </div>
+
+              <!-- LORA preview -->
+              <div
+                v-else-if="activeTab === 'loras'"
+                class="mt-2 flex flex-wrap gap-1"
+              >
+                <span
+                  v-for="(lora, i) in loraData(entry).loras.slice(
+                    0,
+                    MAX_TAG_CHIPS
+                  )"
+                  :key="i"
+                  class="border-border bg-muted/60 max-w-full truncate rounded border px-1.5 py-0.5 font-mono text-xs"
+                  :class="
+                    lora.enabled
+                      ? 'text-foreground/80'
+                      : 'text-muted-foreground line-through'
+                  "
+                  :title="`${lora.name} × ${lora.strength}${lora.enabled ? '' : ' (disabled)'}`"
+                >
+                  {{ lora.name || '(No model)' }}
+                  <span class="text-primary">×{{ lora.strength }}</span>
+                </span>
+                <span
+                  v-if="loraData(entry).loras.length > MAX_TAG_CHIPS"
+                  class="text-muted-foreground px-1 py-0.5 font-mono text-xs"
+                >
+                  +{{ loraData(entry).loras.length - MAX_TAG_CHIPS }} more
+                </span>
+                <span
+                  v-if="loraData(entry).loras.length === 0"
+                  class="text-muted-foreground text-xs italic"
+                >
+                  Empty stack
+                </span>
+              </div>
+
+              <!-- CHARACTER preview -->
+              <div v-else class="mt-2 flex flex-col gap-1.5">
+                <p
+                  v-if="charData(entry).trigger"
+                  class="text-primary truncate font-mono text-xs font-semibold"
+                  :title="charData(entry).trigger"
+                >
+                  {{ charData(entry).trigger }}
+                </p>
+                <div
+                  v-if="characterTags(entry).length > 0"
+                  class="flex flex-wrap gap-1"
+                >
+                  <span
+                    v-for="tag in characterTags(entry).slice(0, MAX_TAG_CHIPS)"
+                    :key="tag"
+                    class="border-border bg-muted/60 text-foreground/80 max-w-full truncate rounded border px-1.5 py-0.5 font-mono text-xs"
+                  >
+                    {{ tag }}
+                  </span>
+                  <span
+                    v-if="characterTags(entry).length > MAX_TAG_CHIPS"
+                    class="text-muted-foreground px-1 py-0.5 font-mono text-xs"
+                  >
+                    +{{ characterTags(entry).length - MAX_TAG_CHIPS }}
+                  </span>
+                </div>
+                <p
+                  v-if="charData(entry).notes"
+                  class="text-muted-foreground line-clamp-2 flex items-start gap-1 text-xs leading-relaxed italic"
+                  :title="charData(entry).notes"
+                >
+                  <StickyNote class="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
+                  <span>{{ charData(entry).notes }}</span>
                 </p>
               </div>
             </div>
@@ -462,23 +732,23 @@ const copiedEntryId = ref<string | null>(null);
             <div
               class="border-border/60 mt-3 flex items-center justify-between gap-2 border-t pt-2.5"
             >
-              <!-- Left: Edit / Delete -->
-              <div class="flex shrink-0 items-center gap-1">
+              <!-- Left: Edit / Duplicate / Delete -->
+              <div class="flex shrink-0 items-center gap-0.5">
                 <Button
                   size="iconSm"
                   variant="ghost"
                   class="text-muted-foreground hover:text-foreground h-7 w-7"
-                  title="Edit details"
-                  @click.stop="entryEditor?.edit(entry)"
+                  title="Duplicate"
+                  :disabled="duplicatingId === entry.id"
+                  @click.stop="duplicateEntry(entry)"
                 >
-                  <SlidersHorizontal class="h-3.5 w-3.5" />
+                  <CopyPlus class="h-3.5 w-3.5" />
                 </Button>
-
                 <Button
                   size="iconSm"
                   variant="ghost"
                   class="text-muted-foreground hover:text-destructive h-7 w-7"
-                  title="Delete preset"
+                  title="Delete"
                   @click.stop="requestDelete(entry)"
                 >
                   <Trash2 class="h-3.5 w-3.5" />
@@ -490,6 +760,20 @@ const copiedEntryId = ref<string | null>(null);
                 <!-- PROMPTS -->
                 <template v-if="activeTab === 'prompts'">
                   <Button
+                    size="iconSm"
+                    variant="ghost"
+                    class="text-muted-foreground hover:text-foreground h-7 w-7"
+                    title="Copy prompt text"
+                    @click.stop="copyPromptText(entry)"
+                  >
+                    <Check
+                      v-if="copiedEntryId === entry.id"
+                      class="h-3.5 w-3.5 text-emerald-400"
+                    />
+                    <Copy v-else class="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    v-if="promptData(entry).type === 'both'"
                     size="sm"
                     variant="outline"
                     class="h-7 px-2 text-xs"
@@ -499,6 +783,7 @@ const copiedEntryId = ref<string | null>(null);
                     + Pos
                   </Button>
                   <Button
+                    v-if="promptData(entry).type === 'both'"
                     size="sm"
                     variant="outline"
                     class="h-7 px-2 text-xs"
@@ -543,13 +828,23 @@ const copiedEntryId = ref<string | null>(null);
                     variant="ghost"
                     class="text-muted-foreground hover:text-foreground h-7 w-7"
                     title="Copy all tags"
-                    @click.stop="copyCharacterTags(entry)"
+                    @click.stop="copyText(entry, characterTagString(entry))"
                   >
                     <Check
                       v-if="copiedEntryId === entry.id"
                       class="h-3.5 w-3.5 text-emerald-400"
                     />
                     <Copy v-else class="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    class="h-7 gap-1 px-2 text-xs"
+                    title="Attach this character (tags + notes) to a Maya chat"
+                    @click.stop="askMaya(entry)"
+                  >
+                    <MessageSquareText class="h-3 w-3" />
+                    Ask Maya
                   </Button>
                   <Button
                     size="sm"
@@ -581,7 +876,7 @@ const copiedEntryId = ref<string | null>(null);
               class="from-primary/5 to-primary/20 flex h-full w-full items-center justify-center bg-linear-to-br"
             >
               <component
-                :is="categoryTabs.find((t) => t.id === activeTab)?.icon"
+                :is="activeTabMeta.icon"
                 class="text-primary/25 h-10 w-10"
               />
             </div>
@@ -599,5 +894,4 @@ const copiedEntryId = ref<string | null>(null);
     :category="activeTab"
     @delete="requestDelete"
   />
-
 </template>

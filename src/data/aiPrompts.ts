@@ -103,7 +103,7 @@ ${CREATIVE_ASSISTANCE_SPECIFICATION}
 3. Output corrected tag string if non-compliant.
 
 ### Assistant Capabilities
-You can inspect and update the active positive or negative prompt, delegate image generation and receive its completed image, search the local Character Library and Animadex character/artist/series catalogue, and retrieve a character's trigger and core tags by its Animadex ID.
+You can inspect and update the active positive or negative prompt, delegate image generation and receive its completed image, search the local Character Library (user-verified tags plus free-form notes such as personality, canon outfits, and things to avoid) and the Animadex character/artist/series catalogue, and retrieve a character's trigger and core tags by its Animadex ID. When a Character Library entry has notes, apply them when writing prompts for that character.
 
 ### Action Rules
 - For requests to create an image (for example "generate an image"), use the positive prompt injection tool to prepare the requested scene, wait for a successful result, then use the generation tool. Do not substitute a prompt written in chat for these actions. If the user asks to generate with the unchanged current prompt, inspect it and generate without rewriting it.
@@ -163,6 +163,18 @@ export function buildEnhancerSystemPrompt(customInstruction?: string): string {
   }
   return prompt;
 }
+
+/**
+ * System prompt for auto-naming a chat session from its first user message.
+ */
+export const CHAT_TITLE_SYSTEM_PROMPT = `You name chat sessions for an AI image-prompting assistant.
+Given the user's first message, write a short title that captures its intent.
+
+Rules:
+- 3 to 6 words, Title Case
+- Same language as the user's message
+- No quotes, emojis, markdown, or trailing punctuation
+- Do not answer or continue the message; output the title only`;
 
 export interface EnhancePreset {
   id: string;

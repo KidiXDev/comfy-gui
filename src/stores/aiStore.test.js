@@ -7,7 +7,8 @@ import * as aiService from '../services/aiService';
 mock.module('../services/aiService', () => ({
   ...aiService,
   fetchAvailableModels: async () => [],
-  getOpenRouterModel: () => ({})
+  getOpenRouterModel: () => ({}),
+  generateChatTitle: async () => 'Generated Title'
 }));
 mock.module('../services/appStorage', () => ({
   loadAppData: async () => null,
@@ -201,6 +202,13 @@ try {
         'Tool calls must not be replayed as assistant text'
       );
   }
+
+  store.createSession();
+  await store.sendMessage('Please name this chat');
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  assert.equal(store.activeSession.title, 'Generated Title');
 
   store.createSession('Context budget');
   await store.sendMessage('Old context');
