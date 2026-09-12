@@ -213,6 +213,7 @@ onUnmounted(() => {
         type="button"
         title="Toggle Terminal Logs"
         class="border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
+        data-terminal-toggle
         @click="launcherStore.isTerminalOpen = !launcherStore.isTerminalOpen"
       >
         <Terminal class="h-3 w-3" />

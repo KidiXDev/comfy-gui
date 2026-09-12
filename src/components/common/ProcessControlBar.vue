@@ -60,6 +60,7 @@ const launcherStore = useLauncherStore();
       variant="ghost"
       class="text-foreground hover:bg-accent hover:text-foreground relative"
       aria-label="Toggle Terminal Logs"
+      data-terminal-toggle
       @click="launcherStore.isTerminalOpen = !launcherStore.isTerminalOpen"
     >
       <Terminal class="h-3.5 w-3.5" />

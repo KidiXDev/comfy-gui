@@ -5,6 +5,13 @@ pub static AI_TAG: AiTag = AiTag;
 const BASE: &str = "https://aitag.win";
 const ASSET_BASE: &str = "https://ai-img.10118899.xyz/";
 
+/// aitag.win's Cloudflare WAF rejects API calls that lack a same-site referer.
+fn api(client: &Client, path: &str) -> RequestBuilder {
+    client
+        .get(format!("{BASE}{path}"))
+        .header(REFERER, AI_TAG.media_referer().unwrap_or_default())
+}
+
 fn decode_json(value: Option<&Value>) -> Value {
     match value {
         Some(Value::String(value)) => serde_json::from_str(value).unwrap_or(Value::Null),
@@ -152,12 +159,7 @@ impl Provider for AiTag {
             params.push(("q", request.query.trim().into()));
         }
         page(
-            send_json(
-                "aitag",
-                client
-                    .get(format!("{BASE}/api/ai_works_search"))
-                    .query(&params),
-            )?,
+            send_json("aitag", api(client, "/api/ai_works_search").query(&params))?,
             current,
             60,
             blacklist,
@@ -184,8 +186,7 @@ impl Provider for AiTag {
         page(
             send_json(
                 "aitag",
-                client
-                    .get(format!("{BASE}/api/rank/monthly/real"))
+                api(client, "/api/rank/monthly/real")
                     .query(&[("page", current), ("page_size", 60)]),
             )?,
             current,
@@ -200,7 +201,7 @@ impl Provider for AiTag {
         post_id: &str,
         _credentials: &HashMap<String, String>,
     ) -> Result<PostDetail, String> {
-        let mut raw = send_json("aitag", client.get(format!("{BASE}/api/work/{post_id}")))?;
+        let mut raw = send_json("aitag", api(client, &format!("/api/work/{post_id}")))?;
         if raw.is_string() {
             raw = decode_json(Some(&raw));
         }
@@ -281,5 +282,15 @@ mod tests {
         );
         assert_eq!(image_index("7_p12"), Some(12));
         assert_eq!(AI_TAG.media_referer(), Some("https://aitag.win/"));
+    }
+
+    #[test]
+    fn api_requests_carry_same_site_referer() {
+        let request = api(&Client::new(), "/api/work/7").build().unwrap();
+        assert_eq!(request.url().as_str(), "https://aitag.win/api/work/7");
+        assert_eq!(
+            request.headers().get(REFERER).unwrap(),
+            "https://aitag.win/"
+        );
     }
 }

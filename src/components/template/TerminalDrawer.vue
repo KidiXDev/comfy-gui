@@ -50,6 +50,13 @@ const filteredLogs = computed(() => {
   });
 });
 
+// Toggle buttons live outside the sheet; without this the outside-pointerdown
+// dismiss closes it and the button's click immediately reopens it.
+function ignoreToggleButton(event: CustomEvent<{ originalEvent: Event }>) {
+  const target = event.detail.originalEvent.target as Element | null;
+  if (target?.closest('[data-terminal-toggle]')) event.preventDefault();
+}
+
 function toggleAutoScroll() {
   autoScroll.value = !isFollowing.value;
   if (autoScroll.value) terminalScroll.scrollToEnd();
@@ -71,6 +78,7 @@ function copyAllLogs() {
     <SheetContent
       side="bottom"
       class="border-border bg-sidebar text-foreground flex h-[45vh] max-h-[80vh] flex-col gap-0 border-t p-0"
+      @interact-outside="ignoreToggleButton"
     >
       <SheetHeader class="border-border shrink-0 border-b px-4 py-2.5">
         <div class="flex items-center justify-between pr-6">

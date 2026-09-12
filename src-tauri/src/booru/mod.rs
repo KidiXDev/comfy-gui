@@ -427,6 +427,12 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
                     return serde_json::from_str(&body)
                         .map_err(|_| format!("{source} GET {final_url} returned invalid JSON"));
                 }
+                if status == StatusCode::FORBIDDEN && body.contains("you have been blocked") {
+                    // Cloudflare WAF block page (error 1020): no challenge exists to solve.
+                    return Err(format!(
+                        "{source} request was blocked by the site's Cloudflare firewall (HTTP {status}). This is not a solvable challenge; the site is rejecting requests from this app."
+                    ));
+                }
                 if body.contains("cf-mitigated")
                     || body.contains("challenges.cloudflare.com")
                     || body.contains("Just a moment...")
