@@ -352,14 +352,11 @@ async function copyEnhanced() {
                   </Label>
                   <Textarea
                     v-model="styleContext"
-                    placeholder="e.g. Genshin Impact, Cyberpunk..."
+                    placeholder="Enter theme or universe..."
                     rows="2"
-                    class="bg-background/80 min-h-0 resize-y text-xs"
+                    class="bg-background/80 max-h-40 min-h-20 resize-y text-xs"
                     @keydown.ctrl.enter.prevent="runEnhance"
                   />
-                  <p class="text-muted-foreground/70 text-xs">
-                    Emulates the style without naming the source.
-                  </p>
                 </div>
 
                 <div class="flex flex-col gap-1.5">
@@ -378,16 +375,13 @@ async function copyEnhanced() {
                     v-model="customInstruction"
                     :placeholder="
                       isCustomMode
-                        ? 'e.g. Change pose into a dynamic running pose'
-                        : 'e.g. Add flowing cape, gold jewelry...'
+                        ? 'Enter your instruction...'
+                        : 'Enter extra instructions...'
                     "
                     :rows="isCustomMode ? 4 : 3"
-                    class="bg-background/80 min-h-0 resize-y text-xs"
+                    class="bg-background/80 max-h-40 min-h-20 resize-y"
                     @keydown.ctrl.enter.prevent="runEnhance"
                   />
-                  <p class="text-muted-foreground/70 text-xs">
-                    Ctrl+Enter to enhance
-                  </p>
                 </div>
               </div>
             </div>
